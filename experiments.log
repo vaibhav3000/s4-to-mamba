@@ -197,3 +197,607 @@ Consider using tensor.detach() first. (Triggered internally at C:\actions-runner
 C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\train\trainer.py:207: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
 Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
   ep_loss += float(loss)
+[imdb_mamba2] epoch 1/3 loss=0.5262 val={'loss': 0.424, 'accuracy': 0.8023, 'auc': 0.9069}
+[imdb_mamba2] epoch 2/3 loss=0.2536 val={'loss': 0.3685, 'accuracy': 0.8406, 'auc': 0.9198}
+[imdb_mamba2] epoch 3/3 loss=0.1005 val={'loss': 0.4557, 'accuracy': 0.8361, 'auc': 0.9169}
+benchmarking transformer @ T=1024 ...
+benchmarking transformer @ T=2048 ...
+benchmarking transformer @ T=4096 ...
+benchmarking transformer @ T=8192 ...
+benchmarking transformer @ T=16384 ...
+benchmarking transformer @ T=32768 ...
+[W916 21:41:16.000000000 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 1073741824 bytes (free: 0, total: 6438780928).
+benchmarking s4d @ T=1024 ...
+benchmarking s4d @ T=2048 ...
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 28, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 24, in main
+    run_efficiency(cfg)
+    ~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 210, in run_efficiency
+    entry = benchmark_single(
+        name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
+    )
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 126, in benchmark_single
+    mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
+                      ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 47, in _time_gpu
+    fn()
+    ~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 116, in train_step
+    logits = backbone(embed(tokens))
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\s4_minimal.py", line 203, in forward
+    x = block(x, mask)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\s4_minimal.py", line 162, in forward
+    return x + self.dropout(self.layer(h) * F.silu(self.gate(h)))
+                            ~~~~~~~~~~^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\s4_minimal.py", line 132, in forward
+    y = torch.fft.irfft(x_f * k_f.unsqueeze(0), n=2 * T)[..., :T]
+                        ~~~~^~~~~~~~~~~~~~~~~~
+RuntimeError: The size of tensor a (256) must match the size of tensor b (512) at non-singleton dimension 1
+skipping transformer @ T=1024 (already measured)
+skipping transformer @ T=2048 (already measured)
+skipping transformer @ T=4096 (already measured)
+skipping transformer @ T=8192 (already measured)
+skipping transformer @ T=16384 (already measured)
+skipping transformer @ T=32768 (already measured)
+skipping s4d @ T=1024 (already measured)
+benchmarking s4d @ T=2048 ...
+benchmarking s4d @ T=4096 ...
+benchmarking s4d @ T=8192 ...
+benchmarking s4d @ T=16384 ...
+benchmarking s4d @ T=32768 ...
+benchmarking mamba2 @ T=1024 ...
+benchmarking mamba2 @ T=2048 ...
+benchmarking mamba2 @ T=4096 ...
+benchmarking mamba2 @ T=8192 ...
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 28, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 24, in main
+    run_efficiency(cfg)
+    ~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 227, in run_efficiency
+    entry = benchmark_single(
+        name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
+    )
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 128, in benchmark_single
+    mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
+                      ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 49, in _time_gpu
+    fn()
+    ~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 118, in train_step
+    logits = backbone(embed(tokens))
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba2_minimal.py", line 254, in forward
+    x = block(x)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba2_minimal.py", line 221, in forward
+    y = scan(x_h, alpha, Bx, C_h)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba2_minimal.py", line 206, in chunked_scan
+    S = cs_end[:, c].unsqueeze(-1).unsqueeze(-1).exp() * S + S_partial[:, c]
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+
+skipping transformer @ T=1024 (already measured)
+skipping transformer @ T=2048 (already measured)
+skipping transformer @ T=4096 (already measured)
+skipping transformer @ T=8192 (already measured)
+skipping transformer @ T=16384 (already measured)
+skipping transformer @ T=32768 (already measured)
+skipping s4d @ T=1024 (already measured)
+skipping s4d @ T=2048 (already measured)
+skipping s4d @ T=4096 (already measured)
+skipping s4d @ T=8192 (already measured)
+skipping s4d @ T=16384 (already measured)
+skipping s4d @ T=32768 (already measured)
+skipping mamba2 @ T=1024 (already measured)
+skipping mamba2 @ T=2048 (already measured)
+skipping mamba2 @ T=4096 (already measured)
+benchmarking mamba2 @ T=8192 ...
+benchmarking mamba2 @ T=16384 ...
+benchmarking mamba2 @ T=32768 ...
+[W916 22:31:19.000000000 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 1073741824 bytes (free: 0, total: 6438780928).
+[W916 22:31:24.000000000 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 538968064 bytes (free: 0, total: 6438780928).
+[W916 22:31:25.000000000 CUDACachingAllocator.cpp:3934] memory allocation failed with OOM on device 0 while trying to allocate 538968064 bytes (free: 0, total: 6438780928).
+benchmarking mamba @ T=1024 ...
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 128, in benchmark_single
+    mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
+                      ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 49, in _time_gpu
+    fn()
+    ~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 118, in train_step
+    logits = backbone(embed(tokens))
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba_minimal.py", line 199, in forward
+    x = block(x)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba_minimal.py", line 139, in forward
+    y = self.selective_scan(x_conv, delta, B, C)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba_minimal.py", line 120, in selective_scan
+    alpha = torch.exp(deltaT[t].unsqueeze(-1) * A)  # (B, d_inner, N) in (0, 1)
+                      ~~~~~~~~~~~~~~~~~~~~~~~~^~~
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 227, in run_efficiency
+    entry = benchmark_single(
+        name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
+    )
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 137, in benchmark_single
+    torch.cuda.empty_cache()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 28, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 24, in main
+    run_efficiency(cfg)
+    ~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 232, in run_efficiency
+    torch.cuda.empty_cache()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+skipping transformer @ T=1024 (already measured)
+skipping transformer @ T=2048 (already measured)
+skipping transformer @ T=4096 (already measured)
+skipping transformer @ T=8192 (already measured)
+skipping transformer @ T=16384 (already measured)
+skipping transformer @ T=32768 (already measured)
+skipping s4d @ T=1024 (already measured)
+skipping s4d @ T=2048 (already measured)
+skipping s4d @ T=4096 (already measured)
+skipping s4d @ T=8192 (already measured)
+skipping s4d @ T=16384 (already measured)
+skipping s4d @ T=32768 (already measured)
+skipping mamba2 @ T=1024 (already measured)
+skipping mamba2 @ T=2048 (already measured)
+skipping mamba2 @ T=4096 (already measured)
+skipping mamba2 @ T=8192 (already measured)
+skipping mamba2 @ T=16384 (already measured)
+skipping mamba2 @ T=32768 (already measured)
+benchmarking mamba @ T=1024 ...
+benchmarking mamba @ T=2048 ...
+benchmarking mamba @ T=4096 ...
+benchmarking mamba3 @ T=1024 ...
+benchmarking mamba3 @ T=2048 ...
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 128, in benchmark_single
+    mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
+                      ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 49, in _time_gpu
+    fn()
+    ~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 118, in train_step
+    logits = backbone(embed(tokens))
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 207, in forward
+    x = block(x)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 176, in forward
+    y = self.selective_scan(x_h, delta, B_h, C_h, lam_h)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 144, in selective_scan
+    beta = (1.0 - lamT[t]).unsqueeze(-1) * dT[t].unsqueeze(-1) * alpha  # (B, H, N) complex
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 227, in run_efficiency
+    try:
+    
+        entry = benchmark_single(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+            name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
+    
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 137, in benchmark_single
+    torch.cuda.empty_cache()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 28, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 24, in main
+    run_efficiency(cfg)
+    ~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 232, in run_efficiency
+    entry = {"model": name, "seq_len": L, "oom": True}
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+skipping transformer @ T=1024 (already measured)
+skipping transformer @ T=2048 (already measured)
+skipping transformer @ T=4096 (already measured)
+skipping transformer @ T=8192 (already measured)
+skipping transformer @ T=16384 (already measured)
+skipping transformer @ T=32768 (already measured)
+skipping s4d @ T=1024 (already measured)
+skipping s4d @ T=2048 (already measured)
+skipping s4d @ T=4096 (already measured)
+skipping s4d @ T=8192 (already measured)
+skipping s4d @ T=16384 (already measured)
+skipping s4d @ T=32768 (already measured)
+skipping mamba2 @ T=1024 (already measured)
+skipping mamba2 @ T=2048 (already measured)
+skipping mamba2 @ T=4096 (already measured)
+skipping mamba2 @ T=8192 (already measured)
+skipping mamba2 @ T=16384 (already measured)
+skipping mamba2 @ T=32768 (already measured)
+skipping mamba @ T=1024 (already measured)
+skipping mamba @ T=2048 (already measured)
+skipping mamba @ T=4096 (already measured)
+skipping mamba3 @ T=1024 (already measured)
+benchmarking mamba3 @ T=2048 ...
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 128, in benchmark_single
+    mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
+                      ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 49, in _time_gpu
+    fn()
+    ~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 118, in train_step
+    logits = backbone(embed(tokens))
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 207, in forward
+    x = block(x)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 176, in forward
+    y = self.selective_scan(x_h, delta, B_h, C_h, lam_h)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 148, in selective_scan
+    + gamma.unsqueeze(-1).unsqueeze(-1) * inject_t.to(torch.complex64)
+                                          ~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 228, in run_efficiency
+    entry = benchmark_single(
+        name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
+    )
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 137, in benchmark_single
+    torch.cuda.empty_cache()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 28, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 24, in main
+    run_efficiency(cfg)
+    ~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 233, in run_efficiency
+    torch.cuda.empty_cache()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+skipping transformer @ T=1024 (already measured)
+skipping transformer @ T=2048 (already measured)
+skipping transformer @ T=4096 (already measured)
+skipping transformer @ T=8192 (already measured)
+skipping transformer @ T=16384 (already measured)
+skipping transformer @ T=32768 (already measured)
+skipping s4d @ T=1024 (already measured)
+skipping s4d @ T=2048 (already measured)
+skipping s4d @ T=4096 (already measured)
+skipping s4d @ T=8192 (already measured)
+skipping s4d @ T=16384 (already measured)
+skipping s4d @ T=32768 (already measured)
+skipping mamba2 @ T=1024 (already measured)
+skipping mamba2 @ T=2048 (already measured)
+skipping mamba2 @ T=4096 (already measured)
+skipping mamba2 @ T=8192 (already measured)
+skipping mamba2 @ T=16384 (already measured)
+skipping mamba2 @ T=32768 (already measured)
+skipping mamba @ T=1024 (already measured)
+skipping mamba @ T=2048 (already measured)
+skipping mamba @ T=4096 (already measured)
+skipping mamba3 @ T=1024 (already measured)
+benchmarking mamba3 @ T=2048 ...
+benchmarking mamba3 @ T=4096 ...
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 228, in run_efficiency
+    entry = benchmark_single(
+        name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
+    )
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 99, in benchmark_single
+    seed_everything(0)
+    ~~~~~~~~~~~~~~~^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\utils.py", line 20, in seed_everything
+    torch.manual_seed(seed)
+    ~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\_compile.py", line 54, in inner
+    return disable_fn(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\_dynamo\eval_frame.py", line 1548, in _fn
+    return fn(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\random.py", line 59, in manual_seed
+    return _manual_seed_impl(seed)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\random.py", line 67, in _manual_seed_impl
+    torch.cuda.manual_seed_all(seed)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\random.py", line 128, in manual_seed_all
+    _lazy_call(cb, seed_all=True)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\__init__.py", line 522, in _lazy_call
+    callable()
+    ~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\random.py", line 126, in cb
+    default_generator.manual_seed(seed)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuStreamGetCaptureInfo_v3
+
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 28, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 24, in main
+    run_efficiency(cfg)
+    ~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 235, in run_efficiency
+    torch.cuda.empty_cache()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+skipping transformer @ T=1024 (already measured)
+skipping transformer @ T=2048 (already measured)
+skipping transformer @ T=4096 (already measured)
+skipping transformer @ T=8192 (already measured)
+skipping transformer @ T=16384 (already measured)
+skipping transformer @ T=32768 (already measured)
+skipping s4d @ T=1024 (already measured)
+skipping s4d @ T=2048 (already measured)
+skipping s4d @ T=4096 (already measured)
+skipping s4d @ T=8192 (already measured)
+skipping s4d @ T=16384 (already measured)
+skipping s4d @ T=32768 (already measured)
+skipping mamba2 @ T=1024 (already measured)
+skipping mamba2 @ T=2048 (already measured)
+skipping mamba2 @ T=4096 (already measured)
+skipping mamba2 @ T=8192 (already measured)
+skipping mamba2 @ T=16384 (already measured)
+skipping mamba2 @ T=32768 (already measured)
+skipping mamba @ T=1024 (already measured)
+skipping mamba @ T=2048 (already measured)
+skipping mamba @ T=4096 (already measured)
+skipping mamba3 @ T=1024 (already measured)
+skipping mamba3 @ T=2048 (already measured)
+benchmarking mamba3 @ T=4096 ...
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 128, in benchmark_single
+    mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
+                      ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 49, in _time_gpu
+    fn()
+    ~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 118, in train_step
+    logits = backbone(embed(tokens))
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 207, in forward
+    x = block(x)
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 176, in forward
+    y = self.selective_scan(x_h, delta, B_h, C_h, lam_h)
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\models\mamba3_minimal.py", line 148, in selective_scan
+    + gamma.unsqueeze(-1).unsqueeze(-1) * inject_t.to(torch.complex64)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 228, in run_efficiency
+    entry = benchmark_single(
+        name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
+    )
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 137, in benchmark_single
+    torch.cuda.empty_cache()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 28, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\scripts\run_efficiency.py", line 24, in main
+    run_efficiency(cfg)
+    ~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\benchmarks\efficiency.py", line 235, in run_efficiency
+    torch.cuda.empty_cache()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\vaibhav mahore\AppData\Roaming\Python\Python314\site-packages\torch\cuda\memory.py", line 229, in empty_cache
+    torch._C._cuda_emptyCache()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+The CUDA driver logged these messages, which may provide useful details:
+Sticky error detected
+Returning 2 (CUDA_ERROR_OUT_OF_MEMORY) from cuMemFree_v2
+
+
+skipping transformer @ T=1024 (already measured)
+skipping transformer @ T=2048 (already measured)
+skipping transformer @ T=4096 (already measured)
+skipping transformer @ T=8192 (already measured)
+skipping transformer @ T=16384 (already measured)
+skipping transformer @ T=32768 (already measured)
+skipping s4d @ T=1024 (already measured)
+skipping s4d @ T=2048 (already measured)
+skipping s4d @ T=4096 (already measured)
+skipping s4d @ T=8192 (already measured)
+skipping s4d @ T=16384 (already measured)
+skipping s4d @ T=32768 (already measured)
+skipping mamba2 @ T=1024 (already measured)
+skipping mamba2 @ T=2048 (already measured)
+skipping mamba2 @ T=4096 (already measured)
+skipping mamba2 @ T=8192 (already measured)
+skipping mamba2 @ T=16384 (already measured)
+skipping mamba2 @ T=32768 (already measured)
+skipping mamba @ T=1024 (already measured)
+skipping mamba @ T=2048 (already measured)
+skipping mamba @ T=4096 (already measured)
+skipping mamba3 @ T=1024 (already measured)
+skipping mamba3 @ T=2048 (already measured)
+benchmarking mamba3 @ T=4096 ...

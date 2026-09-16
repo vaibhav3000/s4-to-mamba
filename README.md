@@ -83,9 +83,9 @@ Same protocol for every model: 12.5k training samples (fixed seed), max length
 
 | model | accuracy | AUC |
 |---|---|---|
-| s4d | **0.827** | **0.907** |
+| **mamba2** | **0.836** | **0.917** |
+| s4d | 0.827 | 0.907 |
 | transformer | 0.813 | 0.894 |
-| mamba2 | see `results/imdb_mamba2.json` | |
 
 The python-loop sequential implementations (mamba, mamba3) are deliberately
 not trained on IMDb at this scale: their wall-clock is dominated by kernel
@@ -93,13 +93,33 @@ launch overhead (see below). The selective-SSM family is represented by
 mamba2, which shares the recurrence and differs only in the transition
 parameterization.
 
-### 4. Efficiency vs sequence length (1K-32K, RTX 4050)
+### 4. Efficiency vs sequence length (1K-32K, RTX 4050 6GB)
 
 `results/efficiency_gpu.json` holds per-model train-step latency, peak memory,
-throughput and decode cost, CUDA-event timed, 5 repeats. Educational sequential
-scans are capped at 4K length: their wall-clock growth with T is itself the
-documented motivation for fused kernels. Figures are regenerated with
-`python scripts/make_figures.py`.
+throughput and decode cost - CUDA-event timed, 5 repeats, fp32, batch 8.
+Headline numbers (train step, batch 8):
+
+| T | Transformer | S4D (FFT) | Mamba-2 (chunked) | Mamba-1 (loop) |
+|---|---|---|---|---|
+| 1024 | 30 ms | 20 ms | 79 ms | 2 632 ms |
+| 4096 | 250 ms | 85 ms | 842 ms | OOM limit 4K |
+| 16384 | 4 482 ms | 741 ms | 130 427 ms | not run (loop) |
+| 32768 | 186 025 ms | 13 456 ms | OOM | not run (loop) |
+
+What the measurements show, stated plainly:
+
+- The Transformer's O(T^2) compute is visible in wall-clock even with
+  memory-efficient attention: 30 ms at 1K becomes 186 s at 32K.
+- S4D's FFT-convolution form is the most wall-clock-efficient implementation
+  in this repository across the whole range.
+- The educational python-loop scans are O(T) in operations but 10-100x slower
+  in wall-clock than vectorized forms at the same length - the constant
+  overhead (kernel launches, T-step autograd graphs) is exactly why fused
+  kernels exist, and why Mamba-2 moved to a matmul formulation.
+- Measured hardware limits are recorded, not hidden: Mamba-1/3 sequential
+  training and Mamba-2 at 32K exceed the 6GB buffer (entries carry
+  `oom_train: true`; Windows WDDM spills past VRAM into shared memory, which
+  also explains the super-linear slowdowns near the limit).
 
 ### 5. The wall-clock lesson (the honest part)
 

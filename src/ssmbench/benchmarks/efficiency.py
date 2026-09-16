@@ -23,7 +23,9 @@ or copied from papers. Every number in the report can be regenerated with:
 from __future__ import annotations
 
 import argparse
+import json
 import time
+from pathlib import Path
 
 import torch
 
@@ -130,7 +132,7 @@ def benchmark_single(
             entry["peak_train_mb"] = round(torch.cuda.max_memory_allocated() / 1024**2, 1)
         entry["train_tokens_per_s"] = round(batch_size * seq_len / (mean_ms / 1000))
         del opt, tokens, target
-    except torch.cuda.OutOfMemoryError:
+    except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
         entry["oom_train"] = True
         torch.cuda.empty_cache()
         return entry
@@ -150,7 +152,7 @@ def benchmark_single(
         if device.type == "cuda":
             entry["peak_infer_mb"] = round(torch.cuda.max_memory_allocated() / 1024**2, 1)
         del tokens
-    except torch.cuda.OutOfMemoryError:
+    except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
         entry["oom_infer"] = True
         torch.cuda.empty_cache()
         return entry
@@ -169,17 +171,18 @@ def benchmark_single(
             entry["decode_mode"] = "sequential scan over full sequence (per-token = time/T)"
             mean_ms, _ = _time_gpu(fn, rep_d, warmup=1, device=device.type)
             entry["decode_per_token_ms"] = round(mean_ms / seq_len, 4)
-        else:  # transformer: no KV cache — honest full-prefix recompute
+        else:  # transformer: no KV cache — each new token re-runs the full prefix
             tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)
 
             def decode_tr() -> None:
                 with torch.no_grad():
                     backbone(embed(tokens))
 
-            entry["decode_mode"] = "full-prefix recompute (no KV cache)"
+            entry["decode_mode"] = "full-prefix recompute per new token (no KV cache)"
             mean_ms, _ = _time_gpu(decode_tr, rep_d, warmup=1, device=device.type)
-            entry["decode_per_token_ms"] = round(mean_ms / seq_len, 4)
-    except torch.cuda.OutOfMemoryError:
+            # Generating ONE more token costs a full forward over the prefix.
+            entry["decode_per_token_ms"] = round(mean_ms, 4)
+    except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
         entry["oom_decode"] = True
         torch.cuda.empty_cache()
 
@@ -188,6 +191,18 @@ def benchmark_single(
 
 def run_efficiency(cfg: dict) -> dict:
     device = resolve_device(cfg.get("device", "auto"))
+    out_path = Path(cfg["out_path"])
+    entries: list[dict] = []
+    done: set[tuple[str, int]] = set()
+    if out_path.exists():
+        # Resume support: keep prior measurements (e.g. an expensive transformer
+        # sweep) and only run what is missing.
+        try:
+            prior = json.loads(out_path.read_text(encoding="utf-8"))
+            entries = list(prior.get("entries", []))
+            done = {(e.get("model"), e.get("seq_len")) for e in entries}
+        except (json.JSONDecodeError, OSError):
+            entries, done = [], set()
     results = {
         "environment": {
             "torch": torch.__version__,
@@ -196,7 +211,7 @@ def run_efficiency(cfg: dict) -> dict:
             "date": time.strftime("%Y-%m-%d"),
         },
         "config": cfg,
-        "entries": [],
+        "entries": entries,
     }
     for name in cfg["models"]:
         # Optional per-model length cap: the educational sequential scans
@@ -205,14 +220,24 @@ def run_efficiency(cfg: dict) -> dict:
         limit = cfg.get("model_length_limits", {}).get(name)
         lengths = [L for L in cfg["seq_lengths"] if limit is None or L <= limit]
         for L in lengths:
+            if (name, L) in done:
+                print(f"skipping {name} @ T={L} (already measured)", flush=True)
+                continue
             print(f"benchmarking {name} @ T={L} ...", flush=True)
             try:
                 entry = benchmark_single(
                     name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
                 )
-            except torch.cuda.OutOfMemoryError:
+            except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
+                # On a 6GB laptop GPU a sticky CUDA OOM can kill the context;
+                # recording the limit IS the measurement for this hardware.
                 entry = {"model": name, "seq_len": L, "oom": True}
-                torch.cuda.empty_cache()
+                try:
+                    torch.cuda.empty_cache()
+                except torch.AcceleratorError:
+                    pass  # sticky CUDA context; measured limit recorded
+            except Exception as exc:  # noqa: BLE001 - record and continue the sweep
+                entry = {"model": name, "seq_len": L, "error": f"{type(exc).__name__}: {exc}"[:300]}
             results["entries"].append(entry)
             dump_json(results, cfg["out_path"])
     return results

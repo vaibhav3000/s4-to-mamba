@@ -1,0 +1,65 @@
+{
+  "data_config": {
+    "batch_size": 64,
+    "max_features": 20000,
+    "max_len": 512,
+    "name": "imdb",
+    "train_subset": 12500,
+    "val_subset": null
+  },
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.0+cu130"
+  },
+  "history": [
+    {
+      "accuracy": 0.80232,
+      "auc": 0.9068716832000001,
+      "epoch": 1,
+      "epoch_seconds": 63.62,
+      "loss": 0.4240203082675824,
+      "train_loss": 0.5262280450183519
+    },
+    {
+      "accuracy": 0.84064,
+      "auc": 0.9197655104000001,
+      "epoch": 2,
+      "epoch_seconds": 62.82,
+      "loss": 0.3685331984477885,
+      "train_loss": 0.25356911692996414
+    },
+    {
+      "accuracy": 0.83612,
+      "auc": 0.9169082399999999,
+      "epoch": 3,
+      "epoch_seconds": 62.92,
+      "loss": 0.4556578960260162,
+      "train_loss": 0.10045597809651981
+    }
+  ],
+  "model": {
+    "kwargs": {
+      "d_model": 128,
+      "d_state": 32,
+      "headdim": 64,
+      "n_layers": 4
+    },
+    "name": "mamba2"
+  },
+  "n_parameters": 3034786,
+  "name": "imdb_mamba2",
+  "peak_gpu_mb": 2865.0,
+  "task": "classification",
+  "train_config": {
+    "epochs": 3,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 42,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 189.4
+}

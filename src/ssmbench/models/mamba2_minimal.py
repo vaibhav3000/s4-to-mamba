@@ -178,23 +178,29 @@ class Mamba2Block(nn.Module):
         Cl = C_f.view(Bsz, nc, Csz, H, N)
         cs = log_alpha.view(Bsz, nc, Csz, H).cumsum(dim=2)  # (B, nc, Csz, H)
 
-        # Intra-chunk decayed attention: L[t,s] = exp(cs_t - cs_s) for t >= s.
-        diff = cs.unsqueeze(3) - cs.unsqueeze(2)  # (B, nc, t, s, H)
+        # Process chunks in groups so the (group, Csz, Csz, H) decay tensors
+        # stay bounded; identical outputs, ~1GB less transient memory at 32K.
+        group = 32
+        cs_end = cs[:, :, -1]  # (B, nc, H)
+        y_intra = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=torch.float32)
+        S_partial = torch.empty(Bsz, nc, H, N, P, device=x_h.device, dtype=torch.float32)
         tril = torch.tril(
             torch.ones(Csz, Csz, dtype=torch.bool, device=x_h.device)
         ).unsqueeze(-1)  # (Csz, Csz, 1) broadcasts over H
-        # Clamp before exponentiating: lower-triangle diffs are already <= 0,
-        # upper-triangle diffs can overflow fp32 exp at long chunks.
-        L = torch.exp(diff.clamp(max=0.0)) * tril  # (B, nc, Csz, Csz, H)
-        attn = torch.einsum("bcihn,bcjhn->bcijh", Cl, Bl)  # C_i . B_j
-        y_intra = torch.einsum("bcijh,bcjhp->bcihp", L * attn, xl)
-
-        # State accumulated by chunk inputs alone (carried state added later).
-        cs_end = cs[:, :, -1]  # (B, nc, H)
-        alpha_suffix = torch.exp(cs_end.unsqueeze(2) - cs)  # (B, nc, Csz, H)
-        S_partial = torch.einsum(
-            "bcjhn,bcjhp->bchnp", Bl * alpha_suffix.unsqueeze(-1), xl
-        )  # (B, nc, H, N, P)
+        for g0 in range(0, nc, group):
+            g1 = min(g0 + group, nc)
+            cs_g = cs[:, g0:g1]  # (B, g, Csz, H)
+            diff = cs_g.unsqueeze(3) - cs_g.unsqueeze(2)  # (B, g, t, s, H)
+            L = torch.exp(diff.clamp(max=0.0)) * tril  # lower-tri decay, upper masked
+            attn = torch.einsum("bgihn,bgjhn->bgijh", Cl[:, g0:g1], Bl[:, g0:g1])
+            y_intra[:, g0:g1] = torch.einsum(
+                "bgijh,bgjhp->bgihp", L * attn, xl[:, g0:g1]
+            )
+            alpha_suffix = torch.exp(cs_end[:, g0:g1].unsqueeze(2) - cs_g)
+            S_partial[:, g0:g1] = torch.einsum(
+                "bgjhn,bgjhp->bghnp", Bl[:, g0:g1] * alpha_suffix.unsqueeze(-1),
+                xl[:, g0:g1],
+            )
 
         # Loop over chunks (T/Csz iterations) for the carried state.
         C_prefix = Cl * torch.exp(cs).unsqueeze(-1)  # (B, nc, Csz, H, N)

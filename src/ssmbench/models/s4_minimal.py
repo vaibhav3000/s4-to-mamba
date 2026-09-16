@@ -121,7 +121,7 @@ class S4DLayer(nn.Module):
             k_idx = torch.arange(start, min(start + chunk, L), device=device, dtype=torch.float32)
             powers = torch.exp(k_idx.view(-1, 1, 1) * p["delta"].view(1, -1, 1) * p["a"].view(1, -1, N := self.d_state))
             ks.append(torch.einsum("ldn,dn->dl", powers, cb))
-        return torch.cat(ks, dim=0).real  # y = x conv Re(K)
+        return torch.cat(ks, dim=1).real  # y = x conv Re(K)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         """x: (B, T, D) -> (B, T, D) via causal FFT convolution."""

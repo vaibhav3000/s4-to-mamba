@@ -1,0 +1,486 @@
+{
+  "config": {
+    "batch_size": 8,
+    "device": "auto",
+    "model_length_limits": {
+      "mamba": 4096,
+      "mamba3": 4096
+    },
+    "models": [
+      "transformer",
+      "s4d",
+      "mamba2",
+      "mamba",
+      "mamba3"
+    ],
+    "out_path": "results/efficiency_gpu.json",
+    "repeats": 5,
+    "seq_lengths": [
+      1024,
+      2048,
+      4096,
+      8192,
+      16384,
+      32768
+    ]
+  },
+  "entries": [
+    {
+      "batch_size": 8,
+      "decode_mode": "full-prefix recompute (no KV cache)",
+      "decode_per_token_ms": 0.0015,
+      "infer_ms": 1.4,
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "n_parameters": 1579520,
+      "peak_infer_mb": 104.4,
+      "peak_train_mb": 419.0,
+      "seq_len": 1024,
+      "train_step_ms": 30.09,
+      "train_step_ms_std": 0.15,
+      "train_tokens_per_s": 272237
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "full-prefix recompute (no KV cache)",
+      "decode_per_token_ms": 0.0016,
+      "infer_ms": 3.35,
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "n_parameters": 1579520,
+      "peak_infer_mb": 116.4,
+      "peak_train_mb": 724.6,
+      "seq_len": 2048,
+      "train_step_ms": 81.91,
+      "train_step_ms_std": 2.13,
+      "train_tokens_per_s": 200035
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "full-prefix recompute (no KV cache)",
+      "decode_per_token_ms": 0.0022,
+      "infer_ms": 9.09,
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "n_parameters": 1579520,
+      "peak_infer_mb": 140.4,
+      "peak_train_mb": 1333.9,
+      "seq_len": 4096,
+      "train_step_ms": 250.31,
+      "train_step_ms_std": 4.71,
+      "train_tokens_per_s": 130911
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "full-prefix recompute (no KV cache)",
+      "decode_per_token_ms": 0.0034,
+      "infer_ms": 27.82,
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "n_parameters": 1579520,
+      "peak_infer_mb": 188.4,
+      "peak_train_mb": 2552.4,
+      "seq_len": 8192,
+      "train_step_ms": 846.56,
+      "train_step_ms_std": 11.64,
+      "train_tokens_per_s": 77415
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "full-prefix recompute (no KV cache)",
+      "decode_per_token_ms": 0.0059,
+      "infer_ms": 96.06,
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "n_parameters": 1579520,
+      "peak_infer_mb": 284.5,
+      "peak_train_mb": 4989.4,
+      "seq_len": 16384,
+      "train_step_ms": 4482.01,
+      "train_step_ms_std": 16.74,
+      "train_tokens_per_s": 29244
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "full-prefix recompute (no KV cache)",
+      "decode_per_token_ms": 0.0107,
+      "infer_ms": 348.41,
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "n_parameters": 1579520,
+      "peak_infer_mb": 476.6,
+      "peak_train_mb": 9879.4,
+      "seq_len": 32768,
+      "train_step_ms": 186025.38,
+      "train_step_ms_std": 1639.98,
+      "train_tokens_per_s": 1409
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 1769.9,
+      "decode_per_token_ms": 1.7284,
+      "infer_ms": 3.04,
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 182784,
+      "peak_infer_mb": 84.9,
+      "peak_train_mb": 293.7,
+      "seq_len": 1024,
+      "train_step_ms": 19.51,
+      "train_step_ms_std": 0.36,
+      "train_tokens_per_s": 419908
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 4532.04,
+      "decode_per_token_ms": 2.2129,
+      "infer_ms": 5.37,
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 182784,
+      "peak_infer_mb": 121.9,
+      "peak_train_mb": 567.9,
+      "seq_len": 2048,
+      "train_step_ms": 43.44,
+      "train_step_ms_std": 1.01,
+      "train_tokens_per_s": 377175
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 7490.58,
+      "decode_per_token_ms": 1.8288,
+      "infer_ms": 8.57,
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 182784,
+      "peak_infer_mb": 131.9,
+      "peak_train_mb": 1116.5,
+      "seq_len": 4096,
+      "train_step_ms": 84.89,
+      "train_step_ms_std": 0.68,
+      "train_tokens_per_s": 386005
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 15035.48,
+      "decode_per_token_ms": 1.8354,
+      "infer_ms": 17.12,
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 182784,
+      "peak_infer_mb": 152.0,
+      "peak_train_mb": 2213.5,
+      "seq_len": 8192,
+      "train_step_ms": 169.6,
+      "train_step_ms_std": 0.43,
+      "train_tokens_per_s": 386412
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 26460.02,
+      "decode_per_token_ms": 1.615,
+      "infer_ms": 36.1,
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 182784,
+      "peak_infer_mb": 257.8,
+      "peak_train_mb": 4919.5,
+      "seq_len": 16384,
+      "train_step_ms": 741.04,
+      "train_step_ms_std": 1.48,
+      "train_tokens_per_s": 176876
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 52512.41,
+      "decode_per_token_ms": 1.6026,
+      "infer_ms": 80.83,
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 182784,
+      "peak_infer_mb": 562.0,
+      "peak_train_mb": 9819.7,
+      "seq_len": 32768,
+      "train_step_ms": 13456.29,
+      "train_step_ms_std": 136.15,
+      "train_tokens_per_s": 19481
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "sequential scan over full sequence (per-token = time/T)",
+      "decode_per_token_ms": 0.0069,
+      "infer_ms": 7.39,
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2,
+        "scan_mode": "chunked"
+      },
+      "n_parameters": 875808,
+      "peak_infer_mb": 47.1,
+      "peak_train_mb": 754.2,
+      "seq_len": 1024,
+      "train_step_ms": 78.54,
+      "train_step_ms_std": 0.16,
+      "train_tokens_per_s": 104302
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "sequential scan over full sequence (per-token = time/T)",
+      "decode_per_token_ms": 0.0059,
+      "infer_ms": 13.59,
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2,
+        "scan_mode": "chunked"
+      },
+      "n_parameters": 875808,
+      "peak_infer_mb": 71.2,
+      "peak_train_mb": 1484.2,
+      "seq_len": 2048,
+      "train_step_ms": 222.66,
+      "train_step_ms_std": 5.42,
+      "train_tokens_per_s": 73583
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "sequential scan over full sequence (per-token = time/T)",
+      "decode_per_token_ms": 0.0055,
+      "infer_ms": 22.66,
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2,
+        "scan_mode": "chunked"
+      },
+      "n_parameters": 875808,
+      "peak_infer_mb": 119.4,
+      "peak_train_mb": 2939.0,
+      "seq_len": 4096,
+      "train_step_ms": 842.33,
+      "train_step_ms_std": 14.83,
+      "train_tokens_per_s": 38902
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "sequential scan over full sequence (per-token = time/T)",
+      "decode_per_token_ms": 0.0072,
+      "infer_ms": 54.09,
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2,
+        "scan_mode": "chunked"
+      },
+      "n_parameters": 875808,
+      "peak_infer_mb": 164.2,
+      "peak_train_mb": 5852.1,
+      "seq_len": 8192,
+      "train_step_ms": 8953.79,
+      "train_step_ms_std": 69.13,
+      "train_tokens_per_s": 7319
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "sequential scan over full sequence (per-token = time/T)",
+      "decode_per_token_ms": 0.0069,
+      "infer_ms": 104.5,
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2,
+        "scan_mode": "chunked"
+      },
+      "n_parameters": 875808,
+      "peak_infer_mb": 293.0,
+      "peak_train_mb": 11678.2,
+      "seq_len": 16384,
+      "train_step_ms": 130426.11,
+      "train_step_ms_std": 429.54,
+      "train_tokens_per_s": 1005
+    },
+    {
+      "batch_size": 8,
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2,
+        "scan_mode": "chunked"
+      },
+      "n_parameters": 875808,
+      "oom_train": true,
+      "seq_len": 32768
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 1422.7,
+      "decode_per_token_ms": 1.3894,
+      "infer_ms": 358.21,
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 876544,
+      "peak_infer_mb": 41.3,
+      "peak_train_mb": 1999.7,
+      "seq_len": 1024,
+      "train_step_ms": 2632.3,
+      "train_step_ms_std": 25.98,
+      "train_tokens_per_s": 3112
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 2756.27,
+      "decode_per_token_ms": 1.3458,
+      "infer_ms": 712.67,
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 876544,
+      "peak_infer_mb": 59.5,
+      "peak_train_mb": 3970.9,
+      "seq_len": 2048,
+      "train_step_ms": 10726.96,
+      "train_step_ms_std": 15.54,
+      "train_tokens_per_s": 1527
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "stepwise (O(1) state)",
+      "decode_ms": 7898.99,
+      "decode_per_token_ms": 1.9285,
+      "infer_ms": 1903.36,
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "n_parameters": 876544,
+      "peak_infer_mb": 95.9,
+      "peak_train_mb": 7912.6,
+      "seq_len": 4096,
+      "train_step_ms": 248138.47,
+      "train_step_ms_std": 2030.59,
+      "train_tokens_per_s": 132
+    },
+    {
+      "batch_size": 8,
+      "decode_mode": "sequential scan over full sequence (per-token = time/T)",
+      "decode_per_token_ms": 1.2106,
+      "infer_ms": 1169.8,
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "n_parameters": 877872,
+      "peak_infer_mb": 39.4,
+      "peak_train_mb": 6646.7,
+      "seq_len": 1024,
+      "train_step_ms": 10880.38,
+      "train_step_ms_std": 60.51,
+      "train_tokens_per_s": 753
+    },
+    {
+      "batch_size": 8,
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "n_parameters": 877872,
+      "oom_train": true,
+      "seq_len": 2048
+    },
+    {
+      "model": "mamba3",
+      "oom": true,
+      "seq_len": 4096
+    }
+  ],
+  "environment": {
+    "date": "2026-09-16",
+    "device": "cuda",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.0+cu130"
+  }
+}

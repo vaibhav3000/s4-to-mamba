@@ -13,6 +13,25 @@ capability gap the Mamba-3 paper predicts for real-transition SSMs. On
 selective copying, LTI S4D collapses (**6.4%**) where selective SSMs reach
 **67%**.
 
+## Evolution at a glance
+
+```mermaid
+flowchart LR
+    S4D["S4D - complex diagonal A<br/>LTI, FFT-conv training<br/>O(1)-state decode"] -->|"make Delta, B, C<br/>input-dependent"| M1["Mamba-1 - selective scan<br/>chooses what to remember"]
+    M1 -->|"A = scalar x I<br/>scan becomes matmuls"| M2["Mamba-2 - chunked SSD<br/>tensor-core friendly"]
+    M2 -->|"complex A +<br/>exp-trapezoidal"| M3["Mamba-3 - rotations<br/>state tracking restored"]
+    T["Transformer - O(T^2) attention"] -.baseline.-> S4D
+```
+
+**Measured capability gap (parity / state tracking):** only the complex-transition
+model crosses the chance line.
+
+![Parity: Mamba-3 vs real-transition baselines](figures/fig_parity.png)
+
+**Measured cost of quadratic attention (train step time, batch 8, fp32):**
+
+![Training step time vs sequence length](figures/fig_efficiency_latency.png)
+
 ## Why this matters
 
 Efficient sequence modeling is the main alternative to quadratic attention for

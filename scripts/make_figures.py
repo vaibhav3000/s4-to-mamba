@@ -92,6 +92,7 @@ def efficiency_figures(results: Path, out: Path) -> None:
         return
     entries = json.loads(path.read_text(encoding="utf-8"))["entries"]
     series: dict[str, dict[str, list[tuple[float, float]]]] = defaultdict(lambda: defaultdict(list))
+    ooms: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for e in entries:
         model = e.get("model")
         L = e.get("seq_len")
@@ -104,6 +105,10 @@ def efficiency_figures(results: Path, out: Path) -> None:
             v = e.get(key)
             if v is not None:
                 series[target][model].append((L, v))
+            elif e.get("oom_train") or e.get("oom") or e.get("oom_infer"):
+                # Measured hardware limit: plot as an explicit marker, never
+                # as a line across an unmeasured value.
+                ooms[target][model].append(L)
 
     specs = [
         ("latency", "Training step time vs sequence length", "train step time (ms)", "fig_efficiency_latency", True),
@@ -115,10 +120,15 @@ def efficiency_figures(results: Path, out: Path) -> None:
         fig, ax = plt.subplots(figsize=(6, 4))
         for model in MODELS:
             pts = sorted(series[key].get(model, []))
-            if not pts:
-                continue
-            xs, ys = zip(*pts)
-            ax.plot(xs, ys, marker="o", ms=4, color=COLORS[model], label=LABELS[model])
+            if pts:
+                xs, ys = zip(*pts)
+                ax.plot(xs, ys, marker="o", ms=4, color=COLORS[model], label=LABELS[model])
+            # measured hardware limits get their own marker + annotation
+            for L in sorted(set(ooms[key].get(model, []))):
+                ax.annotate("OOM", (L, ax.get_ylim()[1] * 0.02), rotation=90,
+                            fontsize=7, color=COLORS[model], ha="right", va="bottom")
+                ax.plot([L], [ax.get_ylim()[1] * 0.02], marker="x", ms=6,
+                        color=COLORS[model])
             if loglog:
                 ax.set_xscale("log")
                 ax.set_yscale("log")

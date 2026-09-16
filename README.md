@@ -32,6 +32,14 @@ model crosses the chance line.
 
 ![Training step time vs sequence length](figures/fig_efficiency_latency.png)
 
+**Peak memory: hardware limits are recorded, not hidden** (X markers = measured OOM points):
+
+![Peak memory vs sequence length](figures/fig_efficiency_memory.png)
+
+**Selectivity, demonstrated (selective copying, final epoch):**
+
+![Selective copying results](figures/fig_selective_copy.png)
+
 ## Why this matters
 
 Efficient sequence modeling is the main alternative to quadratic attention for

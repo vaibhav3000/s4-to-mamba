@@ -1,0 +1,31 @@
+# Parity (cumulative XOR): state tracking. Real non-negative transitions
+# (Mamba, Mamba-2) cannot represent the required rotation; Mamba-3's complex
+# transition can (paper Section 3.2). S4D has complex but input-INDEPENDENT
+# transitions (LTI), which also cannot encode input-dependent rotations.
+name_prefix: parity
+task:
+  type: token_classification
+  vocab_size: 2
+  n_classes: 2
+data:
+  name: parity
+  batch_size: 64
+  seed: 42
+  train_samples: 2000
+  test_samples: 1000
+  train: {seq_len: 128}
+  test:  {seq_len: 128}
+train:
+  epochs: 20
+  lr: 3.0e-3
+  weight_decay: 0.01
+  grad_clip: 1.0
+  scheduler: cosine
+  warmup_frac: 0.05
+  seed: 42
+models:
+  transformer: {d_model: 64, n_layers: 2, n_heads: 4}
+  s4d:         {d_model: 64, n_layers: 2, d_state: 32}
+  mamba:       {d_model: 64, n_layers: 2, d_state: 32}
+  mamba2:      {d_model: 64, n_layers: 2, d_state: 32, headdim: 32}
+  mamba3:      {d_model: 64, n_layers: 2, d_state: 32, headdim: 32}

@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+.ipynb_checkpoints/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Intentionally tracked: results/, figures/, experiments.log
+# (committed benchmark JSONs and logs are part of the record)

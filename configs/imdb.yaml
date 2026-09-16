@@ -1,0 +1,30 @@
+# IMDb sentiment classification: architecture quality comparison at matched budget.
+# Every model trains with the identical protocol (same data, optimizer schedule, seeds).
+name_prefix: imdb
+task:
+  type: classification
+  vocab_size: 20000   # == data.max_features; ids 0=pad, 1=unk, 2.. words
+  padding_idx: 0
+  n_classes: 2
+data:
+  name: imdb
+  max_features: 20000
+  max_len: 512
+  batch_size: 64
+  train_subset: 12500  # half of IMDb train, fixed seed, identical across models
+  val_subset: null     # full 25k test split for validation
+train:
+  epochs: 3
+  lr: 1.0e-3
+  weight_decay: 0.05
+  grad_clip: 1.0
+  scheduler: cosine
+  warmup_frac: 0.05
+  seed: 42
+# Backbones: matched depth (4 blocks) and width (d_model=128).
+models:
+  transformer: {d_model: 128, n_layers: 4, n_heads: 4}
+  s4d:         {d_model: 128, n_layers: 4, d_state: 16}
+  mamba:       {d_model: 128, n_layers: 4, d_state: 16}
+  mamba2:      {d_model: 128, n_layers: 4, d_state: 32, headdim: 64}
+  mamba3:      {d_model: 128, n_layers: 4, d_state: 32, headdim: 64}

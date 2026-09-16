@@ -1,0 +1,64 @@
+{
+  "data_config": {
+    "batch_size": 64,
+    "max_features": 20000,
+    "max_len": 512,
+    "name": "imdb",
+    "train_subset": 12500,
+    "val_subset": null
+  },
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.0+cu130"
+  },
+  "history": [
+    {
+      "accuracy": 0.7628,
+      "auc": 0.8542492640000001,
+      "epoch": 1,
+      "epoch_seconds": 28.89,
+      "loss": 0.49231650392570153,
+      "train_loss": 0.6000748199163651
+    },
+    {
+      "accuracy": 0.80716,
+      "auc": 0.8922739328,
+      "epoch": 2,
+      "epoch_seconds": 28.5,
+      "loss": 0.4193498038727304,
+      "train_loss": 0.41082457757117796
+    },
+    {
+      "accuracy": 0.81348,
+      "auc": 0.8939710848,
+      "epoch": 3,
+      "epoch_seconds": 28.43,
+      "loss": 0.41676672910104323,
+      "train_loss": 0.3192074250962053
+    }
+  ],
+  "model": {
+    "kwargs": {
+      "d_model": 128,
+      "n_heads": 4,
+      "n_layers": 4
+    },
+    "name": "transformer"
+  },
+  "n_parameters": 3353602,
+  "name": "imdb_transformer",
+  "peak_gpu_mb": 1211.1,
+  "task": "classification",
+  "train_config": {
+    "epochs": 3,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 42,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 85.8
+}

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ssmbench"
+version = "1.0.0"
+description = "Minimal implementations and GPU benchmarks of efficient sequence models: S4D, Mamba, Mamba-2, Mamba-3, and a Transformer baseline"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "torch>=2.2",
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "scikit-learn",
+    "datasets",
+    "tqdm",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,13 @@
+# Efficiency benchmark: latency / memory / throughput vs sequence length.
+# Run: python scripts/run_efficiency.py --config configs/efficiency.yaml
+device: auto
+out_path: results/efficiency_gpu.json
+batch_size: 8
+repeats: 5
+seq_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
+models: [transformer, s4d, mamba2, mamba, mamba3]
+# Educational sequential scans (python loop over T) are capped: their wall
+# clock at extreme T is itself the documented motivation for fused kernels.
+model_length_limits:
+  mamba: 4096
+  mamba3: 4096

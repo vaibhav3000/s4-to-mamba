@@ -1,0 +1,199 @@
+=== running parity_transformer ===
+C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\train\trainer.py:207: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  ep_loss += float(loss)
+[parity_transformer] epoch 1/20 loss=0.7056 val={'loss': 0.693, 'token_accuracy': 0.5043, 'sequence_success': 0.0}
+[parity_transformer] epoch 2/20 loss=0.6899 val={'loss': 0.6877, 'token_accuracy': 0.5083, 'sequence_success': 0.0}
+[parity_transformer] epoch 3/20 loss=0.6877 val={'loss': 0.688, 'token_accuracy': 0.5068, 'sequence_success': 0.0}
+[parity_transformer] epoch 4/20 loss=0.6873 val={'loss': 0.688, 'token_accuracy': 0.507, 'sequence_success': 0.0}
+[parity_transformer] epoch 5/20 loss=0.6864 val={'loss': 0.6874, 'token_accuracy': 0.5083, 'sequence_success': 0.0}
+[parity_transformer] epoch 6/20 loss=0.6845 val={'loss': 0.6812, 'token_accuracy': 0.5078, 'sequence_success': 0.0}
+[parity_transformer] epoch 7/20 loss=0.6774 val={'loss': 0.6732, 'token_accuracy': 0.5177, 'sequence_success': 0.0}
+[parity_transformer] epoch 8/20 loss=0.6738 val={'loss': 0.6751, 'token_accuracy': 0.5135, 'sequence_success': 0.0}
+[parity_transformer] epoch 9/20 loss=0.6746 val={'loss': 0.6729, 'token_accuracy': 0.5215, 'sequence_success': 0.0}
+[parity_transformer] epoch 10/20 loss=0.6730 val={'loss': 0.67, 'token_accuracy': 0.5191, 'sequence_success': 0.0}
+[parity_transformer] epoch 11/20 loss=0.6681 val={'loss': 0.6667, 'token_accuracy': 0.5236, 'sequence_success': 0.0}
+[parity_transformer] epoch 12/20 loss=0.6655 val={'loss': 0.6636, 'token_accuracy': 0.525, 'sequence_success': 0.0}
+[parity_transformer] epoch 13/20 loss=0.6619 val={'loss': 0.6592, 'token_accuracy': 0.5262, 'sequence_success': 0.0}
+[parity_transformer] epoch 14/20 loss=0.6587 val={'loss': 0.6573, 'token_accuracy': 0.5301, 'sequence_success': 0.0}
+[parity_transformer] epoch 15/20 loss=0.6574 val={'loss': 0.6561, 'token_accuracy': 0.5304, 'sequence_success': 0.0}
+[parity_transformer] epoch 16/20 loss=0.6561 val={'loss': 0.6545, 'token_accuracy': 0.53, 'sequence_success': 0.0}
+[parity_transformer] epoch 17/20 loss=0.6541 val={'loss': 0.6522, 'token_accuracy': 0.5314, 'sequence_success': 0.0}
+[parity_transformer] epoch 18/20 loss=0.6519 val={'loss': 0.651, 'token_accuracy': 0.5329, 'sequence_success': 0.0}
+[parity_transformer] epoch 19/20 loss=0.6512 val={'loss': 0.6505, 'token_accuracy': 0.5327, 'sequence_success': 0.0}
+[parity_transformer] epoch 20/20 loss=0.6511 val={'loss': 0.6504, 'token_accuracy': 0.533, 'sequence_success': 0.0}
+=== running parity_s4d ===
+[parity_s4d] epoch 1/20 loss=0.6981 val={'loss': 0.6955, 'token_accuracy': 0.5046, 'sequence_success': 0.0}
+[parity_s4d] epoch 2/20 loss=0.6938 val={'loss': 0.6931, 'token_accuracy': 0.505, 'sequence_success': 0.0}
+[parity_s4d] epoch 3/20 loss=0.6933 val={'loss': 0.6931, 'token_accuracy': 0.5046, 'sequence_success': 0.0}
+[parity_s4d] epoch 4/20 loss=0.6932 val={'loss': 0.6931, 'token_accuracy': 0.5046, 'sequence_success': 0.0}
+[parity_s4d] epoch 5/20 loss=0.6932 val={'loss': 0.6931, 'token_accuracy': 0.5046, 'sequence_success': 0.0}
+[parity_s4d] epoch 6/20 loss=0.6931 val={'loss': 0.6937, 'token_accuracy': 0.5008, 'sequence_success': 0.0}
+[parity_s4d] epoch 7/20 loss=0.6931 val={'loss': 0.6933, 'token_accuracy': 0.5012, 'sequence_success': 0.0}
+[parity_s4d] epoch 8/20 loss=0.6930 val={'loss': 0.6932, 'token_accuracy': 0.5039, 'sequence_success': 0.0}
+[parity_s4d] epoch 9/20 loss=0.6930 val={'loss': 0.6933, 'token_accuracy': 0.5029, 'sequence_success': 0.0}
+[parity_s4d] epoch 10/20 loss=0.6929 val={'loss': 0.693, 'token_accuracy': 0.5055, 'sequence_success': 0.0}
+[parity_s4d] epoch 11/20 loss=0.6929 val={'loss': 0.6933, 'token_accuracy': 0.5049, 'sequence_success': 0.0}
+[parity_s4d] epoch 12/20 loss=0.6930 val={'loss': 0.6931, 'token_accuracy': 0.5075, 'sequence_success': 0.0}
+[parity_s4d] epoch 13/20 loss=0.6929 val={'loss': 0.6931, 'token_accuracy': 0.5053, 'sequence_success': 0.0}
+[parity_s4d] epoch 14/20 loss=0.6928 val={'loss': 0.6931, 'token_accuracy': 0.5051, 'sequence_success': 0.0}
+[parity_s4d] epoch 15/20 loss=0.6928 val={'loss': 0.693, 'token_accuracy': 0.5048, 'sequence_success': 0.0}
+[parity_s4d] epoch 16/20 loss=0.6927 val={'loss': 0.693, 'token_accuracy': 0.5055, 'sequence_success': 0.0}
+[parity_s4d] epoch 17/20 loss=0.6927 val={'loss': 0.693, 'token_accuracy': 0.5065, 'sequence_success': 0.0}
+[parity_s4d] epoch 18/20 loss=0.6927 val={'loss': 0.693, 'token_accuracy': 0.506, 'sequence_success': 0.0}
+[parity_s4d] epoch 19/20 loss=0.6926 val={'loss': 0.693, 'token_accuracy': 0.5066, 'sequence_success': 0.0}
+[parity_s4d] epoch 20/20 loss=0.6927 val={'loss': 0.693, 'token_accuracy': 0.5065, 'sequence_success': 0.0}
+=== running parity_mamba ===
+[parity_mamba] epoch 1/20 loss=0.6984 val={'loss': 0.6933, 'token_accuracy': 0.5067, 'sequence_success': 0.0}
+[parity_mamba] epoch 2/20 loss=0.6917 val={'loss': 0.6895, 'token_accuracy': 0.5055, 'sequence_success': 0.0}
+[parity_mamba] epoch 3/20 loss=0.6825 val={'loss': 0.6801, 'token_accuracy': 0.5208, 'sequence_success': 0.0}
+[parity_mamba] epoch 4/20 loss=0.6655 val={'loss': 0.6578, 'token_accuracy': 0.5286, 'sequence_success': 0.0}
+[parity_mamba] epoch 5/20 loss=0.6558 val={'loss': 0.6521, 'token_accuracy': 0.5353, 'sequence_success': 0.0}
+[parity_mamba] epoch 6/20 loss=0.6507 val={'loss': 0.651, 'token_accuracy': 0.5338, 'sequence_success': 0.0}
+[parity_mamba] epoch 7/20 loss=0.6528 val={'loss': 0.6588, 'token_accuracy': 0.5306, 'sequence_success': 0.0}
+[parity_mamba] epoch 8/20 loss=0.6486 val={'loss': 0.6442, 'token_accuracy': 0.5329, 'sequence_success': 0.0}
+[parity_mamba] epoch 9/20 loss=0.6428 val={'loss': 0.6403, 'token_accuracy': 0.5405, 'sequence_success': 0.0}
+[parity_mamba] epoch 10/20 loss=0.6388 val={'loss': 0.6421, 'token_accuracy': 0.5431, 'sequence_success': 0.0}
+[parity_mamba] epoch 11/20 loss=0.6413 val={'loss': 0.6402, 'token_accuracy': 0.5413, 'sequence_success': 0.0}
+[parity_mamba] epoch 12/20 loss=0.6375 val={'loss': 0.6361, 'token_accuracy': 0.545, 'sequence_success': 0.0}
+[parity_mamba] epoch 13/20 loss=0.6346 val={'loss': 0.6321, 'token_accuracy': 0.544, 'sequence_success': 0.0}
+[parity_mamba] epoch 14/20 loss=0.6305 val={'loss': 0.6281, 'token_accuracy': 0.5539, 'sequence_success': 0.0}
+[parity_mamba] epoch 15/20 loss=0.6271 val={'loss': 0.6262, 'token_accuracy': 0.5566, 'sequence_success': 0.0}
+[parity_mamba] epoch 16/20 loss=0.6255 val={'loss': 0.6239, 'token_accuracy': 0.5532, 'sequence_success': 0.0}
+[parity_mamba] epoch 17/20 loss=0.6231 val={'loss': 0.6223, 'token_accuracy': 0.5527, 'sequence_success': 0.0}
+[parity_mamba] epoch 18/20 loss=0.6216 val={'loss': 0.6206, 'token_accuracy': 0.5551, 'sequence_success': 0.0}
+[parity_mamba] epoch 19/20 loss=0.6204 val={'loss': 0.62, 'token_accuracy': 0.5578, 'sequence_success': 0.0}
+[parity_mamba] epoch 20/20 loss=0.6202 val={'loss': 0.6199, 'token_accuracy': 0.5591, 'sequence_success': 0.0}
+=== running parity_mamba2 ===
+[parity_mamba2] epoch 1/20 loss=0.7015 val={'loss': 0.6949, 'token_accuracy': 0.5048, 'sequence_success': 0.0}
+[parity_mamba2] epoch 2/20 loss=0.6912 val={'loss': 0.6885, 'token_accuracy': 0.5069, 'sequence_success': 0.0}
+[parity_mamba2] epoch 3/20 loss=0.6802 val={'loss': 0.6714, 'token_accuracy': 0.5179, 'sequence_success': 0.0}
+[parity_mamba2] epoch 4/20 loss=0.6643 val={'loss': 0.6629, 'token_accuracy': 0.5249, 'sequence_success': 0.0}
+[parity_mamba2] epoch 5/20 loss=0.6568 val={'loss': 0.655, 'token_accuracy': 0.5299, 'sequence_success': 0.0}
+[parity_mamba2] epoch 6/20 loss=0.6506 val={'loss': 0.6489, 'token_accuracy': 0.5361, 'sequence_success': 0.0}
+[parity_mamba2] epoch 7/20 loss=0.6462 val={'loss': 0.6428, 'token_accuracy': 0.5345, 'sequence_success': 0.0}
+[parity_mamba2] epoch 8/20 loss=0.6413 val={'loss': 0.6407, 'token_accuracy': 0.5376, 'sequence_success': 0.0}
+[parity_mamba2] epoch 9/20 loss=0.6380 val={'loss': 0.6315, 'token_accuracy': 0.5489, 'sequence_success': 0.0}
+[parity_mamba2] epoch 10/20 loss=0.6300 val={'loss': 0.6328, 'token_accuracy': 0.5449, 'sequence_success': 0.0}
+[parity_mamba2] epoch 11/20 loss=0.6293 val={'loss': 0.6237, 'token_accuracy': 0.5535, 'sequence_success': 0.0}
+[parity_mamba2] epoch 12/20 loss=0.6211 val={'loss': 0.6167, 'token_accuracy': 0.5584, 'sequence_success': 0.0}
+[parity_mamba2] epoch 13/20 loss=0.6170 val={'loss': 0.614, 'token_accuracy': 0.5578, 'sequence_success': 0.0}
+[parity_mamba2] epoch 14/20 loss=0.6142 val={'loss': 0.6122, 'token_accuracy': 0.5609, 'sequence_success': 0.0}
+[parity_mamba2] epoch 15/20 loss=0.6125 val={'loss': 0.6099, 'token_accuracy': 0.5605, 'sequence_success': 0.0}
+[parity_mamba2] epoch 16/20 loss=0.6105 val={'loss': 0.6088, 'token_accuracy': 0.5621, 'sequence_success': 0.0}
+[parity_mamba2] epoch 17/20 loss=0.6093 val={'loss': 0.6078, 'token_accuracy': 0.5632, 'sequence_success': 0.0}
+[parity_mamba2] epoch 18/20 loss=0.6085 val={'loss': 0.6075, 'token_accuracy': 0.5632, 'sequence_success': 0.0}
+[parity_mamba2] epoch 19/20 loss=0.6080 val={'loss': 0.6072, 'token_accuracy': 0.5635, 'sequence_success': 0.0}
+[parity_mamba2] epoch 20/20 loss=0.6078 val={'loss': 0.6072, 'token_accuracy': 0.563, 'sequence_success': 0.0}
+=== running parity_mamba3 ===
+[parity_mamba3] epoch 1/20 loss=0.7727 val={'loss': 0.6949, 'token_accuracy': 0.5045, 'sequence_success': 0.0}
+[parity_mamba3] epoch 2/20 loss=0.6932 val={'loss': 0.6925, 'token_accuracy': 0.5068, 'sequence_success': 0.0}
+[parity_mamba3] epoch 3/20 loss=0.6910 val={'loss': 0.6891, 'token_accuracy': 0.5065, 'sequence_success': 0.0}
+[parity_mamba3] epoch 4/20 loss=0.6849 val={'loss': 0.6783, 'token_accuracy': 0.514, 'sequence_success': 0.0}
+[parity_mamba3] epoch 5/20 loss=0.6749 val={'loss': 0.67, 'token_accuracy': 0.5205, 'sequence_success': 0.0}
+[parity_mamba3] epoch 6/20 loss=0.6699 val={'loss': 0.6676, 'token_accuracy': 0.5249, 'sequence_success': 0.0}
+[parity_mamba3] epoch 7/20 loss=0.6626 val={'loss': 0.6532, 'token_accuracy': 0.5402, 'sequence_success': 0.0}
+[parity_mamba3] epoch 8/20 loss=0.6467 val={'loss': 0.6306, 'token_accuracy': 0.5585, 'sequence_success': 0.0}
+[parity_mamba3] epoch 9/20 loss=0.6353 val={'loss': 0.583, 'token_accuracy': 0.6287, 'sequence_success': 0.0}
+[parity_mamba3] epoch 10/20 loss=0.6749 val={'loss': 0.8181, 'token_accuracy': 0.4802, 'sequence_success': 0.0}
+[parity_mamba3] epoch 11/20 loss=0.6242 val={'loss': 0.5048, 'token_accuracy': 0.7312, 'sequence_success': 0.0}
+[parity_mamba3] epoch 12/20 loss=0.5689 val={'loss': 0.3772, 'token_accuracy': 0.798, 'sequence_success': 0.0}
+[parity_mamba3] epoch 13/20 loss=0.3786 val={'loss': 0.3604, 'token_accuracy': 0.7905, 'sequence_success': 0.0}
+[parity_mamba3] epoch 14/20 loss=0.3218 val={'loss': 0.3176, 'token_accuracy': 0.8225, 'sequence_success': 0.001}
+[parity_mamba3] epoch 15/20 loss=0.2400 val={'loss': 0.2028, 'token_accuracy': 0.9023, 'sequence_success': 0.03}
+[parity_mamba3] epoch 16/20 loss=0.2712 val={'loss': 0.1492, 'token_accuracy': 0.9383, 'sequence_success': 0.096}
+[parity_mamba3] epoch 17/20 loss=0.1377 val={'loss': 0.1218, 'token_accuracy': 0.959, 'sequence_success': 0.109}
+[parity_mamba3] epoch 18/20 loss=0.1006 val={'loss': 0.0859, 'token_accuracy': 0.9768, 'sequence_success': 0.306}
+[parity_mamba3] epoch 19/20 loss=0.0770 val={'loss': 0.0731, 'token_accuracy': 0.9822, 'sequence_success': 0.408}
+[parity_mamba3] epoch 20/20 loss=0.0700 val={'loss': 0.0708, 'token_accuracy': 0.9834, 'sequence_success': 0.42}
+=== running selective_copy_transformer ===
+C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\train\trainer.py:207: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  ep_loss += float(loss)
+[selective_copy_transformer] epoch 1/12 loss=2.8401 val={'loss': 2.8905, 'token_accuracy': 0.0785, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 2/12 loss=1.0441 val={'loss': 3.2464, 'token_accuracy': 0.1299, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 3/12 loss=0.2328 val={'loss': 3.354, 'token_accuracy': 0.1449, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 4/12 loss=0.1196 val={'loss': 3.4658, 'token_accuracy': 0.1597, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 5/12 loss=0.0965 val={'loss': 3.5636, 'token_accuracy': 0.1686, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 6/12 loss=0.0664 val={'loss': 3.6394, 'token_accuracy': 0.1924, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 7/12 loss=0.0190 val={'loss': 3.6901, 'token_accuracy': 0.2062, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 8/12 loss=0.0090 val={'loss': 3.8328, 'token_accuracy': 0.2181, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 9/12 loss=0.0029 val={'loss': 3.6959, 'token_accuracy': 0.197, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 10/12 loss=0.0012 val={'loss': 3.7748, 'token_accuracy': 0.1999, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 11/12 loss=0.0008 val={'loss': 3.7954, 'token_accuracy': 0.2043, 'sequence_success': 0.0}
+[selective_copy_transformer] epoch 12/12 loss=0.0008 val={'loss': 3.799, 'token_accuracy': 0.2047, 'sequence_success': 0.0}
+=== running selective_copy_s4d ===
+[selective_copy_s4d] epoch 1/12 loss=2.8965 val={'loss': 2.8444, 'token_accuracy': 0.0579, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 2/12 loss=2.8411 val={'loss': 2.842, 'token_accuracy': 0.0592, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 3/12 loss=2.8382 val={'loss': 2.8377, 'token_accuracy': 0.0593, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 4/12 loss=2.8369 val={'loss': 2.8367, 'token_accuracy': 0.0592, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 5/12 loss=2.8350 val={'loss': 2.8365, 'token_accuracy': 0.059, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 6/12 loss=2.8330 val={'loss': 2.8373, 'token_accuracy': 0.0584, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 7/12 loss=2.8311 val={'loss': 2.8388, 'token_accuracy': 0.0594, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 8/12 loss=2.8240 val={'loss': 2.8405, 'token_accuracy': 0.0635, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 9/12 loss=2.8168 val={'loss': 2.8426, 'token_accuracy': 0.0638, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 10/12 loss=2.8132 val={'loss': 2.8441, 'token_accuracy': 0.0642, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 11/12 loss=2.8113 val={'loss': 2.8442, 'token_accuracy': 0.064, 'sequence_success': 0.0}
+[selective_copy_s4d] epoch 12/12 loss=2.8106 val={'loss': 2.8442, 'token_accuracy': 0.0641, 'sequence_success': 0.0}
+=== running selective_copy_mamba ===
+[selective_copy_mamba] epoch 1/12 loss=2.8875 val={'loss': 2.8419, 'token_accuracy': 0.06, 'sequence_success': 0.0}
+[selective_copy_mamba] epoch 2/12 loss=2.6832 val={'loss': 2.3499, 'token_accuracy': 0.2415, 'sequence_success': 0.0}
+[selective_copy_mamba] epoch 3/12 loss=0.6557 val={'loss': 1.5537, 'token_accuracy': 0.508, 'sequence_success': 0.017}
+[selective_copy_mamba] epoch 4/12 loss=0.1008 val={'loss': 1.882, 'token_accuracy': 0.6339, 'sequence_success': 0.0776}
+[selective_copy_mamba] epoch 5/12 loss=0.0053 val={'loss': 2.2155, 'token_accuracy': 0.6624, 'sequence_success': 0.1488}
+[selective_copy_mamba] epoch 6/12 loss=0.0011 val={'loss': 2.2926, 'token_accuracy': 0.6559, 'sequence_success': 0.1518}
+[selective_copy_mamba] epoch 7/12 loss=0.0007 val={'loss': 2.3446, 'token_accuracy': 0.6521, 'sequence_success': 0.1476}
+[selective_copy_mamba] epoch 8/12 loss=0.0006 val={'loss': 2.3711, 'token_accuracy': 0.6513, 'sequence_success': 0.1514}
+[selective_copy_mamba] epoch 9/12 loss=0.0005 val={'loss': 2.3957, 'token_accuracy': 0.6506, 'sequence_success': 0.1494}
+[selective_copy_mamba] epoch 10/12 loss=0.0005 val={'loss': 2.4049, 'token_accuracy': 0.6491, 'sequence_success': 0.1478}
+[selective_copy_mamba] epoch 11/12 loss=0.0005 val={'loss': 2.4081, 'token_accuracy': 0.6493, 'sequence_success': 0.149}
+[selective_copy_mamba] epoch 12/12 loss=0.0005 val={'loss': 2.409, 'token_accuracy': 0.6492, 'sequence_success': 0.149}
+=== running selective_copy_mamba2 ===
+[selective_copy_mamba2] epoch 1/12 loss=2.6212 val={'loss': 2.233, 'token_accuracy': 0.2481, 'sequence_success': 0.0}
+[selective_copy_mamba2] epoch 2/12 loss=1.5234 val={'loss': 1.9915, 'token_accuracy': 0.2556, 'sequence_success': 0.0}
+[selective_copy_mamba2] epoch 3/12 loss=0.8813 val={'loss': 1.4498, 'token_accuracy': 0.4702, 'sequence_success': 0.0044}
+[selective_copy_mamba2] epoch 4/12 loss=0.2022 val={'loss': 1.1947, 'token_accuracy': 0.5942, 'sequence_success': 0.1304}
+[selective_copy_mamba2] epoch 5/12 loss=0.0306 val={'loss': 1.2101, 'token_accuracy': 0.6526, 'sequence_success': 0.1774}
+[selective_copy_mamba2] epoch 6/12 loss=0.0042 val={'loss': 1.1708, 'token_accuracy': 0.669, 'sequence_success': 0.1816}
+[selective_copy_mamba2] epoch 7/12 loss=0.0008 val={'loss': 1.204, 'token_accuracy': 0.6666, 'sequence_success': 0.1826}
+[selective_copy_mamba2] epoch 8/12 loss=0.0006 val={'loss': 1.1956, 'token_accuracy': 0.6701, 'sequence_success': 0.1832}
+[selective_copy_mamba2] epoch 9/12 loss=0.0005 val={'loss': 1.1991, 'token_accuracy': 0.6697, 'sequence_success': 0.1832}
+[selective_copy_mamba2] epoch 10/12 loss=0.0005 val={'loss': 1.2003, 'token_accuracy': 0.6697, 'sequence_success': 0.1834}
+[selective_copy_mamba2] epoch 11/12 loss=0.0004 val={'loss': 1.2009, 'token_accuracy': 0.6697, 'sequence_success': 0.1834}
+[selective_copy_mamba2] epoch 12/12 loss=0.0004 val={'loss': 1.201, 'token_accuracy': 0.6697, 'sequence_success': 0.1834}
+=== running selective_copy_mamba3 ===
+[selective_copy_mamba3] epoch 1/12 loss=2.8859 val={'loss': 2.8446, 'token_accuracy': 0.0581, 'sequence_success': 0.0}
+[selective_copy_mamba3] epoch 2/12 loss=2.0659 val={'loss': 3.7203, 'token_accuracy': 0.1509, 'sequence_success': 0.001}
+[selective_copy_mamba3] epoch 3/12 loss=0.7146 val={'loss': 3.5907, 'token_accuracy': 0.1983, 'sequence_success': 0.0162}
+[selective_copy_mamba3] epoch 4/12 loss=0.4228 val={'loss': 4.1252, 'token_accuracy': 0.1851, 'sequence_success': 0.0118}
+[selective_copy_mamba3] epoch 5/12 loss=0.2798 val={'loss': 3.9895, 'token_accuracy': 0.211, 'sequence_success': 0.0266}
+[selective_copy_mamba3] epoch 6/12 loss=0.1774 val={'loss': 4.404, 'token_accuracy': 0.2379, 'sequence_success': 0.0676}
+[selective_copy_mamba3] epoch 7/12 loss=0.1178 val={'loss': 4.8397, 'token_accuracy': 0.2257, 'sequence_success': 0.0734}
+[selective_copy_mamba3] epoch 8/12 loss=0.0763 val={'loss': 5.3984, 'token_accuracy': 0.2213, 'sequence_success': 0.1006}
+[selective_copy_mamba3] epoch 9/12 loss=0.0471 val={'loss': 5.5958, 'token_accuracy': 0.2242, 'sequence_success': 0.1296}
+[selective_copy_mamba3] epoch 10/12 loss=0.0320 val={'loss': 5.8891, 'token_accuracy': 0.2176, 'sequence_success': 0.1278}
+[selective_copy_mamba3] epoch 11/12 loss=0.0247 val={'loss': 5.949, 'token_accuracy': 0.2162, 'sequence_success': 0.1312}
+[selective_copy_mamba3] epoch 12/12 loss=0.0212 val={'loss': 5.9618, 'token_accuracy': 0.2154, 'sequence_success': 0.1294}
+=== running imdb_transformer ===
+Generating train split:   0%|          | 0/25000 [00:00<?, ? examples/s]Generating train split: 100%|██████████| 25000/25000 [00:00<00:00, 213106.14 examples/s]Generating train split: 100%|██████████| 25000/25000 [00:00<00:00, 212195.34 examples/s]
+Generating test split:   0%|          | 0/25000 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 25000/25000 [00:00<00:00, 401149.23 examples/s]
+Generating unsupervised split:   0%|          | 0/50000 [00:00<?, ? examples/s]Generating unsupervised split: 100%|██████████| 50000/50000 [00:00<00:00, 495284.16 examples/s]Generating unsupervised split: 100%|██████████| 50000/50000 [00:00<00:00, 493748.43 examples/s]
+C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\train\trainer.py:207: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  ep_loss += float(loss)
+[imdb_transformer] epoch 1/3 loss=0.6001 val={'loss': 0.4923, 'accuracy': 0.7628, 'auc': 0.8542}
+[imdb_transformer] epoch 2/3 loss=0.4108 val={'loss': 0.4193, 'accuracy': 0.8072, 'auc': 0.8923}
+[imdb_transformer] epoch 3/3 loss=0.3192 val={'loss': 0.4168, 'accuracy': 0.8135, 'auc': 0.894}
+=== running imdb_s4d ===
+[imdb_s4d] epoch 1/3 loss=0.5902 val={'loss': 0.4896, 'accuracy': 0.7911, 'auc': 0.8781}
+[imdb_s4d] epoch 2/3 loss=0.4111 val={'loss': 0.4162, 'accuracy': 0.8226, 'auc': 0.9033}
+[imdb_s4d] epoch 3/3 loss=0.3532 val={'loss': 0.4071, 'accuracy': 0.8268, 'auc': 0.9065}
+=== running imdb_mamba ===
+=== running imdb_mamba ===
+C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\train\trainer.py:207: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  ep_loss += float(loss)
+=== running imdb_mamba2 ===
+C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\train\trainer.py:207: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  ep_loss += float(loss)

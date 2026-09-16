@@ -1,0 +1,29 @@
+# Selective Copying: content-aware recall. Train L=64 (3-5 pairs), test L=128 (5-10 pairs).
+# LTI models (S4D) cannot filter noise from state; selective SSMs can.
+name_prefix: selective_copy
+task:
+  type: token_classification
+  vocab_size: 20      # 0=pad, 1=marker, 2=separator, 3..19 values
+  n_classes: 20
+data:
+  name: selective_copy
+  batch_size: 64
+  seed: 42
+  train_samples: 10000
+  test_samples: 5000
+  train: {seq_len: 64, min_pairs: 3, max_pairs: 5, vocab_size: 20}
+  test:  {seq_len: 128, min_pairs: 5, max_pairs: 10, vocab_size: 20}
+train:
+  epochs: 12
+  lr: 1.0e-3
+  weight_decay: 0.05
+  grad_clip: 1.0
+  scheduler: cosine
+  warmup_frac: 0.05
+  seed: 42
+models:
+  transformer: {d_model: 128, n_layers: 2, n_heads: 4}
+  s4d:         {d_model: 128, n_layers: 2, d_state: 16}
+  mamba:       {d_model: 128, n_layers: 2, d_state: 16}
+  mamba2:      {d_model: 128, n_layers: 2, d_state: 32, headdim: 64}
+  mamba3:      {d_model: 128, n_layers: 2, d_state: 32, headdim: 64}

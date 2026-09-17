@@ -24,7 +24,11 @@ from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 
 from ..data.imdb import get_imdb_loaders
-from ..data.synthetic import get_parity_loaders, get_selective_copy_loaders
+from ..data.synthetic import (
+    get_exact_copy_loaders,
+    get_parity_loaders,
+    get_selective_copy_loaders,
+)
 from ..models import build_backbone
 from ..models.blocks import SequenceClassifier, TokenLevelClassifier
 from ..utils import config_to_jsonable, count_parameters, dump_json, resolve_device, seed_everything
@@ -78,7 +82,13 @@ def build_model(cfg: dict) -> nn.Module:
     raise ValueError(f"Unknown task type {task!r}")
 
 
-def get_loaders(cfg: dict) -> tuple[DataLoader, DataLoader]:
+def get_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, dict[int, DataLoader] | None]:
+    """Build (train, in-distribution eval, optional extra eval loaders by length).
+
+    ``extra_eval`` is non-None only for datasets that evaluate the same trained
+    model at several string lengths (exact copy: in-distribution and
+    extrapolation lengths). Keys are the lengths, values are DataLoaders.
+    """
     dcfg = cfg["data"]
     name = dcfg["name"]
     if name == "imdb":
@@ -90,13 +100,16 @@ def get_loaders(cfg: dict) -> tuple[DataLoader, DataLoader]:
             val_subset=dcfg.get("val_subset"),
             seed=cfg["train"].get("seed", 42),
         )
-        return train, val
+        return train, val, None
     if name == "selective_copy":
         train, val, _ = get_selective_copy_loaders(dcfg)
-        return train, val
+        return train, val, None
     if name == "parity":
         train, val, _ = get_parity_loaders(dcfg)
-        return train, val
+        return train, val, None
+    if name == "exact_copy":
+        train, val, eval_loaders, _ = get_exact_copy_loaders(dcfg)
+        return train, val, eval_loaders
     raise ValueError(f"Unknown dataset {name!r}")
 
 
@@ -153,7 +166,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
     device = resolve_device(cfg.get("device", "auto"))
 
     model = build_model(cfg).to(device)
-    train_loader, val_loader = get_loaders(cfg)
+    train_loader, val_loader, extra_eval = get_loaders(cfg)
     task = cfg["task"]["type"]
 
     decay, no_decay = [], []
@@ -224,6 +237,14 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         peak_gpu_mb = round(torch.cuda.max_memory_allocated() / 1024**2, 1)
     else:
         peak_gpu_mb = None
+    # Exact-copy extension: evaluate the SAME trained model at every string
+    # length (in-distribution and extrapolation), stored per length.
+    final_by_length: dict | None = None
+    if extra_eval:
+        final_by_length = {}
+        for length, loader in sorted(extra_eval.items()):
+            final_by_length[str(length)] = evaluate(model, loader, task, device)
+
     results = {
         "name": cfg["name"],
         "task": task,
@@ -232,6 +253,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         "data_config": config_to_jsonable(cfg)["data"],
         "n_parameters": count_parameters(model),
         "history": history,
+        "final_by_length": final_by_length,
         "wall_time_seconds": round(time.time() - t0, 1),
         "environment": _env_info(device),
         "peak_gpu_mb": peak_gpu_mb,

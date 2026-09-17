@@ -801,3 +801,34 @@ skipping mamba @ T=4096 (already measured)
 skipping mamba3 @ T=1024 (already measured)
 skipping mamba3 @ T=2048 (already measured)
 benchmarking mamba3 @ T=4096 ...
+=== running exact_copy_transformer ===
+C:\Users\vaibhav mahore\Downloads\CV Update\s4-to-mamba\src\ssmbench\train\trainer.py:220: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  ep_loss += float(loss)
+[exact_copy_transformer] epoch 1/6 loss=2.0379 val={'loss': 0.0117, 'token_accuracy': 0.9994, 'sequence_success': 0.9805}
+[exact_copy_transformer] epoch 2/6 loss=0.0034 val={'loss': 0.002, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer] epoch 3/6 loss=0.0016 val={'loss': 0.0013, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer] epoch 4/6 loss=0.0012 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer] epoch 5/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer] epoch 6/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_s4d ===
+[exact_copy_s4d] epoch 1/6 loss=2.7651 val={'loss': 1.1775, 'token_accuracy': 0.7992, 'sequence_success': 0.0}
+[exact_copy_s4d] epoch 2/6 loss=0.3368 val={'loss': 0.0418, 'token_accuracy': 0.9969, 'sequence_success': 0.9062}
+[exact_copy_s4d] epoch 3/6 loss=0.0183 val={'loss': 0.0085, 'token_accuracy': 0.9998, 'sequence_success': 0.9922}
+[exact_copy_s4d] epoch 4/6 loss=0.0059 val={'loss': 0.0047, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_s4d] epoch 5/6 loss=0.0039 val={'loss': 0.0039, 'token_accuracy': 0.9999, 'sequence_success': 0.9961}
+[exact_copy_s4d] epoch 6/6 loss=0.0035 val={'loss': 0.0038, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_mamba2 ===
+[exact_copy_mamba2] epoch 1/6 loss=3.2894 val={'loss': 3.1477, 'token_accuracy': 0.1004, 'sequence_success': 0.0}
+[exact_copy_mamba2] epoch 2/6 loss=3.0485 val={'loss': 2.9437, 'token_accuracy': 0.1326, 'sequence_success': 0.0}
+[exact_copy_mamba2] epoch 3/6 loss=2.9272 val={'loss': 2.8771, 'token_accuracy': 0.1399, 'sequence_success': 0.0}
+[exact_copy_mamba2] epoch 4/6 loss=2.8733 val={'loss': 2.8562, 'token_accuracy': 0.1436, 'sequence_success': 0.0}
+[exact_copy_mamba2] epoch 5/6 loss=2.8253 val={'loss': 2.8186, 'token_accuracy': 0.1494, 'sequence_success': 0.0}
+[exact_copy_mamba2] epoch 6/6 loss=2.7948 val={'loss': 2.8071, 'token_accuracy': 0.1503, 'sequence_success': 0.0}
+=== running exact_copy_mamba ===
+[exact_copy_mamba] epoch 1/6 loss=3.3052 val={'loss': 3.2242, 'token_accuracy': 0.0643, 'sequence_success': 0.0}
+[exact_copy_mamba] epoch 2/6 loss=3.1935 val={'loss': 3.1888, 'token_accuracy': 0.0713, 'sequence_success': 0.0}
+[exact_copy_mamba] epoch 3/6 loss=3.1737 val={'loss': 3.1543, 'token_accuracy': 0.0768, 'sequence_success': 0.0}
+[exact_copy_mamba] epoch 4/6 loss=3.1644 val={'loss': 3.1382, 'token_accuracy': 0.0865, 'sequence_success': 0.0}
+[exact_copy_mamba] epoch 5/6 loss=3.1139 val={'loss': 3.121, 'token_accuracy': 0.0971, 'sequence_success': 0.0}
+[exact_copy_mamba] epoch 6/6 loss=3.0863 val={'loss': 3.0858, 'token_accuracy': 0.1059, 'sequence_success': 0.0}

@@ -21,6 +21,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -222,6 +223,97 @@ def main() -> None:
         return
     training_figures(results, out)
     efficiency_figures(results, out)
+    exact_copy_figures(results, out)
+    task_formulation_figure(results, out)
+
+
+
+
+
+def exact_copy_figures(results: Path, out: Path) -> None:
+    """Repeat-After-Me reproduction figures: metrics vs string length per model."""
+    runs = {}
+    for model in MODELS:
+        p = results / f"exact_copy_{model}.json"
+        if p.exists():
+            runs[model] = json.loads(p.read_text(encoding="utf-8"))
+    if not runs:
+        print("no exact_copy results; skipping")
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+    for ax, key, title, ylabel in [
+        (axes[0], "token_accuracy", "Exact copy: token accuracy vs string length", "token accuracy"),
+        (axes[1], "sequence_success", "Exact copy: full-sequence success vs length", "sequence success"),
+    ]:
+        chance = 1 / 30
+        for model, run in runs.items():
+            fb = run.get("final_by_length") or {}
+            pts = sorted((int(L), v[key]) for L, v in fb.items() if v.get(key) is not None)
+            if pts:
+                xs, ys = zip(*pts)
+                ax.plot(xs, ys, marker="o", ms=5, color=COLORS[model], label=LABELS[model])
+        ax.axhline(chance, ls="--", lw=1, color="gray")
+        ax.text(0.98, chance + 0.02, "chance", transform=ax.get_yaxis_transform(),
+                ha="right", fontsize=8, color="gray")
+        ax.set_xscale("log", base=2)
+        ax.set_xticks([32, 64, 128])
+        ax.set_xticklabels(["32", "64", "128"])
+        ax.set_xlabel("string length (train: 5 to 32)")
+        ax.set_ylabel(ylabel)
+        ax.set_ylim(-0.02, 1.05)
+        ax.set_title(title, fontsize=10)
+        _style(ax)
+    fig.tight_layout()
+    _save(fig, out, "fig_exact_copy")
+
+
+def task_formulation_figure(results: Path, out: Path) -> None:
+    """The ranking flips with task formulation: selective copy vs exact copy."""
+    sel, exact = {}, {}
+    for model in MODELS:
+        p1 = results / f"selective_copy_{model}.json"
+        p2 = results / f"exact_copy_{model}.json"
+        if p1.exists():
+            r = json.loads(p1.read_text(encoding="utf-8"))
+            v = _final(r, "sequence_success")
+            if v is not None:
+                sel[model] = v
+        p3 = (results / f"exact_copy_{model}.json")
+        if p3.exists():
+            fb = json.loads(p3.read_text(encoding="utf-8")).get("final_by_length") or {}
+            v = fb.get("32", {}).get("sequence_success")
+            if v is not None:
+                exact[model] = v
+    if not sel or not exact:
+        print("missing task results; skipping formulation figure")
+        return
+    models_present = [m for m in MODELS if m in sel or m in exact]
+    x = np.arange(len(models_present))
+    w = 0.38
+    fig, ax = plt.subplots(figsize=(7.5, 4))
+    ax.bar(x - w / 2, [sel.get(m, 0) for m in models_present], w,
+           label="selective copy (test L=128)", color="#0a7d33")
+    ax.bar(x + w / 2, [exact.get(m, 0) for m in models_present], w,
+           label="exact copy (in-dist L=32)", color="#0a5aa0")
+    # mark genuinely-not-measured cells so a missing bar is not read as 0.0
+    for xi, m in zip(x, models_present):
+        if m not in sel:
+            ax.text(xi - w / 2, 0.02, "not run", rotation=90, fontsize=7,
+                    ha="center", va="bottom", color="#0a7d33")
+        if m not in exact:
+            ax.text(xi + w / 2, 0.02, "not run", rotation=90, fontsize=7,
+                    ha="center", va="bottom", color="#0a5aa0")
+    ax.set_xticks(x)
+    ax.set_xticklabels([LABELS.get(m, m) for m in models_present], fontsize=9)
+    ax.set_ylabel("full-sequence success")
+    ax.set_title("The ranking flips with the copy-task formulation", fontsize=11)
+    ax.set_ylim(0, 1.08)
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.legend(frameon=False, fontsize=9)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    _save(fig, out, "fig_task_formulation")
 
 
 if __name__ == "__main__":

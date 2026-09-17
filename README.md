@@ -103,7 +103,30 @@ SSMs store and release markers. mamba3 underperforms mamba1/2 here - its
 rotational dynamics appear to trade recall sharpness for state-tracking power
 at this tiny budget - reported as measured.
 
-### 3. IMDb sentiment (quality on real text)
+### 3. A caution the two copy tasks teach (task formulation matters)
+
+"Copying" is not one task. Our selective copying (keep k pairs, filter noise)
+and our exact copying (reproduce every token, Jelassi et al. ICML 2024
+formulation) stress different bottlenecks, and the ranking flips between them:
+
+```mermaid
+flowchart TB
+    subgraph SC["Selective copying (memory: constant, noise: heavy)"]
+        direction LR
+        A1["Mamba-2 0.183<br/>Mamba-1 0.149"] -->|"wins"| A2["Transformer 0.0<br/>S4D 0.0<br/>(sequence success, test L=128)"]
+    end
+    subgraph EC["Exact copying (memory: linear in L, noise: none)"]
+        direction LR
+        B1["Transformer 1.00<br/>S4D 1.00<br/>(in-dist L=32)"] -->|"wins"| B2["Mamba-1 0.0<br/>Mamba-2 0.0"]
+    end
+    SC ~~~ EC
+```
+
+No single task establishes that one architecture universally dominates
+another. Our results are benchmark-specific by design; see
+docs/copy_task_comparison.md and docs/literature/.
+
+### 4. IMDb sentiment (quality on real text)
 
 Same protocol for every model: 12.5k training samples (fixed seed), max length
 512, 3 epochs, d_model=128, 4 blocks, cosine schedule:
@@ -120,7 +143,7 @@ launch overhead (see below). The selective-SSM family is represented by
 mamba2, which shares the recurrence and differs only in the transition
 parameterization.
 
-### 4. Efficiency vs sequence length (1K-32K, RTX 4050 6GB)
+### 5. Efficiency vs sequence length (1K-32K, RTX 4050 6GB)
 
 `results/efficiency_gpu.json` holds per-model train-step latency, peak memory,
 throughput and decode cost - CUDA-event timed, 5 repeats, fp32, batch 8.
@@ -148,7 +171,7 @@ What the measurements show, stated plainly:
   `oom_train: true`; Windows WDDM spills past VRAM into shared memory, which
   also explains the super-linear slowdowns near the limit).
 
-### 5. The wall-clock lesson (the honest part)
+### 6. The wall-clock lesson (the honest part)
 
 The minimal Mamba-1/3 scans are O(T) in operations but slow in wall-clock:
 a python loop over T steps x n_layers launches thousands of tiny kernels and
@@ -157,6 +180,26 @@ builds a T-step autograd graph. The chunked Mamba-2 form cuts the loop by
 repository goes further with fused Triton/CUDA kernels (Linux-only, not used
 here). Theoretical complexity and wall-clock performance are different claims,
 and this repository measures both.
+
+## Literature Reproductions
+
+**Repeat After Me (Jelassi et al., ICML 2024): Transformers beat SSMs at
+copying.** We rebuilt their exact-copy task formulation (`<bos> string <sep>`
+-> reproduce the string) at reduced scale in pure PyTorch and ran our existing
+baseline grid on it. Measured (full-sequence success, in-distribution L=32):
+Transformer 1.00, S4D 1.00, Mamba-1 0.00, Mamba-2 0.00 - the paper's central
+ranking reproduces at matched budget, while the same models flip ranking on
+our selective-copy benchmark. Beyond the training range (L=64/128) every
+model collapses, and our absolute-position-encoding Transformer fails exactly
+where the paper says absolute PEs fail (their ALiBi variant extrapolated).
+
+- Research note: docs/literature/repeat_after_me_reproduction.md
+- Task comparison: docs/copy_task_comparison.md
+- Figures: figures/fig_exact_copy.png, figures/fig_task_formulation.png
+- Interview framing: docs/literature/interview_defense.md
+- Analysis notes (no reproduction claimed): LongMamba
+  (docs/literature/longmamba_analysis.md), PD-SSM
+  (docs/literature/pd_ssm_analysis.md)
 
 ## What is NOT implemented (and why that is stated)
 

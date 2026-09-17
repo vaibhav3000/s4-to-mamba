@@ -1,0 +1,113 @@
+{
+  "data_config": {
+    "alphabet_size": 26,
+    "batch_size": 64,
+    "eval_lengths": [
+      32,
+      64,
+      128
+    ],
+    "eval_samples": 256,
+    "name": "exact_copy",
+    "seed": 42,
+    "train": {
+      "max_len": 32
+    },
+    "train_samples": 8000
+  },
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.0+cu130"
+  },
+  "final_by_length": {
+    "128": {
+      "loss": 4.359342098236084,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.03215843023255814
+    },
+    "32": {
+      "loss": 0.0009964826458599418,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0
+    },
+    "64": {
+      "loss": 4.888890504837036,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.035757211538461536
+    }
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "epoch_seconds": 6.61,
+      "loss": 0.011739465640857816,
+      "sequence_success": 0.98046875,
+      "token_accuracy": 0.9994081439393939,
+      "train_loss": 2.0378942355141043
+    },
+    {
+      "epoch": 2,
+      "epoch_seconds": 5.89,
+      "loss": 0.0019890242838300765,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0,
+      "train_loss": 0.003387338111177087
+    },
+    {
+      "epoch": 3,
+      "epoch_seconds": 5.85,
+      "loss": 0.0013493095175363123,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0,
+      "train_loss": 0.0016150265727192163
+    },
+    {
+      "epoch": 4,
+      "epoch_seconds": 5.65,
+      "loss": 0.001098948559956625,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0,
+      "train_loss": 0.0012028242694213987
+    },
+    {
+      "epoch": 5,
+      "epoch_seconds": 5.12,
+      "loss": 0.001010271516861394,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0,
+      "train_loss": 0.001042891038581729
+    },
+    {
+      "epoch": 6,
+      "epoch_seconds": 5.08,
+      "loss": 0.0009964826458599418,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0,
+      "train_loss": 0.0009971989113837481
+    }
+  ],
+  "model": {
+    "kwargs": {
+      "d_model": 128,
+      "n_heads": 4,
+      "n_layers": 3
+    },
+    "name": "transformer"
+  },
+  "n_parameters": 602782,
+  "name": "exact_copy_transformer",
+  "peak_gpu_mb": 518.5,
+  "task": "token_classification",
+  "train_config": {
+    "epochs": 6,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 42,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 34.4
+}

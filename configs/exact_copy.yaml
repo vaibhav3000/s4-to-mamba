@@ -1,0 +1,35 @@
+# Exact Copying (Repeat After Me formulation; Jelassi et al., ICML 2024).
+# Prompt: <bos> <string> <sep>; target: <string> <eos> after the separator.
+# Every token must be reproduced, so the memory requirement grows LINEARLY
+# with length (contrast selective_copy where only k pairs matter).
+# Research question: do Transformer-vs-SSM conclusions flip with the task
+# formulation? Compare with configs/selective_copy.yaml results.
+name_prefix: exact_copy
+task:
+  type: token_classification
+  vocab_size: 30     # 0=pad, 1=bos, 2=sep, 3=eos, 4..29 = 26 letters
+  n_classes: 30
+data:
+  name: exact_copy
+  alphabet_size: 26
+  batch_size: 64
+  seed: 42
+  train_samples: 8000
+  eval_samples: 256
+  train:
+    max_len: 32      # strings up to length 32 during training (min 5 by construction)
+  eval_lengths: [32, 64, 128]   # in-distribution, then extrapolation
+train:
+  epochs: 6
+  lr: 1.0e-3
+  weight_decay: 0.05
+  grad_clip: 1.0
+  scheduler: cosine
+  warmup_frac: 0.05
+  seed: 42
+# Matched budgets: d_model=128, 3 blocks for every model.
+models:
+  transformer: {d_model: 128, n_layers: 3, n_heads: 4}
+  s4d:         {d_model: 128, n_layers: 3, d_state: 16}
+  mamba2:      {d_model: 128, n_layers: 3, d_state: 32, headdim: 64}
+  mamba:       {d_model: 128, n_layers: 3, d_state: 16}

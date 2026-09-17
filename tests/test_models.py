@@ -218,3 +218,35 @@ def test_parity_dataset_targets_are_cumulative_xor() -> None:
     bits = s["input_ids"]
     expected = torch.cumsum(bits, 0) % 2
     assert torch.equal(s["targets"], expected)
+
+
+def test_exact_copy_dataset_contract() -> None:
+    """Repeat-After-Me formulation: input <bos> s <sep>, target s <eos>."""
+    from ssmbench.data.synthetic import EC_BOS, EC_EOS, EC_SEP, ExactCopyDataset
+
+    L, V = 12, 26
+    ds = ExactCopyDataset(num_samples=8, string_len=L, seq_len=2 * 128 + 8,
+                          alphabet_size=V, seed=0)
+    s = ds[0]
+    x, y = s["input_ids"], s["targets"]
+    assert x.shape == (2 * 128 + 8,) and y.shape == x.shape
+    # prompt structure
+    assert x[0].item() == EC_BOS
+    assert x[1 + L].item() == EC_SEP
+    # the answer (targets after sep) must reproduce the prompt string, then eos
+    prompt = x[1 : 1 + L]
+    answer = y[2 + L : 2 + 2 * L]
+    assert torch.equal(prompt, answer)
+    assert y[2 + 2 * L].item() == EC_EOS
+    # everything else is ignored
+    mask = y.ne(-100)
+    assert int(mask.sum()) == L + 1
+    # prompt letters are in the alphabet range
+    assert (prompt >= 4).all() and (prompt < 4 + V).all()
+
+
+def test_exact_copy_too_short_raises() -> None:
+    from ssmbench.data.synthetic import ExactCopyDataset
+
+    with pytest.raises(ValueError):
+        ExactCopyDataset(num_samples=1, string_len=32, seq_len=50)

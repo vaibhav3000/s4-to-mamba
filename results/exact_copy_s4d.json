@@ -1,0 +1,113 @@
+{
+  "data_config": {
+    "alphabet_size": 26,
+    "batch_size": 64,
+    "eval_lengths": [
+      32,
+      64,
+      128
+    ],
+    "eval_samples": 256,
+    "name": "exact_copy",
+    "seed": 42,
+    "train": {
+      "max_len": 32
+    },
+    "train_samples": 8000
+  },
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.0+cu130"
+  },
+  "final_by_length": {
+    "128": {
+      "loss": 8.034911632537842,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.03203730620155039
+    },
+    "32": {
+      "loss": 0.0037584943929687142,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0
+    },
+    "64": {
+      "loss": 8.73291540145874,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.04212740384615385
+    }
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "epoch_seconds": 4.81,
+      "loss": 1.1774958074092865,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.7992424242424242,
+      "train_loss": 2.765078377723694
+    },
+    {
+      "epoch": 2,
+      "epoch_seconds": 4.67,
+      "loss": 0.041764658875763416,
+      "sequence_success": 0.90625,
+      "token_accuracy": 0.9969223484848485,
+      "train_loss": 0.3367541488409042
+    },
+    {
+      "epoch": 3,
+      "epoch_seconds": 5.12,
+      "loss": 0.00850252015516162,
+      "sequence_success": 0.9921875,
+      "token_accuracy": 0.9997632575757576,
+      "train_loss": 0.018304079439491035
+    },
+    {
+      "epoch": 4,
+      "epoch_seconds": 5.11,
+      "loss": 0.004722820594906807,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0,
+      "train_loss": 0.005885834224522114
+    },
+    {
+      "epoch": 5,
+      "epoch_seconds": 5.24,
+      "loss": 0.0038773923879489303,
+      "sequence_success": 0.99609375,
+      "token_accuracy": 0.9998816287878788,
+      "train_loss": 0.003909982774406672
+    },
+    {
+      "epoch": 6,
+      "epoch_seconds": 5.89,
+      "loss": 0.0037584943929687142,
+      "sequence_success": 1.0,
+      "token_accuracy": 1.0,
+      "train_loss": 0.0034705700650811194
+    }
+  ],
+  "model": {
+    "kwargs": {
+      "d_model": 128,
+      "d_state": 16,
+      "n_layers": 3
+    },
+    "name": "s4d"
+  },
+  "n_parameters": 95902,
+  "name": "exact_copy_s4d",
+  "peak_gpu_mb": 518.5,
+  "task": "token_classification",
+  "train_config": {
+    "epochs": 6,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 42,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 31.2
+}

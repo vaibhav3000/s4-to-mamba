@@ -1,0 +1,114 @@
+{
+  "data_config": {
+    "alphabet_size": 26,
+    "batch_size": 64,
+    "eval_lengths": [
+      32,
+      64,
+      128
+    ],
+    "eval_samples": 256,
+    "name": "exact_copy",
+    "seed": 42,
+    "train": {
+      "max_len": 32
+    },
+    "train_samples": 8000
+  },
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.0+cu130"
+  },
+  "final_by_length": {
+    "128": {
+      "loss": 8.300654411315918,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.024588178294573642
+    },
+    "32": {
+      "loss": 2.8071401119232178,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.1503314393939394
+    },
+    "64": {
+      "loss": 6.2762569189071655,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.05967548076923077
+    }
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "epoch_seconds": 13.17,
+      "loss": 3.1476977467536926,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.10037878787878787,
+      "train_loss": 3.2893576774597166
+    },
+    {
+      "epoch": 2,
+      "epoch_seconds": 13.07,
+      "loss": 2.9437273144721985,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.13257575757575757,
+      "train_loss": 3.048475082397461
+    },
+    {
+      "epoch": 3,
+      "epoch_seconds": 13.17,
+      "loss": 2.8771355152130127,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.13991477272727273,
+      "train_loss": 2.927200235366821
+    },
+    {
+      "epoch": 4,
+      "epoch_seconds": 13.21,
+      "loss": 2.8561847805976868,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.1435842803030303,
+      "train_loss": 2.873294807434082
+    },
+    {
+      "epoch": 5,
+      "epoch_seconds": 12.98,
+      "loss": 2.818594455718994,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.1493844696969697,
+      "train_loss": 2.8252568321228027
+    },
+    {
+      "epoch": 6,
+      "epoch_seconds": 13.0,
+      "loss": 2.8071401119232178,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.1503314393939394,
+      "train_loss": 2.7948121547698976
+    }
+  ],
+  "model": {
+    "kwargs": {
+      "d_model": 128,
+      "d_state": 32,
+      "headdim": 64,
+      "n_layers": 3
+    },
+    "name": "mamba2"
+  },
+  "n_parameters": 363670,
+  "name": "exact_copy_mamba2",
+  "peak_gpu_mb": 1246.3,
+  "task": "token_classification",
+  "train_config": {
+    "epochs": 6,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 42,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 79.2
+}

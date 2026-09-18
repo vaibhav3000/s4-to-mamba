@@ -201,6 +201,12 @@ where the paper says absolute PEs fail (their ALiBi variant extrapolated).
   (docs/literature/longmamba_analysis.md), PD-SSM
   (docs/literature/pd_ssm_analysis.md)
 
+## Technical Report
+
+A concise IEEE-style technical paper documenting this study is available at
+[reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf](reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf),
+with LaTeX source and report figures under `reports/`.
+
 ## What is NOT implemented (and why that is stated)
 
 - Full S4 (NPLR parameterization, Woodbury-corrected Cauchy kernel): S4D keeps

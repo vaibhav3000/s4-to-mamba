@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSM Efficiency &amp; Capability Explorer - s4-to-mamba</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#1a1d21; --muted:#5c6470; --line:#e4e7eb; --panel:#f6f7f9;
+    --good:#0a7d33; --bad:#b3261e; --accent:#0072B2; --accent-ink:#ffffff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:16px/1.55 ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       color:var(--ink);background:var(--bg)}
+  a{color:var(--accent)}
+  code,.mono{font-family:ui-monospace,"Cascadia Code",Consolas,Menlo,monospace;font-size:.92em}
+  header{border-bottom:1px solid var(--line);background:var(--panel)}
+  .bar{max-width:1080px;margin:0 auto;padding:14px 20px;display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+  .bar .name{font-weight:700;font-size:1.02rem}
+  .bar nav{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap}
+  .bar nav a{text-decoration:none;color:var(--ink);border-bottom:2px solid transparent;padding-bottom:2px}
+  .bar nav a:hover{border-bottom-color:var(--accent)}
+  main{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
+  .hero h1{font-size:1.7rem;margin:.2em 0 .3em}
+  .hero p.lead{color:var(--muted);max-width:52rem;margin:.2em 0 1em}
+  .chips{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 8px}
+  .chip{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 12px;font-size:.92rem}
+  .chip b{font-size:1.05rem}
+  section{margin-top:44px}
+  h2{font-size:1.25rem;margin:0 0 4px;padding-bottom:6px;border-bottom:2px solid var(--accent);display:inline-block}
+  .sub{color:var(--muted);margin:6px 0 18px;max-width:56rem}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px}
+  .card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff}
+  .card h3{font-size:.98rem;margin:0 0 2px}
+  .card .note{font-size:.82rem;color:var(--muted);margin:0 0 10px}
+  svg{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+  .legend button{border:1px solid var(--line);background:#fff;border-radius:999px;
+    padding:4px 12px;font-size:.85rem;cursor:pointer;color:var(--ink)}
+  .legend button[aria-pressed="true"]{border-color:currentColor;font-weight:600}
+  .legend .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:baseline}
+  table{border-collapse:collapse;width:100%;font-size:.9rem}
+  th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+  th{background:var(--panel)}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  details{margin-top:14px}
+  summary{cursor:pointer;color:var(--accent);font-weight:600}
+  footer{border-top:1px solid var(--line);margin-top:56px;padding:18px 0 8px;color:var(--muted);font-size:.85rem}
+  .oom-note{font-size:.82rem;color:var(--muted)}
+  :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="name">s4-to-mamba &middot; Efficient Sequence Modeling: From S4 to Mamba-3</span>
+    <nav aria-label="project links">
+      <a href="https://github.com/vaibhav3000/s4-to-mamba">GitHub</a>
+      <a href="https://github.com/vaibhav3000/s4-to-mamba/blob/main/reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf">Technical report (PDF)</a>
+      <a href="https://github.com/vaibhav3000/s4-to-mamba/tree/main/results">Committed results</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <h1>Five sequence architectures, implemented from first principles and measured</h1>
+    <p class="lead">Pure-PyTorch implementations of S4D, Mamba, Mamba-2 (chunked SSD), Mamba-3 (complex transitions)
+      and a Transformer baseline. Parallel and recurrent forms are proven equivalent by tests; every number below is a
+      committed measurement, not a paper claim.</p>
+    <div class="chips">
+      <span class="chip">Parity tracking: <b>98.3%</b> (Mamba-3) vs &le;<b>56.3%</b> for all real-transition baselines</span>
+      <span class="chip">Selective copying: S4D collapses to <b>6.4%</b>; Mamba-1/2 reach <b>65&ndash;67%</b></span>
+      <span class="chip">Efficiency: 1K&ndash;32K tokens on a 6&nbsp;GB RTX&nbsp;4050, CUDA-event timed</span>
+    </div>
+  </div>
+
+  <section aria-labelledby="cap-h">
+    <h2 id="cap-h">Capability: where each architecture wins</h2>
+    <p class="sub">Cumulative-parity tracking needs <em>rotation</em>; only complex, input-dependent transitions can
+      represent it. Selective copying needs <em>gating</em>; LTI models cannot filter noise. Exact copying needs
+      <em>memory that grows with length</em>, where attention dominates. The ranking flips with the task - that is the point.</p>
+    <div class="grid">
+      <div class="card"><h3>Parity / state tracking (token accuracy)</h3>
+        <p class="note">Cumulative XOR, L=128, 20 epochs, matched budgets. Dashed line = chance (0.5).</p>
+        <div id="chart-parity"></div></div>
+      <div class="card"><h3>Selective copying</h3>
+        <p class="note">Marker-value pairs in noise; train L=64 (3&ndash;5 pairs), test L=128 (5&ndash;10 pairs). Two bars per model: full-sequence success and token accuracy. Mamba-3 trades recall sharpness for state tracking at this budget - reported as measured.</p>
+        <div id="chart-selcopy"></div></div>
+      <div class="card"><h3>Exact copying (in-distribution L=32)</h3>
+        <p class="note">Reproduce a 32-token string (Jelassi et al., ICML 2024 formulation). The Transformer-vs-SSM ranking from the paper reproduces; the same models flip ranking on selective copying above.</p>
+        <div id="chart-exact"></div></div>
+      <div class="card"><h3>IMDb sentiment (accuracy / AUC)</h3>
+        <p class="note">12.5k train samples (fixed seed), max length 512, 3 epochs. Mamba-1/3 are intentionally not trained here: their python-loop scans are wall-clock-prohibitive (see efficiency charts); Mamba-2 shares their recurrence.</p>
+        <div id="chart-imdb"></div></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="eff-h">
+    <h2 id="eff-h">Efficiency vs sequence length (1K&ndash;32K)</h2>
+    <p class="sub">Measured on this machine's 6&nbsp;GB RTX&nbsp;4050 (fp32, batch 8 for train-step charts, CUDA events, 5 repeats).
+      Toggle models to compare. &times; markers are <em>measured out-of-memory limits</em>, not missing data.</p>
+    <div class="legend" id="eff-legend" role="group" aria-label="toggle models on efficiency charts"></div>
+    <div class="grid">
+      <div class="card"><h3>Training step time (ms, log-log)</h3><div id="chart-latency"></div></div>
+      <div class="card"><h3>Peak training memory (MB)</h3><div id="chart-memory"></div></div>
+      <div class="card"><h3>Training throughput (tokens/s)</h3><div id="chart-throughput"></div></div>
+      <div class="card"><h3>Decode cost per token (ms)</h3>
+        <p class="note">Decode modes are labeled per model: Mamba-1/S4D use true O(1)-state stepwise decode; Mamba-2/3 report sequential-scan cost; the Transformer has no KV cache and recomputes the full prefix per token.</p>
+        <div id="chart-decode"></div></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="meth-h">
+    <h2 id="meth-h">Methodology &amp; honesty notes</h2>
+    <div class="card" style="margin-top:14px">
+      <ul style="margin:8px 0;padding-left:20px">
+        <li>Correctness is tested, not asserted: S4D's FFT-convolution form equals its recurrent step form; Mamba-2's chunked SSD equals its sequential reference scan; Mamba-3 reduces to the Mamba-1/2 update when &lambda;=1 and rotation frequency is zero; decode paths equal parallel paths. Run: <code>python -m pytest tests/ -q</code></li>
+        <li>Every figure on this page regenerates from committed JSON: <code>results/*.json</code>, <code>python demo-site/build.py</code>.</li>
+        <li>Measured hardware limits are recorded, not hidden: entries carry <code>oom: true</code> and appear as &times; markers. Windows WDDM shared-memory spill explains super-linear slowdowns near the limit.</li>
+        <li>Theoretical O(T) and wall-clock are different claims; the python-loop scans are O(T) in operations but 10&ndash;100&times; slower in wall-clock - exactly why fused kernels and Mamba-2's matmul form exist.</li>
+        <li>Full methodology, result tables and literature reproductions: <a href="https://github.com/vaibhav3000/s4-to-mamba/blob/main/reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf">technical report (PDF)</a> and the <a href="https://github.com/vaibhav3000/s4-to-mamba#readme">README</a>.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <div>Data: committed measurements from <span class="mono">results/</span> in
+      <a href="https://github.com/vaibhav3000/s4-to-mamba">github.com/vaibhav3000/s4-to-mamba</a>,
+      rendered by <span class="mono">demo-site/build.py</span> (regenerate after re-running experiments).
+      Environment: <span id="env-line" class="mono"></span>.</div>
+  </footer>
+</main>
+
+<script src="data.js"></script>
+<script>
+"use strict";
+const DATA = window.DATA;
+const COLORS = {"transformer":"#0072B2","s4d":"#E69F00","mamba":"#009E73","mamba2":"#CC79A7","mamba3":"#D55E00"};
+const active = Object.fromEntries(DATA.models.map(m => [m.id, true]));
+
+function el(tag, attrs, parent){
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function fmt(v){
+  if (v == null) return "-";
+  if (v >= 100000) return (v/1000).toFixed(0) + "k";
+  if (v >= 1000) return (v/1000).toFixed(1).replace(/\.0$/,"") + "k";
+  if (v >= 10) return Math.round(v).toString();
+  return (+v.toFixed(2)).toString();
+}
+
+/* vertical bar chart: one group of bars per model */
+function barChart(id, getData, opts){
+  const W=460, H=250, mL=44, mB=34, mT=10, mR=8;
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":opts.label});
+  const box = document.getElementById(id); box.textContent=""; box.appendChild(svg);
+  const plotW = W-mL-mR, plotH = H-mT-mB;
+  el("line",{x1:mL,y1:mT+plotH,x2:mL+plotW,y2:mT+plotH,stroke:"var(--line)"},svg);
+  for (let g=0; g<=1; g+=0.25){
+    const y = mT + plotH*(1-g);
+    el("line",{x1:mL,y1:y,x2:mL+plotW,y2:y,stroke:(g===0?"var(--line)":"#eef0f3")},svg);
+    const t = el("text",{x:mL-6,y:y+4,"text-anchor":"end","font-size":"10",fill:"var(--muted)"},svg);
+    t.textContent = g;
+  }
+  const models = DATA.models.filter(m => getData(m.id) != null);
+  const nGroups = models.length;
+  const perGroup = opts.metrics.length;
+  const groupW = plotW/nGroups;
+  models.forEach((m, gi) => {
+    const vals = getData(m.id);
+    const gw = groupW*0.72/perGroup;
+    vals.forEach((v, mi) => {
+      if (v == null) return;
+      const h = Math.max(0, Math.min(v,1.05)/1.05*plotH);
+      el("rect",{x:mL+gi*groupW+groupW*0.14+mi*gw, y:mT+plotH-h, width:gw*0.88, height:h,
+                 fill:COLORS[m.id], opacity: mi===0?1:0.62, rx:2},svg);
+    });
+    const lbl = el("text",{x:mL+gi*groupW+groupW/2, y:mT+plotH+16,"text-anchor":"middle","font-size":"10.5",fill:"var(--ink)"},svg);
+    lbl.textContent = m.label.replace(" (SSD)","").replace(" (complex)","").replace(" (LTI)","");
+  });
+  if (opts.chance != null){
+    const y = mT + plotH*(1-opts.chance/1.05);
+    el("line",{x1:mL,y1:y,x2:mL+plotW,y2:y,stroke:"var(--muted)","stroke-dasharray":"5 4","stroke-width":1.2},svg);
+    const t = el("text",{x:mL+plotW-4,y:y-5,"text-anchor":"end","font-size":"10",fill:"var(--muted)"},svg);
+    t.textContent = opts.chanceLabel || "chance";
+  }
+  const legY = mT+plotH+28;
+  opts.metrics.forEach((mt, mi) => {
+    const t = el("text",{x:mL+6+mi*150, y:legY,"font-size":"10",fill:"var(--muted)"},svg);
+    t.textContent = mt;
+  });
+}
+
+/* log-log line chart with OOM markers */
+function logLogChart(id, key, unit){
+  const W=460, H=260, mL=52, mB=36, mT=12, mR=10;
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":key+" vs sequence length"});
+  const box = document.getElementById(id); box.textContent=""; box.appendChild(svg);
+  const xs = [1024,2048,4096,8192,16384,32768];
+  const lx0=Math.log10(1024), lx1=Math.log10(32768);
+  const plotW=W-mL-mR, plotH=H-mT-mB;
+  const X = T => mL + (Math.log10(T)-lx0)/(lx1-lx0)*plotW;
+
+  const pts = {};
+  const ooms = {};
+  DATA.efficiency.forEach(e => {
+    if (!active[e.model]) return;
+    if (e[key] != null){ (pts[e.model] = pts[e.model] || []).push([e.seq_len, e[key]]); }
+    else if (e.oom && (key==="train_step_ms" || key==="peak_train_mb")){ (ooms[e.model] = ooms[e.model] || []).push(e.seq_len); }
+  });
+  const allVals = Object.values(pts).flat().map(p => p[1]).filter(v => v>0);
+  if (!allVals.length) return;
+  let lmin=Math.log10(Math.min(...allVals)), lmax=Math.log10(Math.max(...allVals));
+  const span = (lmax-lmin)||1; lmin-=span*0.08; lmax+=span*0.08;
+  const Y = v => mT + plotH*(1-(Math.log10(v)-lmin)/(lmax-lmin));
+
+  for (let i=0;i<=4;i++){
+    const lv = lmin + (lmax-lmin)*i/4, y = Y(Math.pow(10,lv));
+    el("line",{x1:mL,y1:y,x2:mL+plotW,y2:y,stroke:(i===0?"var(--line)":"#eef0f3")},svg);
+    const t = el("text",{x:mL-6,y:y+4,"text-anchor":"end","font-size":"10",fill:"var(--muted)"},svg);
+    t.textContent = fmt(Math.pow(10,lv));
+  }
+  xs.forEach(T => {
+    el("line",{x1:X(T),y1:mT,x2:X(T),y2:mT+plotH,stroke:"#f1f3f5"},svg);
+    const t = el("text",{x:X(T),y:mT+plotH+16,"text-anchor":"middle","font-size":"10",fill:"var(--muted)"},svg);
+    t.textContent = T>=1024? (T/1024)+"K" : T;
+  });
+  const xt = el("text",{x:mL+plotW/2,y:H-4,"text-anchor":"middle","font-size":"10.5",fill:"var(--muted)"},svg);
+  xt.textContent = "sequence length";
+  const yt = el("text",{x:12,y:mT+8,"font-size":"10.5",fill:"var(--muted)"},svg);
+  yt.textContent = unit;
+
+  DATA.models.forEach(m => {
+    const p = (pts[m.id]||[]).sort((a,b)=>a[0]-b[0]);
+    if (p.length){
+      const d = p.map((pt,i)=>(i?"L":"M")+X(pt[0]).toFixed(1)+" "+Y(pt[1]).toFixed(1)).join(" ");
+      el("path",{d,fill:"none",stroke:COLORS[m.id],"stroke-width":1.8},svg);
+      p.forEach(pt => el("circle",{cx:X(pt[0]),cy:Y(pt[1]),r:2.6,fill:COLORS[m.id]},svg));
+    }
+    (ooms[m.id]||[]).forEach(T => {
+      const y = mT+plotH-8;
+      el("text",{x:X(T),y:mT+plotH-14,"font-size":"9","text-anchor":"middle",fill:COLORS[m.id]},svg).textContent="OOM";
+      el("text",{x:X(T),y:y,"font-size":"11","text-anchor":"middle",fill:COLORS[m.id]},svg).textContent="\u00d7";
+    });
+  });
+}
+
+function buildLegend(){
+  const box = document.getElementById("eff-legend");
+  DATA.models.forEach(m => {
+    const b = document.createElement("button");
+    b.setAttribute("aria-pressed","true");
+    b.innerHTML = `<span class="dot" style="background:${COLORS[m.id]}"></span>${m.label}`;
+    b.addEventListener("click", () => {
+      active[m.id] = !active[m.id];
+      b.setAttribute("aria-pressed", active[m.id] ? "true" : "false");
+      b.style.opacity = active[m.id] ? "1" : ".45";
+      drawEfficiency();
+    });
+    box.appendChild(b);
+  });
+}
+function drawEfficiency(){
+  logLogChart("chart-latency","train_step_ms","train step (ms)");
+  logLogChart("chart-memory","peak_train_mb","peak memory (MB)");
+  logLogChart("chart-throughput","train_tokens_per_s","tokens / s");
+  logLogChart("chart-decode","decode_per_token_ms","per-token cost (ms)");
+}
+
+buildLegend();
+barChart("chart-parity", id => { const v = DATA.parity[id]; return v ? [v.token_accuracy] : null; },
+         {metrics:["token accuracy"], chance:0.5, chanceLabel:"chance (0.5)", label:"Parity token accuracy by model"});
+barChart("chart-selcopy", id => { const v = DATA.selective_copy[id]; return v ? [v.sequence_success, v.token_accuracy] : null; },
+         {metrics:["sequence success (test L=128)","token accuracy"], label:"Selective copying by model"});
+barChart("chart-exact", id => { const v = DATA.exact_copy_in_dist[id]; return v ? [v.sequence_success] : null; },
+         {metrics:["full-sequence success (in-dist L=32)"], label:"Exact copy in-distribution success"});
+barChart("chart-imdb", id => { const v = DATA.imdb[id]; return v ? [v.accuracy, v.auc] : null; },
+         {metrics:["accuracy","AUC"], label:"IMDb accuracy and AUC"});
+drawEfficiency();
+
+document.getElementById("env-line").textContent =
+  `${DATA.environment.gpu || "cpu"}, torch ${DATA.environment.torch}, measured ${DATA.environment.date}`;
+</script>
+</body>
+</html>

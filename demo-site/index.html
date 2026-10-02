@@ -198,7 +198,7 @@ function barChart(id, getData, opts){
 
 /* log-log line chart with OOM markers */
 function logLogChart(id, key, unit){
-  const W=460, H=260, mL=52, mB=36, mT=12, mR=10;
+  const W=460, H=260, mL=52, mB=36, mT=30, mR=10;
   const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":key+" vs sequence length"});
   const box = document.getElementById(id); box.textContent=""; box.appendChild(svg);
   const xs = [1024,2048,4096,8192,16384,32768];
@@ -232,7 +232,7 @@ function logLogChart(id, key, unit){
   });
   const xt = el("text",{x:mL+plotW/2,y:H-4,"text-anchor":"middle","font-size":"10.5",fill:"var(--muted)"},svg);
   xt.textContent = "sequence length";
-  const yt = el("text",{x:12,y:mT+8,"font-size":"10.5",fill:"var(--muted)"},svg);
+  const yt = el("text",{x:12,y:14,"font-size":"10.5",fill:"var(--muted)"},svg);
   yt.textContent = unit;
 
   DATA.models.forEach(m => {

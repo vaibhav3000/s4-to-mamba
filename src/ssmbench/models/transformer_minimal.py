@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blocks import causal_mask, sinusoidal_positions
+from .blocks import sinusoidal_positions
 
 
 class CausalSelfAttention(nn.Module):

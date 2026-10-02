@@ -102,8 +102,3 @@ def sinusoidal_positions(d_model: int, max_len: int, device: torch.device) -> to
     pe[:, 0::2] = torch.sin(pos * div)
     pe[:, 1::2] = torch.cos(pos * div[: d_model // 2])
     return pe
-
-
-def causal_mask(T: int, device: torch.device) -> torch.Tensor:
-    """Upper-triangular boolean mask of shape (T, T); True marks disallowed attention."""
-    return torch.triu(torch.ones(T, T, dtype=torch.bool, device=device), diagonal=1)

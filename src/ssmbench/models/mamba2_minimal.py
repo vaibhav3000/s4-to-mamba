@@ -18,7 +18,7 @@ This module implements BOTH forms:
   T/chunk_size chunks, each doing small matmuls; the official repository fuses
   this into Triton kernels, which are NOT used here.
 
-tests/test_mamba2.py verifies the two forms agree.
+tests/test_models.py verifies the two forms agree.
 """
 
 from __future__ import annotations

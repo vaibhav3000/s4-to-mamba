@@ -22,9 +22,13 @@ train:
   warmup_frac: 0.05
   seed: 42
 # Backbones: matched depth (4 blocks) and width (d_model=128).
+# NOTE: mamba and mamba3 are intentionally NOT trained on IMDb — their
+# python-loop sequential scans make the wall-clock prohibitive on the
+# 6 GB RTX 4050 (see README section 4 and the efficiency table). Only
+# transformer/s4d/mamba2 have committed results.
 models:
   transformer: {d_model: 128, n_layers: 4, n_heads: 4}
   s4d:         {d_model: 128, n_layers: 4, d_state: 16}
-  mamba:       {d_model: 128, n_layers: 4, d_state: 16}
+  # mamba:       {d_model: 128, n_layers: 4, d_state: 16}                  # not run (wall-clock)
   mamba2:      {d_model: 128, n_layers: 4, d_state: 32, headdim: 64}
-  mamba3:      {d_model: 128, n_layers: 4, d_state: 32, headdim: 64}
+  # mamba3:      {d_model: 128, n_layers: 4, d_state: 32, headdim: 64}    # not run (wall-clock)

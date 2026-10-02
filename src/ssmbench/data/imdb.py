@@ -11,7 +11,6 @@ from __future__ import annotations
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Iterator
 
 import torch
 from datasets import load_dataset
@@ -105,9 +104,3 @@ def get_imdb_loaders(
         num_workers=num_workers,
     )
     return train_loader, val_loader, vocab, 2
-
-
-def infinite_loader(loader: DataLoader) -> Iterator:
-    while True:
-        for batch in loader:
-            yield batch

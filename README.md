@@ -1,5 +1,7 @@
 # Efficient Long-Context Sequence Modeling: From S4 to Mamba-3
 
+[![CI](https://github.com/vaibhav3000/s4-to-mamba/actions/workflows/ci.yml/badge.svg)](https://github.com/vaibhav3000/s4-to-mamba/actions/workflows/ci.yml)
+
 An experimental study of how efficient sequence architectures evolved from
 S4 through Mamba, Mamba-2 and Mamba-3, and what trade-offs emerge in quality,
 latency, memory and state-tracking capability. Everything is implemented in
@@ -59,7 +61,7 @@ that exercise, with benchmarks attached.
 | `mamba2_minimal` | scalar-per-head x I | exponential-Euler | **chunked SSD** matmuls + carried (N,P) state | sequential scan (per-token cost) |
 | `mamba3_minimal` | **complex** diagonal, input-dependent | **exponential-trapezoidal** (data-dependent lambda) | python-loop selective scan | sequential scan (per-token cost) |
 
-Correctness is not asserted, it is tested (`tests/`, 14 tests): the S4D
+Correctness is not asserted, it is tested (`tests/`, 22 tests): the S4D
 convolution form equals its recurrent step form; Mamba-2's chunked SSD equals
 its sequential reference; Mamba-3 reduces to the Mamba-1/2 update when
 lambda=1 and the rotation frequency is zero; the decode path equals the
@@ -221,7 +223,7 @@ with LaTeX source and report figures under `reports/`.
 
 ```bash
 python -m pip install -e ".[dev]"        # torch required (CPU or CUDA)
-python -m pytest tests/ -q               # 14 correctness tests
+python -m pytest tests/ -q               # 22 correctness tests
 python scripts/run_training.py --config configs/parity.yaml --out results
 python scripts/run_training.py --config configs/selective_copy.yaml --out results
 python scripts/run_training.py --config configs/imdb.yaml --out results

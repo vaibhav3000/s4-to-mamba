@@ -5,7 +5,7 @@ Supports two task types:
 - "token_classification": per-token targets with -100 ignore (copy, parity).
   Metrics: token accuracy and, for selective copy, full-sequence success rate.
 
-Every run writes <out_dir>/<run_name>/results.json containing the config
+Every run writes <out_dir>/<config name>.json containing the config
 snapshot, per-epoch history, final metrics, parameter count and environment
 information — the single source of truth for the paper's result tables.
 """
@@ -217,7 +217,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg.grad_clip)
             opt.step()
             sched.step()
-            ep_loss += float(loss)
+            ep_loss += float(loss.detach())
             ep_batches += 1
         val_metrics = evaluate(model, val_loader, task, device)
         entry = {

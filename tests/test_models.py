@@ -192,6 +192,51 @@ def test_masked_mean_ignores_padding() -> None:
     assert torch.allclose(pooled, torch.tensor([[2.0, 2.0]]))
 
 
+@pytest.mark.parametrize("name", ["transformer", "s4d", "mamba", "mamba2", "mamba3"])
+def test_right_padding_does_not_change_short_sequence_logits(name: str) -> None:
+    """Causal backbones + masked mean pooling: trailing pad tokens must not
+    change a shorter sequence's classification, whether run alone or
+    right-padded inside a longer batch."""
+    torch.manual_seed(7)
+    kwargs = {
+        "transformer": dict(d_model=32, n_layers=2, n_heads=4, max_len=128),
+        "s4d": dict(d_model=32, n_layers=2, d_state=8),
+        "mamba": dict(d_model=32, n_layers=2, d_state=8),
+        "mamba2": dict(d_model=32, n_layers=2, d_state=8, headdim=16, chunk_size=16),
+        "mamba3": dict(d_model=32, n_layers=2, d_state=8, headdim=16),
+    }[name]
+    backbone = build_backbone(name, kwargs)
+    model = SequenceClassifier(backbone, vocab_size=20, d_model=32, padding_idx=0)
+    model.eval()
+    short = torch.randint(1, 20, (1, 24))  # content tokens only, no pads
+    long = torch.cat([short, torch.zeros(1, 40, dtype=torch.long)], dim=1)
+    with torch.no_grad():
+        logits_alone = model(short)
+        logits_padded = model(long)
+    assert logits_alone.shape == (1, 2)
+    assert torch.allclose(logits_alone, logits_padded, atol=1e-4, rtol=1e-4), (
+        f"{name}: padding changed the short-sequence logits by "
+        f"{(logits_alone - logits_padded).abs().max().item():.2e}"
+    )
+
+
+def test_make_figures_smoke(tmp_path) -> None:
+    """Figure generation runs against the committed results and writes PNGs."""
+    import importlib.util
+    from pathlib import Path as _Path
+
+    repo_root = _Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("make_figures", repo_root / "scripts" / "make_figures.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    results = repo_root / "results"
+    mod.efficiency_figures(results, tmp_path)
+    mod.training_figures(results, tmp_path)
+    written = list(tmp_path.glob("*.png"))
+    assert {p.name for p in written} >= {"fig_efficiency_latency.png", "fig_parity.png"}
+
+
 def test_selective_copy_dataset_contract() -> None:
     from ssmbench.data.synthetic import IGNORE_INDEX, SelectiveCopyDataset
 

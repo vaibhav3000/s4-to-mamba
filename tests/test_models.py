@@ -223,9 +223,8 @@ def test_right_padding_does_not_change_short_sequence_logits(name: str) -> None:
 def test_make_figures_smoke(tmp_path) -> None:
     """Figure generation runs against the committed results and writes PNGs."""
     import importlib.util
-    from pathlib import Path as _Path
 
-    repo_root = _Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location("make_figures", repo_root / "scripts" / "make_figures.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

@@ -7,17 +7,17 @@
 <style>
   :root{
     --bg:#ffffff; --ink:#1a1d21; --muted:#5c6470; --line:#e4e7eb; --panel:#f6f7f9;
-    --good:#0a7d33; --bad:#b3261e; --accent:#0072B2; --accent-ink:#ffffff;
+    --good:#0a7d33; --bad:#b3261e; --warn:#9a6b00; --accent:#0072B2; --accent-soft:#e3eff7;
   }
   *{box-sizing:border-box}
   body{margin:0;font:16px/1.55 ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        color:var(--ink);background:var(--bg)}
   a{color:var(--accent)}
   code,.mono{font-family:ui-monospace,"Cascadia Code",Consolas,Menlo,monospace;font-size:.92em}
-  header{border-bottom:1px solid var(--line);background:var(--panel)}
+  header{border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:30}
   .bar{max-width:1080px;margin:0 auto;padding:14px 20px;display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
   .bar .name{font-weight:700;font-size:1.02rem}
-  .bar nav{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap}
+  .bar nav{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap;align-items:baseline}
   .bar nav a{text-decoration:none;color:var(--ink);border-bottom:2px solid transparent;padding-bottom:2px}
   .bar nav a:hover{border-bottom-color:var(--accent)}
   main{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
@@ -26,29 +26,89 @@
   .chips{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 8px}
   .chip{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 12px;font-size:.92rem}
   .chip b{font-size:1.05rem}
-  section{margin-top:44px}
+  section{margin-top:44px;scroll-margin-top:70px}
   h2{font-size:1.25rem;margin:0 0 4px;padding-bottom:6px;border-bottom:2px solid var(--accent);display:inline-block}
   .sub{color:var(--muted);margin:6px 0 18px;max-width:56rem}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px}
-  .card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff}
+  .card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff;
+        transition:box-shadow .25s, border-color .25s}
   .card h3{font-size:.98rem;margin:0 0 2px}
   .card .note{font-size:.82rem;color:var(--muted);margin:0 0 10px}
   svg{width:100%;height:auto;display:block}
   .legend{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
-  .legend button{border:1px solid var(--line);background:#fff;border-radius:999px;
+  .legend button,.seg button{border:1px solid var(--line);background:#fff;border-radius:999px;
     padding:4px 12px;font-size:.85rem;cursor:pointer;color:var(--ink)}
   .legend button[aria-pressed="true"]{border-color:currentColor;font-weight:600}
-  .legend .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:baseline}
+  .seg{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+  .seg button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .badge{display:inline-block;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700;
+         letter-spacing:.05em;text-transform:uppercase;vertical-align:middle}
+  .badge-measured{color:var(--good);background:#d4f0d4}
+  .badge-schematic{color:var(--warn);background:#f5ecd0}
   table{border-collapse:collapse;width:100%;font-size:.9rem}
   th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
   th{background:var(--panel)}
-  .num{text-align:right;font-variant-numeric:tabular-nums}
   details{margin-top:14px}
   summary{cursor:pointer;color:var(--accent);font-weight:600}
   footer{border-top:1px solid var(--line);margin-top:56px;padding:18px 0 8px;color:var(--muted);font-size:.85rem}
-  .oom-note{font-size:.82rem;color:var(--muted)}
   :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+  /* ---- hover term explanations ---- */
+  .term{border-bottom:1px dotted var(--accent);cursor:help;position:relative}
+  .term::after{content:attr(data-tip);position:absolute;left:50%;bottom:130%;transform:translateX(-50%);
+    background:var(--ink);color:#fff;font-size:.78rem;font-weight:400;line-height:1.4;padding:7px 10px;
+    border-radius:6px;width:max-content;max-width:280px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:40;text-transform:none}
+  .term:hover::after,.term:focus-visible::after{opacity:1}
+
+  /* ---- tour ---- */
+  #tour-dim{position:fixed;inset:0;background:rgba(10,14,20,.45);z-index:50;display:none}
+  .tour-hi{position:relative;z-index:51;border-radius:10px;box-shadow:0 0 0 3px var(--accent),0 0 0 3000px rgba(10,14,20,.45)!important}
+  #tour-card{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:52;display:none;
+    width:min(620px,calc(100vw - 24px));background:#fff;border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 12px 40px rgba(0,0,0,.22);padding:14px 16px}
+  #tour-card h4{margin:0 0 4px;font-size:.95rem}
+  #tour-card .body{font-size:.88rem;color:var(--ink);min-height:2.6em}
+  #tour-card .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  #tour-card button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 13px;font:inherit;font-size:.85rem;cursor:pointer}
+  #tour-card button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  #tour-card .stepno{margin-left:auto;color:var(--muted);font-size:.8rem;font-variant-numeric:tabular-nums}
+  #tour-card select{padding:5px 6px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:.8rem}
+
+  /* ---- schematic ---- */
+  #schem-wrap{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff}
+  #schem-svg .tok{fill:#fff;stroke:var(--line)}
+  #schem-svg .tok.on{fill:var(--accent-soft);stroke:var(--accent)}
+  #schem-svg .tok.gate{fill:#fff;stroke:var(--line)}
+  #schem-svg .blk{fill:var(--panel);stroke:var(--muted)}
+  #schem-svg .blk.on{stroke:var(--accent);stroke-width:2}
+  #schem-svg text{font-family:ui-monospace,Consolas,monospace}
+  .schem-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .schem-ctl button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 13px;font:inherit;font-size:.85rem;cursor:pointer}
+  .schem-ctl button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  #schem-narr{min-height:3.2em;font-size:.9rem;color:var(--ink);margin-top:10px}
+  #schem-narr b{color:var(--accent)}
+
+  /* ---- task switcher (animated ranking) ---- */
+  #taskchart{display:flex;align-items:flex-end;gap:14px;height:240px;padding:10px 6px 0;border-bottom:2px solid var(--line)}
+  .taskbar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;height:100%;
+           transition:order .45s ease, transform .45s ease}
+  .taskbar .fill{width:70%;border-radius:6px 6px 0 0;transition:height .5s ease, background-color .3s}
+  .taskbar.dim .fill{opacity:.3}
+  .taskbar .v{font-size:.85rem;font-variant-numeric:tabular-nums;transition:opacity .3s}
+  .taskbar .l{font-size:.75rem;color:var(--muted);text-align:center;min-height:2.2em}
+  .taskbar.focus .fill{outline:2px solid var(--ink);outline-offset:2px}
+  #taskread{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;min-height:2.4em}
+  .readchip{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:5px 10px;font-size:.82rem}
+  .readchip.bad{border-color:var(--bad);color:var(--bad)}
+  .readchip.best{border-color:var(--good);color:var(--good);font-weight:600}
+
+  /* ---- measurement stepper ---- */
+  #msteps{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+  #msteps .m{border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:.83rem;color:var(--muted);background:#fff}
+  #msteps .m.on{border-color:var(--accent);color:var(--accent);font-weight:600}
+  #msteps .m.done{color:var(--good);border-color:var(--good)}
+  #mstep-body{min-height:3.4em;font-size:.92rem}
 </style>
 </head>
 <body>
@@ -56,6 +116,7 @@
   <div class="bar">
     <span class="name">s4-to-mamba &middot; Efficient Sequence Modeling: From S4 to Mamba-3</span>
     <nav aria-label="project links">
+      <button id="tour-open" type="button" class="chip" style="cursor:pointer">&#9654; Guided tour</button>
       <a href="https://github.com/vaibhav3000/s4-to-mamba">GitHub</a>
       <a href="https://github.com/vaibhav3000/s4-to-mamba/blob/main/reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf">Technical report (PDF)</a>
       <a href="https://github.com/vaibhav3000/s4-to-mamba/tree/main/results">Committed results</a>
@@ -66,9 +127,11 @@
 <main>
   <div class="hero">
     <h1>Five sequence architectures, implemented from first principles and measured</h1>
-    <p class="lead">Pure-PyTorch implementations of S4D, Mamba, Mamba-2 (chunked SSD), Mamba-3 (complex transitions)
-      and a Transformer baseline. Parallel and recurrent forms are proven equivalent by tests; every number below is a
-      committed measurement, not a paper claim.</p>
+    <p class="lead">Pure-PyTorch implementations of <span class="term" tabindex="0" data-tip="Diagonal state space model (Gu et al. 2022): complex diagonal A, trained as an FFT convolution, decoded as an O(1)-state recurrence.">S4D</span>,
+      <span class="term" tabindex="0" data-tip="Selective state space model (Gu &amp; Dao 2023): the transition, input and output matrices become functions of the input.">Mamba</span>,
+      <span class="term" tabindex="0" data-tip="Mamba-2 (Dao &amp; Gu 2024): scalar-identity transitions turn the selective scan into chunked block matmuls - State-Space Duality.">Mamba-2</span>,
+      <span class="term" tabindex="0" data-tip="Mamba-3 (2026): complex-valued diagonal transitions add rotation, restoring state-tracking abilities like parity.">Mamba-3 (complex)</span>
+      and a Transformer baseline. Parallel and recurrent forms are proven equivalent by tests; every number below is a committed measurement, not a paper claim.</p>
     <div class="chips">
       <span class="chip">Parity tracking: <b>98.3%</b> (Mamba-3) vs &le;<b>56.3%</b> for all real-transition baselines</span>
       <span class="chip">Selective copying: S4D collapses to <b>6.4%</b>; Mamba-1/2 reach <b>65&ndash;67%</b></span>
@@ -76,15 +139,43 @@
     </div>
   </div>
 
-  <section aria-labelledby="cap-h">
+  <section id="mechanism" aria-labelledby="mech-h">
+    <h2 id="mech-h">How each model reads a stream</h2>
+    <p class="sub">A simplified walkthrough of what each architecture <em>does</em> as tokens arrive &mdash;
+      <span class="badge badge-schematic">teaching schematic</span>, not a simulation of the real kernels.
+      Pick a model, then play or step through. The interesting differences: what the model <b>keeps</b> (state),
+      what it <b>filters</b> (selectivity), and how much compute each step costs.</p>
+    <div id="schem-wrap">
+      <div class="seg" id="schem-models" role="group" aria-label="choose a model schematic"></div>
+      <svg id="schem-svg" viewBox="0 0 720 210" role="img" aria-label="token stream schematic for the selected model"></svg>
+      <div id="schem-narr" aria-live="polite"></div>
+      <div class="schem-ctl">
+        <button id="schem-play" type="button" aria-pressed="false">Play</button>
+        <button id="schem-step" type="button">Step</button>
+        <button id="schem-prev" type="button">Back</button>
+        <button id="schem-reset" type="button">Reset</button>
+        <label class="note" style="margin:0" for="schem-speed">speed</label>
+        <select id="schem-speed" aria-label="schematic playback speed">
+          <option value="2">0.5x</option><option value="1" selected>1x</option><option value="0.5">2x</option>
+        </select>
+        <span class="mono" id="schem-pos" style="font-size:.8rem;color:var(--muted)"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="capability" aria-labelledby="cap-h">
     <h2 id="cap-h">Capability: where each architecture wins</h2>
     <p class="sub">Cumulative-parity tracking needs <em>rotation</em>; only complex, input-dependent transitions can
       represent it. Selective copying needs <em>gating</em>; LTI models cannot filter noise. Exact copying needs
       <em>memory that grows with length</em>, where attention dominates. The ranking flips with the task - that is the point.</p>
     <div class="grid">
-      <div class="card"><h3>Parity / state tracking (token accuracy)</h3>
+      <div class="card" id="card-parity"><h3>Parity / state tracking (token accuracy)</h3>
         <p class="note">Cumulative XOR, L=128, 20 epochs, matched budgets. Dashed line = chance (0.5).</p>
-        <div id="chart-parity"></div></div>
+        <div id="chart-parity"></div>
+        <div class="seg" id="parity-pick" role="group" aria-label="focus one model"></div>
+        <div id="parity-read"></div>
+        <button id="parity-why" type="button" class="chip" style="cursor:pointer;margin-top:8px">Explain this result</button>
+      </div>
       <div class="card"><h3>Selective copying</h3>
         <p class="note">Marker-value pairs in noise; train L=64 (3&ndash;5 pairs), test L=128 (5&ndash;10 pairs). Two bars per model: full-sequence success and token accuracy. Mamba-3 trades recall sharpness for state tracking at this budget - reported as measured.</p>
         <div id="chart-selcopy"></div></div>
@@ -97,11 +188,30 @@
     </div>
   </section>
 
-  <section aria-labelledby="eff-h">
+  <section id="task-flip" aria-labelledby="flip-h">
+    <h2 id="flip-h">Same models, different task: the ranking flips</h2>
+    <p class="sub">One of the study's central results. Switch the task and watch the ordering change &mdash;
+      no architecture dominates; the bottleneck (rotation / gating / linear memory) decides. <span class="badge badge-measured">measured result</span></p>
+    <div class="card">
+      <div class="seg" id="task-tabs" role="group" aria-label="choose the task"></div>
+      <div id="taskchart" aria-live="polite"></div>
+      <div id="taskread"></div>
+    </div>
+  </section>
+
+  <section id="efficiency" aria-labelledby="eff-h">
     <h2 id="eff-h">Efficiency vs sequence length (1K&ndash;32K)</h2>
     <p class="sub">Measured on this machine's 6&nbsp;GB RTX&nbsp;4050 (fp32, batch 8 for train-step charts, CUDA events, 5 repeats).
-      Toggle models to compare. &times; markers are <em>measured out-of-memory limits</em>, not missing data.</p>
+      Drag the slider to jump between <b>measured</b> lengths &mdash; every readout snaps to a committed data point; nothing in between is interpolated.
+      &times; markers are <em>measured out-of-memory limits</em>, not missing data.</p>
     <div class="legend" id="eff-legend" role="group" aria-label="toggle models on efficiency charts"></div>
+    <div class="card" style="margin-bottom:18px">
+      <label for="eff-slider" style="font-size:.9rem">Scrub the measured sequence lengths:</label>
+      <input id="eff-slider" type="range" min="0" max="5" step="1" value="0" style="width:100%;accent-color:var(--accent)"
+             aria-valuetext="1024 tokens">
+      <div id="eff-ticks" class="mono" style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted)"></div>
+      <div id="eff-read" class="chips" style="margin-top:10px" aria-live="polite"></div>
+    </div>
     <div class="grid">
       <div class="card"><h3>Training step time (ms, log-log)</h3><div id="chart-latency"></div></div>
       <div class="card"><h3>Peak training memory (MB)</h3><div id="chart-memory"></div></div>
@@ -112,13 +222,23 @@
     </div>
   </section>
 
-  <section aria-labelledby="meth-h">
-    <h2 id="meth-h">Methodology &amp; honesty notes</h2>
-    <div class="card" style="margin-top:14px">
+  <section id="method" aria-labelledby="meth-h">
+    <h2 id="meth-h">How was this measured?</h2>
+    <p class="sub">The benchmark is an experiment, not a stopwatch screenshot. Step through the actual protocol
+      implemented in <span class="mono">benchmarks/efficiency.py</span>: <span class="badge badge-measured">measured methodology</span></p>
+    <div class="card">
+      <div id="msteps"></div>
+      <div id="mstep-body"></div>
+      <div class="schem-ctl">
+        <button id="m-prev" type="button">Back</button>
+        <button id="m-next" type="button" class="primary" style="background:var(--accent);border-color:var(--accent);color:#fff">Next stage</button>
+        <button id="m-reset" type="button">Reset</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px">
       <ul style="margin:8px 0;padding-left:20px">
         <li>Correctness is tested, not asserted: S4D's FFT-convolution form equals its recurrent step form; Mamba-2's chunked SSD equals its sequential reference scan; Mamba-3 reduces to the Mamba-1/2 update when &lambda;=1 and rotation frequency is zero; decode paths equal parallel paths. Run: <code>python -m pytest tests/ -q</code></li>
         <li>Every figure on this page regenerates from committed JSON: <code>results/*.json</code>, <code>python demo-site/build.py</code>.</li>
-        <li>Measured hardware limits are recorded, not hidden: entries carry <code>oom: true</code> and appear as &times; markers. Windows WDDM shared-memory spill explains super-linear slowdowns near the limit.</li>
         <li>Theoretical O(T) and wall-clock are different claims; the python-loop scans are O(T) in operations but 10&ndash;100&times; slower in wall-clock - exactly why fused kernels and Mamba-2's matmul form exist.</li>
         <li>Full methodology, result tables and literature reproductions: <a href="https://github.com/vaibhav3000/s4-to-mamba/blob/main/reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf">technical report (PDF)</a> and the <a href="https://github.com/vaibhav3000/s4-to-mamba#readme">README</a>.</li>
       </ul>
@@ -129,9 +249,25 @@
     <div>Data: committed measurements from <span class="mono">results/</span> in
       <a href="https://github.com/vaibhav3000/s4-to-mamba">github.com/vaibhav3000/s4-to-mamba</a>,
       rendered by <span class="mono">demo-site/build.py</span> (regenerate after re-running experiments).
+      Charts and mechanism schematics are the only non-measured visuals; schematics are labeled as such.
       Environment: <span id="env-line" class="mono"></span>.</div>
   </footer>
 </main>
+
+<div id="tour-dim" aria-hidden="true"></div>
+<div id="tour-card" role="dialog" aria-modal="false" aria-label="guided tour">
+  <h4 id="tour-title"></h4>
+  <div class="body" id="tour-body"></div>
+  <div class="row">
+    <button id="tour-back" type="button">&larr; Back</button>
+    <button id="tour-play" type="button" aria-pressed="false">Play</button>
+    <button id="tour-next" type="button" class="primary">Next &rarr;</button>
+    <button id="tour-exit" type="button">Exit</button>
+    <label class="mono" for="tour-speed" style="font-size:.8rem;color:var(--muted)">speed</label>
+    <select id="tour-speed" aria-label="tour speed"><option value="2">0.5x</option><option value="1" selected>1x</option><option value="0.5">2x</option></select>
+    <span class="stepno" id="tour-pos"></span>
+  </div>
+</div>
 
 <script src="data.js"></script>
 <script>
@@ -139,6 +275,7 @@
 const DATA = window.DATA;
 const COLORS = {"transformer":"#0072B2","s4d":"#E69F00","mamba":"#009E73","mamba2":"#CC79A7","mamba3":"#D55E00"};
 const active = Object.fromEntries(DATA.models.map(m => [m.id, true]));
+const REDUCED = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function el(tag, attrs, parent){
   const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -152,6 +289,12 @@ function fmt(v){
   if (v >= 1000) return (v/1000).toFixed(1).replace(/\.0$/,"") + "k";
   if (v >= 10) return Math.round(v).toString();
   return (+v.toFixed(2)).toString();
+}
+function segButton(box, label, pressed, onClick){
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = label; b.setAttribute("aria-pressed", pressed ? "true" : "false");
+  b.addEventListener("click", () => onClick(b));
+  box.appendChild(b); return b;
 }
 
 /* vertical bar chart: one group of bars per model */
@@ -177,8 +320,9 @@ function barChart(id, getData, opts){
     vals.forEach((v, mi) => {
       if (v == null) return;
       const h = Math.max(0, Math.min(v,1.05)/1.05*plotH);
-      el("rect",{x:mL+gi*groupW+groupW*0.14+mi*gw, y:mT+plotH-h, width:gw*0.88, height:h,
+      const r = el("rect",{x:mL+gi*groupW+groupW*0.14+mi*gw, y:mT+plotH-h, width:gw*0.88, height:h,
                  fill:COLORS[m.id], opacity: mi===0?1:0.62, rx:2},svg);
+      if (opts.modelClass) r.setAttribute("data-model", m.id);
     });
     const lbl = el("text",{x:mL+gi*groupW+groupW/2, y:mT+plotH+16,"text-anchor":"middle","font-size":"10.5",fill:"var(--ink)"},svg);
     lbl.textContent = m.label.replace(" (SSD)","").replace(" (complex)","").replace(" (LTI)","");
@@ -196,8 +340,8 @@ function barChart(id, getData, opts){
   });
 }
 
-/* log-log line chart with OOM markers */
-function logLogChart(id, key, unit){
+/* log-log line chart with OOM markers and optional highlight line */
+function logLogChart(id, key, unit, highlightLen){
   const W=460, H=260, mL=52, mB=36, mT=30, mR=10;
   const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":key+" vs sequence length"});
   const box = document.getElementById(id); box.textContent=""; box.appendChild(svg);
@@ -206,8 +350,7 @@ function logLogChart(id, key, unit){
   const plotW=W-mL-mR, plotH=H-mT-mB;
   const X = T => mL + (Math.log10(T)-lx0)/(lx1-lx0)*plotW;
 
-  const pts = {};
-  const ooms = {};
+  const pts = {}; const ooms = {};
   DATA.efficiency.forEach(e => {
     if (!active[e.model]) return;
     if (e[key] != null){ (pts[e.model] = pts[e.model] || []).push([e.seq_len, e[key]]); }
@@ -248,6 +391,10 @@ function logLogChart(id, key, unit){
       el("text",{x:X(T),y:y,"font-size":"11","text-anchor":"middle",fill:COLORS[m.id]},svg).textContent="\u00d7";
     });
   });
+  if (highlightLen != null){
+    el("line",{x1:X(highlightLen),y1:mT,x2:X(highlightLen),y2:mT+plotH,stroke:"var(--ink)","stroke-width":1.4,"stroke-dasharray":"3 3"},svg);
+    el("circle",{cx:X(highlightLen),cy:mT+4,r:3.2,fill:"var(--ink)"},svg);
+  }
 }
 
 function buildLegend(){
@@ -255,26 +402,450 @@ function buildLegend(){
   DATA.models.forEach(m => {
     const b = document.createElement("button");
     b.setAttribute("aria-pressed","true");
-    b.innerHTML = `<span class="dot" style="background:${COLORS[m.id]}"></span>${m.label}`;
+    b.innerHTML = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:${COLORS[m.id]}"></span>${m.label}`;
     b.addEventListener("click", () => {
       active[m.id] = !active[m.id];
       b.setAttribute("aria-pressed", active[m.id] ? "true" : "false");
       b.style.opacity = active[m.id] ? "1" : ".45";
-      drawEfficiency();
+      drawEfficiency(sliderLen());
     });
     box.appendChild(b);
   });
 }
-function drawEfficiency(){
-  logLogChart("chart-latency","train_step_ms","train step (ms)");
-  logLogChart("chart-memory","peak_train_mb","peak memory (MB)");
-  logLogChart("chart-throughput","train_tokens_per_s","tokens / s");
-  logLogChart("chart-decode","decode_per_token_ms","per-token cost (ms)");
+function drawEfficiency(highlightLen){
+  logLogChart("chart-latency","train_step_ms","train step (ms)", highlightLen);
+  logLogChart("chart-memory","peak_train_mb","peak memory (MB)", highlightLen);
+  logLogChart("chart-throughput","train_tokens_per_s","tokens / s", highlightLen);
+  logLogChart("chart-decode","decode_per_token_ms","per-token cost (ms)", highlightLen);
 }
 
+/* ================= A. mechanism schematic ================= */
+const SCHEM = {
+  transformer: {
+    label: "Transformer",
+    steps: [
+      "Token n arrives. <b>Input</b>: the raw token embedding.",
+      "<b>Processing</b>: attention lets token n look back at <i>every</i> previous token - the whole prefix lights up. Cost grows with position (O(T\u00b2) pairs overall).",
+      "<b>State</b>: none besides the stored keys/values - 'memory' is the entire history, kept and re-read.",
+      "<b>Output</b>: a representation built by re-reading. Powerful, but every new token pays for the full prefix again.",
+    ],
+    draw: (svg, step) => {
+      schematicBase(svg);
+      const toks = svg.querySelectorAll(".tok");
+      if (step >= 1) toks[step-1] && toks[step-1].classList.add("on");
+      if (step >= 2) for (let i=0;i<8;i++){ toks[i].classList.add("attn"); }
+      setState(svg, "all previous tokens (KV cache)", step >= 3);
+      setOut(svg, "re-read + mix", step >= 4);
+    },
+  },
+  s4d: {
+    label: "S4D (LTI)",
+    steps: [
+      "Token n arrives at the input.",
+      "<b>Processing (training form)</b>: a fixed convolution kernel sweeps the sequence - the same shape at every position (LTI = transition never depends on the input).",
+      "<b>State</b>: equivalently, a small O(1) recurrent state h. Kernel sweep and state recurrence are <i>the same math</i> - the repo tests their equivalence.",
+      "<b>Output</b>: fixed-kernel mixing. Fast, but it cannot decide <i>which</i> tokens matter.",
+    ],
+    draw: (svg, step) => {
+      schematicBase(svg, 3); // kernel width 3
+      const toks = svg.querySelectorAll(".tok");
+      if (step >= 1) toks[step-1] && toks[step-1].classList.add("on");
+      if (step >= 2){ for (let i=Math.max(0,step-4); i<step; i++) toks[i] && toks[i].classList.add("attn"); }
+      setState(svg, "O(1) state h (complex)", step >= 3);
+      setOut(svg, "fixed-kernel mix", step >= 4);
+    },
+  },
+  mamba: {
+    label: "Mamba-1",
+    steps: [
+      "Token n arrives at the input.",
+      "<b>Processing</b>: a gate (silu branch) decides, <i>per token</i>, how much enters the state - selectivity is the point.",
+      "<b>State</b>: the selective recurrence keeps only what the gate let through - O(1) memory that chooses what to remember.",
+      "<b>Output</b>: gated read-out. This is what lets Mamba-1/2 beat LTI models on selective copying.",
+    ],
+    draw: (svg, step) => {
+      schematicBase(svg);
+      const toks = svg.querySelectorAll(".tok");
+      const keep = [1,0,1,1,0,1,0,1]; // schematic gate pattern
+      if (step >= 1) toks[step-1] && toks[step-1].classList.add("on");
+      if (step >= 2){ for (let i=0;i<step;i++){ toks[i].classList.add(keep[i]?"keep":"drop"); } }
+      setState(svg, "O(1) selective state", step >= 3);
+      setOut(svg, "gated read-out", step >= 4);
+    },
+  },
+  mamba2: {
+    label: "Mamba-2 (SSD)",
+    steps: [
+      "Token n arrives.",
+      "<b>Chunked processing</b>: tokens are processed in blocks - within a chunk the scan becomes a small attention-like matmul (tensor-core friendly).",
+      "<b>State</b>: only a small (N,P) state crosses each chunk boundary - that hand-off is the whole trick.",
+      "<b>Output</b>: chunk-internal matmul + carried state = same recurrence, far better wall-clock.",
+    ],
+    draw: (svg, step) => {
+      schematicBase(svg, 0, 2); // chunk size 2 tokens per chunk
+      const toks = svg.querySelectorAll(".tok");
+      if (step >= 1) toks[step-1] && toks[step-1].classList.add("on");
+      if (step >= 2){ for (let i=0;i<step;i++) toks[i].classList.add("attn"); }
+      setState(svg, "small (N,P) state per chunk", step >= 3);
+      setOut(svg, "chunk matmul + carry", step >= 4);
+    },
+  },
+  mamba3: {
+    label: "Mamba-3 (complex)",
+    steps: [
+      "Token n arrives.",
+      "<b>Processing</b>: like Mamba-1/2, but the transition is complex-valued - the state can <i>rotate</i>, not just decay.",
+      "<b>State</b>: the state cell is a phasor: magnitude decays (<1, stable) while the phase rotates by an input-dependent angle.",
+      "<b>Output</b>: rotations encode state tracking - this is exactly the mechanism that solves parity (98.3% measured).",
+    ],
+    draw: (svg, step) => {
+      schematicBase(svg);
+      const toks = svg.querySelectorAll(".tok");
+      if (step >= 1) toks[step-1] && toks[step-1].classList.add("on");
+      if (step >= 2) for (let i=0;i<step;i++) toks[i].classList.add("keep");
+      setState(svg, "complex phasor h (rotates + decays)", step >= 3, step >= 3 ? step : 0);
+      setOut(svg, "rotation-aware read-out", step >= 4);
+    },
+  },
+};
+let schemModel = "mamba3", schemStep = 0, schemTimer = null, schemSpeed = 1;
+
+function schematicBase(svg, kernelWidth = 0, chunkSize = 0){
+  svg.textContent = "";
+  const labels = ["t1","t2","t3","t4","t5","t6","t7","t8"];
+  labels.forEach((t,i) => {
+    const x = 16 + i*56;
+    const g = el("g",{},svg);
+    const c = el("rect",{x, y:24, width:44, height:34, rx:5, class:"tok"},g);
+    const tx = el("text",{x:x+22, y:46, "text-anchor":"middle", "font-size":"12", fill:"var(--muted)"},g);
+    tx.textContent = t;
+    if (chunkSize && i % chunkSize === 0 && i < 8){
+      const w = Math.min(chunkSize, 8-i)*56 - 12;
+      el("rect",{x:x-6, y:18, width:w, height:46, rx:7, fill:"none", stroke:"var(--accent-soft)", "stroke-width":2.5, "stroke-dasharray":"4 3"},svg);
+    }
+  });
+  if (kernelWidth){
+    el("text",{x:16, y:76, "font-size":"10", fill:"var(--muted)"},svg).textContent = "fixed kernel (same shape at every position)";
+  }
+  if (chunkSize){
+    el("text",{x:16, y:76, "font-size":"10", fill:"var(--muted)"},svg).textContent = "chunks: intra-chunk matmul, small state crosses the boundary";
+  }
+  // model block
+  el("rect",{x:130, y:96, width:460, height:44, rx:8, class:"blk", id:"schem-blk"},svg);
+  const bt = el("text",{x:360, y:123, "text-anchor":"middle", "font-size":"13", fill:"var(--ink)"},svg);
+  bt.textContent = SCHEM[schemModel].label + " block";
+  // state cell
+  el("rect",{x:614, y:96, width:92, height:44, rx:8, fill:"var(--accent-soft)", stroke:"var(--accent)"},svg);
+  const st = el("text",{x:660, y:113, "text-anchor":"middle", "font-size":"10", fill:"var(--accent)", id:"schem-state-t1"},svg);
+  st.textContent = "state h";
+  const st2 = el("text",{x:660, y:128, "text-anchor":"middle", "font-size":"9", fill:"var(--accent)", id:"schem-state-t2"},svg);
+  st2.textContent = "";
+  // output
+  el("rect",{x:296, y:160, width:128, height:34, rx:8, fill:"var(--panel)", stroke:"var(--line)", id:"schem-out"},svg);
+  const ot = el("text",{x:360, y:182, "text-anchor":"middle", "font-size":"11", fill:"var(--muted)", id:"schem-out-t"},svg);
+  ot.textContent = "output";
+  // arrows
+  el("path",{d:"M360 68 L360 94", stroke:"var(--muted)","marker-end":"url(#arr)"},svg);
+  el("path",{d:"M590 118 L612 118", stroke:"var(--muted)","marker-end":"url(#arr)"},svg);
+  el("path",{d:"M360 142 L360 158", stroke:"var(--muted)","marker-end":"url(#arr)"},svg);
+  const defs = el("defs",{},svg);
+  const marker = el("marker",{id:"arr", markerWidth:"8", markerHeight:"8", refX:"6", refY:"3", orient:"auto"},defs);
+  el("path",{d:"M0 0 L6 3 L0 6 Z", fill:"var(--muted)"},marker);
+}
+function setState(svg, text, on, rotStep){
+  const r = svg.querySelector("#schem-state-t2");
+  r.textContent = on ? text : "";
+  const phasor = svg.querySelector("#schem-phasor");
+  if (phasor) phasor.remove();
+  if (on && rotStep != null){
+    const cx=660, cy=104, ang=(rotStep%8)*(Math.PI/4), L=26;
+    const g = el("g",{id:"schem-phasor"},svg);
+    el("line",{x1:cx,y1:cy,x2:cx+L*Math.cos(ang),y2:cy+L*Math.sin(ang),stroke:"var(--accent)","stroke-width":2.4},g);
+    el("circle",{cx:cx,cy:cy,r:3,fill:"var(--accent)"},g);
+  }
+}
+function setOut(svg, text, on){
+  const o = svg.querySelector("#schem-out"), t = svg.querySelector("#schem-out-t");
+  o.setAttribute("stroke", on ? "var(--accent)" : "var(--line)");
+  t.textContent = text;
+  t.setAttribute("fill", on ? "var(--accent)" : "var(--muted)");
+}
+function schemRender(){
+  const svg = document.getElementById("schem-svg");
+  svg.querySelectorAll(".tok").forEach(t => t.classList.remove("on","attn","keep","drop"));
+  SCHEM[schemModel].draw(svg, schemStep);
+  // per-class styling applied after draw
+  svg.querySelectorAll(".tok.attn").forEach(t => t.setAttribute("stroke","var(--accent)"));
+  svg.querySelectorAll(".tok.keep").forEach(t => t.setAttribute("fill","var(--accent-soft)"));
+  svg.querySelectorAll(".tok.drop").forEach(t => t.setAttribute("opacity","0.35"));
+  document.getElementById("schem-narr").innerHTML =
+    (schemStep === 0
+      ? "Press <b>Play</b> or <b>Step</b> to walk one token through the " + SCHEM[schemModel].label + " layer."
+      : `<b>Step ${schemStep}/4:</b> ` + SCHEM[schemModel].steps[schemStep-1]);
+  document.getElementById("schem-pos").textContent = `step ${schemStep}/4`;
+  document.getElementById("schem-step").disabled = schemStep >= 4;
+}
+function schemBuildTabs(){
+  const box = document.getElementById("schem-models");
+  Object.keys(SCHEM).forEach(id => segButton(box, SCHEM[id].label, id === schemModel, (b) => {
+    schemModel = id; schemStep = 0; stopSchem();
+    [...box.children].forEach(c => c.setAttribute("aria-pressed", c === b ? "true" : "false"));
+    schemRender();
+  }));
+}
+function stopSchem(){ if (schemTimer){ clearInterval(schemTimer); schemTimer = null;
+  const p = document.getElementById("schem-play"); p.textContent = "Play"; p.setAttribute("aria-pressed","false"); } }
+function schemPlayToggle(){
+  if (schemTimer){ stopSchem(); return; }
+  const p = document.getElementById("schem-play");
+  p.textContent = "Pause"; p.setAttribute("aria-pressed","true");
+  schemTimer = setInterval(() => {
+    if (schemStep >= 4){ stopSchem(); return; }
+    schemStep++; schemRender();
+  }, 1600 * schemSpeed);
+}
+document.getElementById("schem-play").addEventListener("click", schemPlayToggle);
+document.getElementById("schem-step").addEventListener("click", () => { stopSchem(); if (schemStep<4) schemStep++; schemRender(); });
+document.getElementById("schem-prev").addEventListener("click", () => { stopSchem(); schemStep = Math.max(0, schemStep-1); schemRender(); });
+document.getElementById("schem-reset").addEventListener("click", () => { stopSchem(); schemStep = 0; schemRender(); });
+document.getElementById("schem-speed").addEventListener("change", (e) => { schemSpeed = +e.target.value; });
+
+/* ================= B. parity explorer ================= */
+let parityFocus = null;
+function buildParityPick(){
+  const box = document.getElementById("parity-pick");
+  DATA.models.forEach(m => segButton(box, m.label, false, (b) => {
+    parityFocus = parityFocus === m.id ? null : m.id;
+    [...box.children].forEach(c => c.setAttribute("aria-pressed", "false"));
+    b.setAttribute("aria-pressed", parityFocus ? "true" : "false");
+    renderParity();
+  }));
+}
+function renderParity(){
+  const svg = document.getElementById("chart-parity").querySelector("svg");
+  if (!svg) return;
+  svg.querySelectorAll("rect[data-model]").forEach(r => {
+    r.style.opacity = (!parityFocus || r.getAttribute("data-model") === parityFocus) ? "" : ".18";
+  });
+  const v = DATA.parity[parityFocus];
+  const box = document.getElementById("parity-read");
+  if (!v){ box.innerHTML = "<p class='note' style='margin:8px 0 0'>Click a model to focus its measured bar and read the interpretation.</p>"; return; }
+  const gap = (v.token_accuracy - 0.5);
+  const interp = {
+    mamba3: "Complex, input-dependent transitions rotate the state - the operation cumulative parity requires. <b>Only</b> this model clears chance, reproducing the Mamba-3 paper's capability claim.",
+    mamba2: "Scalar real transitions can only decay the state - they cannot rotate it, so parity is out of reach at this budget.",
+    mamba:  "Same story as Mamba-2: real non-negative transitions = decay-only dynamics.",
+    s4d:    "Complex but <i>LTI</i> transitions: the rotation is fixed, not input-dependent - it cannot respond to each bit, so it stays at chance.",
+    transformer: "Attention re-reads the prefix, but at this matched budget it does not induce the parity circuit - measured at chance.",
+  }[parityFocus];
+  box.innerHTML = `
+    <div class="chips" style="margin:8px 0 0">
+      <span class="chip"><span class="badge badge-measured">measured</span> token accuracy: <b>${(+v.token_accuracy).toFixed(3)}</b></span>
+      <span class="chip">gap to chance: <b>${gap >= 0 ? "+" : ""}${gap.toFixed(3)}</b></span>
+    </div>
+    <p class="note" style="margin-top:8px">${interp}</p>`;
+}
+document.getElementById("parity-why").addEventListener("click", () => {
+  startTour(TOURS.parity);
+});
+
+/* ================= D. task formulation switcher ================= */
+const TASKS = {
+  parity:   { label: "Parity (state tracking)", metric: "token accuracy",
+              get: id => (DATA.parity[id]||{}).token_accuracy, note: "Cumulative XOR, test L=128. Rotation wins." },
+  selcopy:  { label: "Selective copy", metric: "full-sequence success (test L=128)",
+              get: id => (DATA.selective_copy[id]||{}).sequence_success, note: "Keep k pairs, filter noise. Selective gating wins; LTI collapses." },
+  exact:    { label: "Exact copy (in-dist L=32)", metric: "full-sequence success (in-dist L=32)",
+              get: id => (DATA.exact_copy_in_dist[id]||{}).sequence_success, note: "Reproduce every token. Attention's re-reading wins; fixed-state SSMs collapse." },
+};
+let curTask = "parity";
+function renderTaskChart(){
+  const box = document.getElementById("taskchart");
+  const t = TASKS[curTask];
+  const rows = DATA.models.map(m => ({ id: m.id, label: m.label, v: t.get(m.id) }))
+                         .filter(r => r.v != null)
+                         .sort((a,b) => b.v - a.v);
+  // FLIP: capture positions before the reorder so the ranking change animates
+  const prev = new Map([...box.children].map(c => [c.dataset.model, c.getBoundingClientRect()]));
+  rows.forEach((r, rank) => {
+    let d = box.querySelector(`[data-model="${r.id}"]`);
+    if (!d){
+      d = document.createElement("div");
+      d.className = "taskbar"; d.dataset.model = r.id;
+      d.innerHTML = `<span class="v"></span><div class="fill" style="height:0%;background:${COLORS[r.id]}"></div><span class="l"></span>`;
+      box.appendChild(d);
+    }
+    d.style.order = rank;
+    d.querySelector(".v").textContent = (+r.v).toFixed(3);
+    d.querySelector(".fill").style.height = (Math.max(0, Math.min(1, r.v)) * 100) + "%";
+    d.querySelector(".l").textContent = r.label.replace(" (SSD)","").replace(" (complex)","").replace(" (LTI)","");
+  });
+  [...box.children].forEach(c => { if (!rows.some(r => r.id === c.dataset.model)) c.remove(); });
+  if (!REDUCED){
+    [...box.children].forEach(c => {
+      const before = prev.get(c.dataset.model);
+      if (!before) return;
+      const now = c.getBoundingClientRect();
+      const dx = before.left - now.left;
+      if (Math.abs(dx) > 1){
+        c.style.transition = "none"; c.style.transform = `translateX(${dx}px)`;
+        requestAnimationFrame(() => { c.style.transition = "transform .45s ease"; c.style.transform = ""; });
+      }
+    });
+  }
+  const chips = rows.map((r, i) => {
+    const cls = i === 0 && r.v > 0 ? "best" : (r.v === 0 ? "bad" : "");
+    return `<span class="readchip ${cls}">${i+1}. ${r.label.replace(" (SSD)","").replace(" (complex)","").replace(" (LTI)","")} = ${(+r.v).toFixed(3)}</span>`;
+  }).join("");
+  document.getElementById("taskread").innerHTML =
+    `<p class="note" style="margin:8px 0 4px">${t.note} <span class="badge badge-measured">measured</span> metric: ${t.metric}</p><div class="chips" style="margin:0">${chips}</div>`;
+}
+function buildTaskTabs(){
+  const box = document.getElementById("task-tabs");
+  Object.keys(TASKS).forEach(id => segButton(box, TASKS[id].label, id === curTask, (b) => {
+    curTask = id;
+    [...box.children].forEach(c => c.setAttribute("aria-pressed", c === b ? "true" : "false"));
+    renderTaskChart();
+  }));
+}
+
+/* ================= C. efficiency scrubber ================= */
+const LEN_KEYS = ["1024","2048","4096","8192","16384","32768"];
+function sliderLen(){ return +LEN_KEYS[+document.getElementById("eff-slider").value]; }
+function renderEffRead(len){
+  const byModel = {};
+  DATA.efficiency.forEach(e => { if (+e.seq_len === len) byModel[e.model] = e; });
+  const chip = (m) => {
+    const e = byModel[m.id];
+    if (!e) return "";
+    const oom = e.oom || e.oom_train;
+    return `<span class="readchip ${oom ? "bad" : ""}"><b style="color:${COLORS[m.id]}">${m.label.replace(" (SSD)","").replace(" (complex)","").replace(" (LTI)","")}</b>: ` +
+      (oom ? "measured OOM at this configuration"
+           : `${fmt(e.train_step_ms)} ms train &middot; ${fmt(e.peak_train_mb)} MB &middot; ${fmt(e.train_tokens_per_s)} tok/s`) + `</span>`;
+  };
+  document.getElementById("eff-read").innerHTML =
+    DATA.models.map(chip).join("") +
+    `<span class="readchip">decode/token: ${DATA.models.map(m => {
+       const e = byModel[m.id]; return e && e.decode_per_token_ms != null ? `${fmt(e.decode_per_token_ms)} ms` : null;
+     }).filter(Boolean).join(" / ") || "-"}</span>`;
+  const s = document.getElementById("eff-slider");
+  s.setAttribute("aria-valuetext", len + " tokens");
+  drawEfficiency(len);
+}
+document.getElementById("eff-slider").addEventListener("input", () => renderEffRead(sliderLen()));
+(function buildTicks(){
+  const box = document.getElementById("eff-ticks");
+  LEN_KEYS.forEach(k => { const s = document.createElement("span"); s.textContent = (+k/1024)+"K"; box.appendChild(s); });
+})();
+
+/* ================= E. measurement stepper ================= */
+const MSTEPS = [
+  ["Warm-up", "Each (model, length) configuration runs untouched first - the first executions pay one-time costs (kernel compilation, caching) that would poison the numbers. They are discarded."],
+  ["CUDA events", "Timing uses CUDA events recorded on the GPU around the measured region - not host wall-clock - so kernel-launch jitter on the CPU side does not pollute the measurement."],
+  ["Repeats", "Every measurement is repeated 5 times; the reported number is the mean (std is kept in the committed JSON). One lucky run is not a benchmark."],
+  ["Peak-memory reset", "Before each training-step measurement, peak-memory stats are reset, then the true allocation peak of that step is read back - memory is measured, not estimated."],
+  ["Aggregation & limits", "Means land in results/efficiency_gpu.json with the GPU identifier and date. Configurations that exceed the 6 GB card are recorded as oom:true - a measured hardware limit is data, not missing data."],
+];
+let mStep = 0;
+function renderMStep(){
+  const box = document.getElementById("msteps");
+  box.innerHTML = MSTEPS.map((s,i) =>
+    `<span class="m ${i===mStep?"on":(i<mStep?"done":"")}">${i+1}. ${s[0]}</span>`).join("");
+  document.getElementById("mstep-body").innerHTML = `<b>${MSTEPS[mStep][0]}.</b> ${MSTEPS[mStep][1]}`;
+  document.getElementById("m-next").disabled = mStep >= MSTEPS.length-1;
+}
+document.getElementById("m-next").addEventListener("click", () => { mStep = Math.min(MSTEPS.length-1, mStep+1); renderMStep(); });
+document.getElementById("m-prev").addEventListener("click", () => { mStep = Math.max(0, mStep-1); renderMStep(); });
+document.getElementById("m-reset").addEventListener("click", () => { mStep = 0; renderMStep(); });
+
+/* ================= guided tour engine ================= */
+let tour = null, tourIdx = 0, tourTimer = null, tourSpeed = 1;
+const tourDim = document.getElementById("tour-dim");
+const tourCard = document.getElementById("tour-card");
+function tourShow(i){
+  tourIdx = Math.max(0, Math.min(i, tour.steps.length-1));
+  const st = tour.steps[tourIdx];
+  document.querySelectorAll(".tour-hi").forEach(e => { e.classList.remove("tour-hi"); e.removeAttribute("data-tour-open"); });
+  tourDim.style.display = "block";
+  tourCard.style.display = "block";
+  document.getElementById("tour-title").textContent = st.title;
+  document.getElementById("tour-body").innerHTML = st.html;
+  document.getElementById("tour-pos").textContent = `step ${tourIdx+1} / ${tour.steps.length}`;
+  document.getElementById("tour-back").disabled = tourIdx === 0;
+  document.getElementById("tour-next").disabled = tourIdx >= tour.steps.length-1;
+  if (st.onEnter) try { st.onEnter(); } catch(e) { /* tour must not break the page */ }
+  if (st.el){
+    const t = typeof st.el === "function" ? st.el() : document.querySelector(st.el);
+    if (t){ t.classList.add("tour-hi");
+      if (!REDUCED) t.scrollIntoView({behavior:"smooth", block:"center"});
+      else t.scrollIntoView({block:"center"}); }
+  }
+}
+function tourStop(){
+  if (tourTimer){ clearInterval(tourTimer); tourTimer = null; }
+  const p = document.getElementById("tour-play"); p.textContent = "Play"; p.setAttribute("aria-pressed","false");
+}
+function tourClose(){
+  tourStop(); tour = null;
+  tourDim.style.display = "none"; tourCard.style.display = "none";
+  document.querySelectorAll(".tour-hi").forEach(e => e.classList.remove("tour-hi"));
+}
+function startTour(def){
+  if (tour) tourClose();
+  tour = def; tourShow(0);
+  if (!REDUCED) tourPlayToggle();
+}
+function tourPlayToggle(){
+  if (tourTimer){ tourStop(); return; }
+  const p = document.getElementById("tour-play");
+  p.textContent = "Pause"; p.setAttribute("aria-pressed","true");
+  tourTimer = setInterval(() => {
+    if (!tour || tourIdx >= tour.steps.length-1){ tourStop(); return; }
+    tourShow(tourIdx+1);
+  }, 4200 * tourSpeed);
+}
+document.getElementById("tour-open").addEventListener("click", () => startTour(TOURS.main));
+document.getElementById("tour-next").addEventListener("click", () => { tourStop(); tourShow(tourIdx+1); });
+document.getElementById("tour-back").addEventListener("click", () => { tourStop(); tourShow(tourIdx-1); });
+document.getElementById("tour-exit").addEventListener("click", tourClose);
+document.getElementById("tour-play").addEventListener("click", tourPlayToggle);
+document.getElementById("tour-speed").addEventListener("change", e => { tourSpeed = +e.target.value; });
+
+const TOURS = {
+  main: { steps: [
+    { title: "What this page is", el: ".hero", html: "Five sequence architectures, implemented from first principles in pure PyTorch, tested for mathematical equivalence, and benchmarked on one machine. Every chart is committed measurement - the tour shows the mechanisms behind the numbers." },
+    { title: "The mechanism, one token at a time", el: "#schem-wrap", html: "This schematic walks a token through each architecture: what is input, what is kept in state, what is filtered. Switch models to feel the difference between attention, fixed (LTI) recurrence, selective recurrence, chunked SSD and complex rotation. <span class='badge badge-schematic'>teaching schematic</span>" },
+    { title: "Capability: parity", el: "#card-parity", html: "Cumulative parity needs the state to <i>rotate</i>. Click a model under the chart, then 'Explain this result' for a step-by-step interpretation of the measured 98.3% vs the chance-level rest." },
+    { title: "Capability: the ranking flips", el: "#task-flip", html: "Switch between Parity / Selective copy / Exact copy and watch the same five models reorder. The lesson: no architecture dominates - the task's bottleneck does." },
+    { title: "Efficiency, scrubbed", el: "#efficiency", html: "Drag the slider to jump between the six <b>measured</b> lengths (1K-32K). Every chart highlights the same point; OOM entries read as 'measured OOM at this configuration'. Nothing between points is interpolated." },
+    { title: "How the number was made", el: "#method", html: "Warm-up, CUDA events, 5 repeats, peak-memory reset, aggregation - step through the protocol in the 'How was this measured?' card. Then it's yours to explore; keyboard: Space play/pause, arrows step, R resets an active player." },
+  ]},
+  parity: { steps: [
+    { title: "1. The task", el: "#card-parity", html: "<b>Cumulative parity:</b> at every position t, output the XOR of all bits so far. One flipped bit flips the answer - the state must encode exact parity, not an average." },
+    { title: "2. What the mechanism needs", el: "#schem-wrap", html: "Encoding parity = the state must rotate by \u03c0 on every 1-bit and hold still on 0. Real decaying transitions cannot do that; a complex transition can. This is the mechanism the measured result hinges on. <span class='badge badge-schematic'>teaching schematic</span>" },
+    { title: "3. Prediction behavior", el: "#card-parity", html: "Four of five models sit at the 0.5 chance line - their predictions carry no information about parity. Only the complex-transition model learned the function." },
+    { title: "4. The measurement", el: "#card-parity", html: "Mamba-3: <b>98.3%</b> token accuracy (measured, 20 epochs, matched budget). Mamba-2 56.3%, Mamba-1 55.9%, Transformer 53.3%, S4D 50.6% - all chance-level." },
+    { title: "5. Interpretation", el: "#card-parity", html: "This reproduces the Mamba-3 paper's capability claim from first principles: complex-valued, input-dependent transitions restore state tracking that real-transition SSMs provably lack. Note S4D is complex too but <i>LTI</i> - the rotation must respond to each bit." },
+  ]},
+};
+
+/* keyboard: tour keys when open; R/space guarded globally */
+document.addEventListener("keydown", (e) => {
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "select" || tag === "textarea") return;
+  if (tour){
+    if (e.key === " "){ e.preventDefault(); tourPlayToggle(); }
+    else if (e.key === "ArrowRight"){ e.preventDefault(); tourStop(); tourShow(tourIdx+1); }
+    else if (e.key === "ArrowLeft"){ e.preventDefault(); tourStop(); tourShow(tourIdx-1); }
+    else if (e.key.toLowerCase() === "r"){ tourStop(); tourShow(0); }
+    else if (e.key === "Escape"){ tourClose(); }
+  }
+});
+
+/* ================= init ================= */
 buildLegend();
 barChart("chart-parity", id => { const v = DATA.parity[id]; return v ? [v.token_accuracy] : null; },
-         {metrics:["token accuracy"], chance:0.5, chanceLabel:"chance (0.5)", label:"Parity token accuracy by model"});
+         {metrics:["token accuracy"], chance:0.5, chanceLabel:"chance (0.5)", label:"Parity token accuracy by model", modelClass:true});
 barChart("chart-selcopy", id => { const v = DATA.selective_copy[id]; return v ? [v.sequence_success, v.token_accuracy] : null; },
          {metrics:["sequence success (test L=128)","token accuracy"], label:"Selective copying by model"});
 barChart("chart-exact", id => { const v = DATA.exact_copy_in_dist[id]; return v ? [v.sequence_success] : null; },
@@ -282,7 +853,11 @@ barChart("chart-exact", id => { const v = DATA.exact_copy_in_dist[id]; return v 
 barChart("chart-imdb", id => { const v = DATA.imdb[id]; return v ? [v.accuracy, v.auc] : null; },
          {metrics:["accuracy","AUC"], label:"IMDb accuracy and AUC"});
 drawEfficiency();
-
+buildParityPick(); renderParity();
+buildTaskTabs(); renderTaskChart();
+schemBuildTabs(); schemRender();
+renderEffRead(1024);
+renderMStep();
 document.getElementById("env-line").textContent =
   `${DATA.environment.gpu || "cpu"}, torch ${DATA.environment.torch}, measured ${DATA.environment.date}`;
 </script>

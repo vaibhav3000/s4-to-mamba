@@ -14,3 +14,6 @@ Thumbs.db
 
 # Intentionally tracked: results/, figures/, experiments.log
 # (committed benchmark JSONs and logs are part of the record)
+
+# demo-site e2e
+node_modules/

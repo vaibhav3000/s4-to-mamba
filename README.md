@@ -258,4 +258,35 @@ parameterization conventions; no code was copied.
 
 ## License
 
+
+
+
 MIT.
+
+
+## Visual Benchmark Results
+
+| Forward/Backward Latency (1K-32K) | Peak GPU Memory Scaling (1K-32K) |
+| :---: | :---: |
+| ![Latency Scaling](figures/fig_efficiency_latency.png) | ![Memory Scaling](figures/fig_efficiency_memory.png) |
+
+| Training Throughput (tokens/s) | Autoregressive Decode Step Time |
+| :---: | :---: |
+| ![Throughput](figures/fig_efficiency_throughput.png) | ![Decode Efficiency](figures/fig_efficiency_decode.png) |
+
+| Even-Parity Tracking (Mamba-3 Complex SSM) | Selective Copying Task |
+| :---: | :---: |
+| ![Parity Tracking](figures/fig_parity.png) | ![Selective Copying](figures/fig_exact_copy.png) |
+
+| IMDb Classification Accuracy | Training Learning Curves |
+| :---: | :---: |
+| ![IMDb Quality](figures/fig_imdb_quality.png) | ![Learning Curves](figures/fig_learning_curves.png) |
+
+## Docker Reproducibility
+
+Run the 22 mathematical equivalence unit tests (`<1e-6` parallel vs. sequential scan tolerance) in an isolated Docker container:
+
+```bash
+docker build -t s4-to-mamba .
+docker run --rm s4-to-mamba
+```

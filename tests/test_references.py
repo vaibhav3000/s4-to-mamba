@@ -15,6 +15,7 @@ Tolerances are explicit in every test:
 
 from __future__ import annotations
 
+import cmath
 import copy
 import math
 from collections.abc import Callable
@@ -323,22 +324,27 @@ def test_mamba3_lambda_one_is_complex_exponential_euler() -> None:
     torch.testing.assert_close(y, torch.stack(ys, dim=1), **FP64)
 
 
+@pytest.mark.parametrize("theta", [0.0, 3.0], ids=["real", "rotating"])
 @pytest.mark.parametrize(
     ("lam_value", "expected_ratio"),
     [pytest.param(0.5, 4.0, id="trapezoidal"), pytest.param(1.0, 2.0, id="exp-euler")],
 )
-def test_mamba3_discretization_order(lam_value: float, expected_ratio: float) -> None:
-    """Integrate h' = a h + sin(t), h(0) = 0, on [0, 2] with the Mamba-3 recurrence
-    (one head, one slot, B = C = 1, theta = 0, constant step). Halving the step must
-    cut the end-point error about 4x for lambda = 1/2 (trapezoidal, second order)
-    and about 2x for lambda = 1 (exponential Euler, first order). float64;
-    accepted ratio window: expected value +/- 12%."""
-    a, t_end = -0.5, 2.0
-    exact = (-a * math.sin(t_end) - math.cos(t_end) + math.exp(a * t_end)) / (1.0 + a * a)
+def test_mamba3_discretization_order(lam_value: float, expected_ratio: float, theta: float) -> None:
+    """Integrate h' = p h + sin(t), h(0) = 0, p = -0.5 + i theta, on [0, 2] with the
+    Mamba-3 recurrence (one head, one slot, B = C = 1, constant step); the readout is
+    Re(h) = Re((e^{p t} - cos t - p sin t) / (1 + p^2)). Halving the step must cut the
+    end-point error about 4x for lambda = 1/2 (trapezoidal, second order) and about
+    2x for lambda = 1 (exponential Euler, first order), with and without rotation.
+    float64; accepted ratio window: expected value +/- 12%."""
+    pole, t_end = complex(-0.5, theta), 2.0
+    exact_complex = (cmath.exp(pole * t_end) - math.cos(t_end) - pole * math.sin(t_end)) / (
+        1.0 + pole * pole
+    )
+    exact = exact_complex.real
     block = Mamba3Block(d_model=1, d_state=1, headdim=1, expand=1).double()
     with torch.no_grad():
-        block.a_real_log.fill_(math.log(-a))
-        block.theta.zero_()
+        block.a_real_log.fill_(math.log(-pole.real))
+        block.theta.fill_(theta)
 
     def end_error(step: float) -> float:
         n = round(t_end / step)

@@ -109,7 +109,7 @@ class Mamba2Block(nn.Module):
 
         Returns:
             x_h: (B, T, H, P)
-            alpha: (B, T, H) = exp(delta * A)
+            log_alpha: (B, T, H) = delta * A <= 0, the log of the per-head decay alpha
             Bx: (B, T, H, N)  the state input delta_t * B_t; head h reads group h // (H/G)
             C_h: (B, T, H, N)
         """
@@ -121,12 +121,12 @@ class Mamba2Block(nn.Module):
         )
         delta = F.softplus(self.dt_proj(dt))  # (B, T, H)
         A = -torch.exp(self.A_log.to(scan_dtype(delta)))  # (H,)
-        alpha = torch.exp(delta * A)  # (B, T, H)
+        log_alpha = delta * A  # (B, T, H); alpha = exp(log_alpha)
         B_h = expand_groups_to_heads(B, self.n_groups, self.n_heads)  # (B, T, H, N)
         C_h = expand_groups_to_heads(C, self.n_groups, self.n_heads)  # (B, T, H, N)
         Bx = B_h * delta.unsqueeze(-1)  # state input = delta * B (gamma_t * B_t)
         x_h = x.view(*x.shape[:-1], self.n_heads, self.headdim)
-        return x_h, alpha, Bx, C_h
+        return x_h, log_alpha, Bx, C_h
 
     # -------------------- sequential reference --------------------
 
@@ -154,7 +154,12 @@ class Mamba2Block(nn.Module):
     # -------------------- chunked SSD --------------------
 
     def chunked_scan(
-        self, x_h: torch.Tensor, alpha: torch.Tensor, Bx: torch.Tensor, C_h: torch.Tensor
+        self,
+        x_h: torch.Tensor,
+        alpha: torch.Tensor | None,
+        Bx: torch.Tensor,
+        C_h: torch.Tensor,
+        log_alpha: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Chunked SSD algorithm, computed in scan_dtype(...) (float32, or float64).
 
@@ -166,14 +171,24 @@ class Mamba2Block(nn.Module):
 
         L_{ts} = prod_{r=s+1..t} alpha_r; alpha_prefix/suffix are within-chunk
         cumulative decay products computed via a cumsum of log alpha.
+
+        Pass log_alpha = delta * A (what forward() does) so tiny decays keep their
+        exact value and gradient. Passing alpha instead takes its log, floored at
+        the dtype's smallest normal number only to avoid log(0).
         """
         Bsz, T, H, P = x_h.shape
         N, Csz = self.d_state, self.chunk_size
-        dtype = scan_dtype(x_h, alpha, Bx, C_h)
+        if log_alpha is None:
+            if alpha is None:
+                raise ValueError("chunked_scan needs alpha or log_alpha")
+            dtype = scan_dtype(x_h, alpha, Bx, C_h)
+            log_alpha = torch.log(alpha.to(dtype).clamp_min(torch.finfo(dtype).tiny))
+        else:
+            dtype = scan_dtype(x_h, log_alpha, Bx, C_h)
+            log_alpha = log_alpha.to(dtype)
         x_f = x_h.to(dtype)
         B_f = Bx.to(dtype)
         C_f = C_h.to(dtype)
-        log_alpha = torch.log(alpha.to(dtype).clamp_min(1e-12))
 
         pad = (-T) % Csz
         if pad:
@@ -232,9 +247,11 @@ class Mamba2Block(nn.Module):
         x_conv = self.conv1d(x_conv)[..., :T].transpose(1, 2)
         x_conv = F.silu(x_conv)
 
-        x_h, alpha, Bx, C_h = self._scan_inputs(x_conv)
-        scan = self.chunked_scan if self.scan_mode == "chunked" else self.sequential_scan
-        y = scan(x_h, alpha, Bx, C_h)
+        x_h, log_alpha, Bx, C_h = self._scan_inputs(x_conv)
+        if self.scan_mode == "chunked":
+            y = self.chunked_scan(x_h, None, Bx, C_h, log_alpha=log_alpha)
+        else:
+            y = self.sequential_scan(x_h, torch.exp(log_alpha), Bx, C_h)
         y = y.reshape(*y.shape[:2], self.d_inner)
         y = y + x_conv * self.D
         return x + self.out_proj(y * F.silu(z))

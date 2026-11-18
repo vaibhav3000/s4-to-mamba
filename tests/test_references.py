@@ -209,7 +209,7 @@ def test_gradcheck_mamba1_scan() -> None:
     assert _gradcheck(block, "selective_scan", (x, delta, b, c), ["A_log", "D"])
 
 
-@pytest.mark.parametrize("form", ["sequential", "chunked-alpha"])
+@pytest.mark.parametrize("form", ["sequential", "chunked-alpha", "chunked-log-decay"])
 def test_gradcheck_mamba2_scan(form: str) -> None:
     """Mamba-2 scans in float64 (T = 5 with chunk 2, so the chunked form pads)."""
     torch.manual_seed(14)
@@ -222,9 +222,18 @@ def test_gradcheck_mamba2_scan(form: str) -> None:
     if form == "sequential":
         inputs = (x_h, alpha.requires_grad_(True), bx, c_h)
         assert _gradcheck_fn(block.sequential_scan, inputs)
-    else:
+    elif form == "chunked-alpha":
         inputs = (x_h, alpha.requires_grad_(True), bx, c_h)
         assert _gradcheck_fn(block.chunked_scan, inputs)
+    else:
+        log_decay = alpha.log().requires_grad_(True)
+
+        def chunked_from_log(
+            x_h: torch.Tensor, bx: torch.Tensor, c_h: torch.Tensor, log_decay: torch.Tensor
+        ) -> torch.Tensor:
+            return block.chunked_scan(x_h, None, bx, c_h, log_alpha=log_decay)
+
+        assert _gradcheck_fn(chunked_from_log, (x_h, bx, c_h, log_decay))
 
 
 def test_gradcheck_mamba3_scan() -> None:
@@ -515,3 +524,30 @@ def test_mamba3_block_matches_naive_reference(
         (y * weight).sum().backward()
         (y_ref * weight).sum().backward()
         _compare_param_grads(block, ref)
+
+
+# -------------------------------------------- Mamba-2 chunked log decay (D17)
+
+
+def test_mamba2_chunked_gradient_survives_decay_underflow() -> None:
+    """With delta * A = -28 every decay exp(-28) ~ 6.9e-13 is below the 1e-12 floor a
+    clamp-then-log would apply, which zeroes d(loss)/d(A_log) in the chunked form.
+    Taking the log decay as delta * A directly keeps the gradient equal to the
+    sequential one. float64, rtol = 1e-10 and atol = 0: the gradient itself is
+    ~1e-13, so any absolute tolerance would hide a zeroed gradient."""
+    torch.manual_seed(9)
+    chunked = Mamba2Block(d_model=16, d_state=4, headdim=8, expand=2, chunk_size=8).double()
+    with torch.no_grad():
+        chunked.A_log.fill_(math.log(56.0))
+        chunked.dt_proj.weight.zero_()
+        chunked.dt_proj.bias.fill_(math.log(math.expm1(0.5)))  # softplus(bias) = 0.5
+    sequential = copy.deepcopy(chunked)
+    sequential.scan_mode = "sequential"
+    x = torch.randn(2, 19, 16, dtype=torch.float64)
+    weight = torch.randn(2, 19, 16, dtype=torch.float64)
+    (chunked(x) * weight).sum().backward()
+    (sequential(x) * weight).sum().backward()
+    grad_chunked, grad_sequential = chunked.A_log.grad, sequential.A_log.grad
+    assert grad_chunked is not None and grad_sequential is not None
+    assert grad_sequential.abs().min() > 0
+    torch.testing.assert_close(grad_chunked, grad_sequential, rtol=1e-10, atol=0)

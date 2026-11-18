@@ -554,6 +554,91 @@ def test_mamba2_chunked_gradient_survives_decay_underflow() -> None:
     torch.testing.assert_close(grad_chunked, grad_sequential, rtol=1e-10, atol=0)
 
 
+def _random_scan_inputs(
+    block: Mamba2Block, Bsz: int, T: int, dtype: torch.dtype, seed: int
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    g = torch.Generator().manual_seed(seed)
+    H, P, N = block.n_heads, block.headdim, block.d_state
+    x_h = torch.randn(Bsz, T, H, P, dtype=dtype, generator=g)
+    bx = torch.randn(Bsz, T, H, N, dtype=dtype, generator=g)
+    c_h = torch.randn(Bsz, T, H, N, dtype=dtype, generator=g)
+    weight = torch.randn(Bsz, T, H, P, dtype=dtype, generator=g)
+    return x_h, bx, c_h, weight
+
+
+def test_mamba2_chunked_gradient_with_zero_log_decays() -> None:
+    """Log decays that are exactly 0 make some in-chunk segment sums exactly 0. The
+    chunked form must still pass the full gradient to log_alpha there (a clamp at 0
+    would block it). float64, rtol = atol = 1e-10."""
+    torch.manual_seed(16)
+    block = Mamba2Block(d_model=16, d_state=4, headdim=8, expand=2, chunk_size=8).double()
+    x_h, bx, c_h, weight = _random_scan_inputs(block, 2, 21, torch.float64, seed=16)
+    g = torch.Generator().manual_seed(17)
+    log_decay = -torch.rand(2, 21, block.n_heads, dtype=torch.float64, generator=g)
+    log_decay[torch.rand(2, 21, block.n_heads, generator=g) < 0.25] = 0.0
+    la_chunked = log_decay.clone().requires_grad_(True)
+    la_sequential = log_decay.clone().requires_grad_(True)
+    y_chunked = block.chunked_scan(x_h, None, bx, c_h, log_alpha=la_chunked)
+    y_sequential = block.sequential_scan(x_h, la_sequential.exp(), bx, c_h)
+    torch.testing.assert_close(y_chunked, y_sequential, **FP64)
+    (y_chunked * weight).sum().backward()
+    (y_sequential * weight).sum().backward()
+    assert la_chunked.grad is not None and la_sequential.grad is not None
+    torch.testing.assert_close(la_chunked.grad, la_sequential.grad, **FP64)
+
+
+def test_mamba2_chunked_float32_stays_accurate_after_a_large_decay() -> None:
+    """One step with log decay -300 at the start of each 64-step chunk, then weak
+    decays (-0.01). Differences of large running cumsums would lose float32
+    precision here; direct segment sums do not. float32 chunked vs float64
+    sequential: max error below 1e-6 of max |y|."""
+    torch.manual_seed(18)
+    block = Mamba2Block(d_model=16, d_state=4, headdim=8, expand=2, chunk_size=64)
+    T = 192
+    x_h, bx, c_h, _ = _random_scan_inputs(block, 1, T, torch.float32, seed=18)
+    log_decay = torch.full((1, T, block.n_heads), -0.01)
+    log_decay[:, ::64] = -300.0
+    with torch.no_grad():
+        y32 = block.chunked_scan(x_h, None, bx, c_h, log_alpha=log_decay)
+        y64 = block.double().sequential_scan(
+            x_h.double(), log_decay.double().exp(), bx.double(), c_h.double()
+        )
+    assert y32.dtype == torch.float32
+    assert ((y32.double() - y64).abs().max() / y64.abs().max()).item() < 1e-6
+
+
+def test_mamba2_chunked_matches_sequential_past_32_chunks() -> None:
+    """chunked_scan processes chunks in groups of 32; T = 70 with chunk 2 gives 35
+    chunks, so the second group runs. float64 forward, rtol = atol = 1e-10."""
+    torch.manual_seed(19)
+    chunked = Mamba2Block(d_model=16, d_state=4, headdim=8, expand=2, chunk_size=2).double()
+    sequential = copy.deepcopy(chunked)
+    sequential.scan_mode = "sequential"
+    x = torch.randn(1, 70, 16, dtype=torch.float64)
+    with torch.no_grad():
+        torch.testing.assert_close(chunked(x), sequential(x), **FP64)
+
+
+def test_mamba2_chunked_alpha_entry_point_keeps_tiny_decays() -> None:
+    """chunked_scan(alpha=...) with alpha = exp(-30), far below the old 1e-12 floor:
+    output and alpha * d/d(alpha) must equal the log_alpha entry point.
+    float64, rtol = 1e-10, atol = 0 (the gradients are ~1e-12)."""
+    torch.manual_seed(20)
+    block = Mamba2Block(d_model=16, d_state=4, headdim=8, expand=2, chunk_size=8).double()
+    x_h, bx, c_h, weight = _random_scan_inputs(block, 2, 13, torch.float64, seed=20)
+    log_decay = torch.full((2, 13, block.n_heads), -30.0, dtype=torch.float64)
+    alpha = log_decay.exp().requires_grad_(True)
+    la = log_decay.clone().requires_grad_(True)
+    y_alpha = block.chunked_scan(x_h, alpha, bx, c_h)
+    y_log = block.chunked_scan(x_h, None, bx, c_h, log_alpha=la)
+    torch.testing.assert_close(y_alpha, y_log, rtol=1e-10, atol=0)
+    (y_alpha * weight).sum().backward()
+    (y_log * weight).sum().backward()
+    assert alpha.grad is not None and la.grad is not None
+    assert la.grad.abs().max() > 0
+    torch.testing.assert_close(alpha * alpha.grad, la.grad, rtol=1e-10, atol=0)
+
+
 # ---------------------------------------------------------------- determinism
 
 SMALL_KWARGS: dict[str, dict[str, int]] = {

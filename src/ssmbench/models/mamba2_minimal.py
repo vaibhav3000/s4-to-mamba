@@ -170,7 +170,11 @@ class Mamba2Block(nn.Module):
             S_next     = alpha_total * S + sum_t alpha_suffix_t * B_t (x) x_t
 
         L_{ts} = prod_{r=s+1..t} alpha_r; alpha_prefix/suffix are within-chunk
-        cumulative decay products computed via a cumsum of log alpha.
+        cumulative decay products. Every log-decay sum is accumulated directly over
+        its own range (a masked cumsum, as in the reference ssd_minimal segsum),
+        never as a difference of two running cumsums: such a difference loses
+        float32 precision after one large decay and needs a clamp whose gradient
+        vanishes at zero.
 
         Pass log_alpha = delta * A (what forward() does) so tiny decays keep their
         exact value and gradient. Passing alpha instead takes its log, floored at
@@ -202,25 +206,30 @@ class Mamba2Block(nn.Module):
         xl = x_f.view(Bsz, nc, Csz, H, P)
         Bl = B_f.view(Bsz, nc, Csz, H, N)
         Cl = C_f.view(Bsz, nc, Csz, H, N)
-        cs = log_alpha.view(Bsz, nc, Csz, H).cumsum(dim=2)  # (B, nc, Csz, H)
+        la = log_alpha.view(Bsz, nc, Csz, H)
+        cs = la.cumsum(dim=2)  # (B, nc, Csz, H): sum_{r<=t}, the carry-in decay
+        cs_end = cs[:, :, -1]  # (B, nc, H): whole-chunk decay
+        # sum_{r=t+1..Csz-1}: a reverse cumsum of the left-shifted log decays.
+        shifted = F.pad(la[:, :, 1:], (0, 0, 0, 1))
+        suffix = shifted.flip(2).cumsum(dim=2).flip(2)  # (B, nc, Csz, H)
 
         # Process chunks in groups so the (group, Csz, Csz, H) decay tensors
         # stay bounded; identical outputs, ~1GB less transient memory at 32K.
         group = 32
-        cs_end = cs[:, :, -1]  # (B, nc, H)
         y_intra = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=dtype)
         S_partial = torch.empty(Bsz, nc, H, N, P, device=x_h.device, dtype=dtype)
-        tril = torch.tril(torch.ones(Csz, Csz, dtype=torch.bool, device=x_h.device)).unsqueeze(
-            -1
-        )  # (Csz, Csz, 1) broadcasts over H
+        ones = torch.ones(Csz, Csz, dtype=torch.bool, device=x_h.device)
+        strict = torch.tril(ones, diagonal=-1).unsqueeze(-1)  # (t, s, 1): s < t
+        causal = torch.tril(ones).unsqueeze(-1)  # (t, s, 1): s <= t
         for g0 in range(0, nc, group):
             g1 = min(g0 + group, nc)
-            cs_g = cs[:, g0:g1]  # (B, g, Csz, H)
-            diff = cs_g.unsqueeze(3) - cs_g.unsqueeze(2)  # (B, g, t, s, H)
-            L = torch.exp(diff.clamp(max=0.0)) * tril  # lower-tri decay, upper masked
+            # seg[t, s] = sum_{r=s+1..t} la_r, accumulated over r for each s.
+            la_ts = la[:, g0:g1].unsqueeze(3).expand(-1, -1, -1, Csz, -1)  # (B, g, t, s, H)
+            seg = la_ts.masked_fill(~strict, 0.0).cumsum(dim=2)
+            L = torch.exp(seg.masked_fill(~causal, float("-inf")))  # zero above the diagonal
             attn = torch.einsum("bgihn,bgjhn->bgijh", Cl[:, g0:g1], Bl[:, g0:g1])
             y_intra[:, g0:g1] = torch.einsum("bgijh,bgjhp->bgihp", L * attn, xl[:, g0:g1])
-            alpha_suffix = torch.exp(cs_end[:, g0:g1].unsqueeze(2) - cs_g)
+            alpha_suffix = torch.exp(suffix[:, g0:g1])
             S_partial[:, g0:g1] = torch.einsum(
                 "bgjhn,bgjhp->bghnp",
                 Bl[:, g0:g1] * alpha_suffix.unsqueeze(-1),

@@ -7,7 +7,7 @@ name = "ssmbench"
 version = "1.0.0"
 description = "Minimal implementations and GPU benchmarks of efficient sequence models: S4D, Mamba, Mamba-2, Mamba-3, and a Transformer baseline"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
     "torch>=2.2",
@@ -21,10 +21,33 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = [
+    "pytest>=9.2",
+    "ruff==0.17.5",
+    "pyright==1.1.414",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# legacy/ holds the original project's scripts verbatim; they are not runnable
+# (see legacy/README.md) and are kept out of lint and type checks.
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "PIE", "RUF"]
+ignore = ["E501"]
+
+[tool.pyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.11"
+venvPath = "."
+venv = ".venv"
+include = ["src", "scripts", "tests", "demo-site"]
+exclude = ["legacy", "**/node_modules", "**/__pycache__", "**/.*"]

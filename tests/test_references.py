@@ -15,6 +15,7 @@ Tolerances are explicit in every test:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from typing import TypedDict
 
@@ -23,6 +24,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ssmbench.models.mamba2_minimal import Mamba2Block
+from ssmbench.models.mamba3_minimal import Mamba3Block
+from ssmbench.models.mamba_minimal import MambaBlock
 from ssmbench.models.s4_minimal import S4DLayer, zoh_discretization
 
 
@@ -188,3 +192,108 @@ def test_gradcheck_s4d_layer() -> None:
     x = torch.randn(1, 5, 2, dtype=torch.float64, requires_grad=True)
     names = [n for n, _ in layer.named_parameters()]
     assert _gradcheck(layer, "forward", (x,), names)
+
+
+# ------------------------------------------- scans in float64, Mamba-3 limits
+
+
+def test_gradcheck_mamba1_scan() -> None:
+    """Mamba-1 selective scan: gradients w.r.t. x, delta, B, C, A_log and D."""
+    torch.manual_seed(13)
+    block = MambaBlock(d_model=2, d_state=3, expand=1).double()
+    x = torch.randn(1, 5, 2, dtype=torch.float64, requires_grad=True)
+    delta = (torch.rand(1, 5, 2, dtype=torch.float64) * 0.5 + 0.05).requires_grad_(True)
+    b = torch.randn(1, 5, 3, dtype=torch.float64, requires_grad=True)
+    c = torch.randn(1, 5, 3, dtype=torch.float64, requires_grad=True)
+    assert _gradcheck(block, "selective_scan", (x, delta, b, c), ["A_log", "D"])
+
+
+@pytest.mark.parametrize("form", ["sequential", "chunked-alpha"])
+def test_gradcheck_mamba2_scan(form: str) -> None:
+    """Mamba-2 scans in float64 (T = 5 with chunk 2, so the chunked form pads)."""
+    torch.manual_seed(14)
+    block = Mamba2Block(d_model=4, d_state=3, headdim=2, expand=1, chunk_size=2).double()
+    Bsz, T, H, P, N = 1, 5, block.n_heads, block.headdim, block.d_state
+    x_h = torch.randn(Bsz, T, H, P, dtype=torch.float64, requires_grad=True)
+    alpha = torch.rand(Bsz, T, H, dtype=torch.float64) * 0.9 + 0.05
+    bx = torch.randn(Bsz, T, H, N, dtype=torch.float64, requires_grad=True)
+    c_h = torch.randn(Bsz, T, H, N, dtype=torch.float64, requires_grad=True)
+    if form == "sequential":
+        inputs = (x_h, alpha.requires_grad_(True), bx, c_h)
+        assert _gradcheck_fn(block.sequential_scan, inputs)
+    else:
+        inputs = (x_h, alpha.requires_grad_(True), bx, c_h)
+        assert _gradcheck_fn(block.chunked_scan, inputs)
+
+
+def test_gradcheck_mamba3_scan() -> None:
+    """Mamba-3 complex trapezoidal scan in float64: gradients w.r.t. every input and
+    the complex-transition parameters a_real_log and theta."""
+    torch.manual_seed(15)
+    block = Mamba3Block(d_model=4, d_state=3, headdim=2, expand=1).double()
+    Bsz, T, H, P, N = 1, 4, block.n_heads, block.headdim, block.d_state
+    x_h = torch.randn(Bsz, T, H, P, dtype=torch.float64, requires_grad=True)
+    delta = (torch.rand(Bsz, T, H, dtype=torch.float64) * 0.5 + 0.05).requires_grad_(True)
+    b_h = torch.randn(Bsz, T, H, N, dtype=torch.float64, requires_grad=True)
+    c_h = torch.randn(Bsz, T, H, N, dtype=torch.float64, requires_grad=True)
+    lam = (torch.rand(Bsz, T, H, dtype=torch.float64) * 0.8 + 0.1).requires_grad_(True)
+    inputs = (x_h, delta, b_h, c_h, lam)
+    assert _gradcheck(block, "selective_scan", inputs, ["a_real_log", "theta"])
+
+
+def test_mamba3_lambda_one_is_complex_exponential_euler() -> None:
+    """lambda = 1 removes the beta term, leaving h_t = alpha_t h_{t-1} + delta_t B_t x_t
+    with complex alpha_t (theta != 0). float64, 1e-10."""
+    torch.manual_seed(11)
+    block = Mamba3Block(d_model=16, d_state=6, headdim=8, expand=1).double()
+    with torch.no_grad():
+        block.theta.uniform_(0.5, 3.0)
+    Bsz, T, H, P, N = 2, 17, block.n_heads, block.headdim, block.d_state
+    x_h = torch.randn(Bsz, T, H, P, dtype=torch.float64)
+    delta = torch.rand(Bsz, T, H, dtype=torch.float64) * 0.5 + 0.01
+    b_h = torch.randn(Bsz, T, H, N, dtype=torch.float64)
+    c_h = torch.randn(Bsz, T, H, N, dtype=torch.float64)
+    lam = torch.ones(Bsz, T, H, dtype=torch.float64)
+    with torch.no_grad():
+        y = block.selective_scan(x_h, delta, b_h, c_h, lam)
+        a = torch.complex(-torch.exp(block.a_real_log), block.theta)  # (H, N)
+        state = torch.zeros(Bsz, H, N, P, dtype=torch.complex128)
+        ys = []
+        for t in range(T):
+            alpha = torch.exp(delta[:, t, :, None] * a)  # (B, H, N)
+            inject = delta[:, t, :, None, None] * b_h[:, t, :, :, None] * x_h[:, t, :, None, :]
+            state = alpha[..., None] * state + inject
+            ys.append(torch.einsum("bhnp,bhn->bhp", state.real, c_h[:, t]))
+    torch.testing.assert_close(y, torch.stack(ys, dim=1), **FP64)
+
+
+@pytest.mark.parametrize(
+    ("lam_value", "expected_ratio"),
+    [pytest.param(0.5, 4.0, id="trapezoidal"), pytest.param(1.0, 2.0, id="exp-euler")],
+)
+def test_mamba3_discretization_order(lam_value: float, expected_ratio: float) -> None:
+    """Integrate h' = a h + sin(t), h(0) = 0, on [0, 2] with the Mamba-3 recurrence
+    (one head, one slot, B = C = 1, theta = 0, constant step). Halving the step must
+    cut the end-point error about 4x for lambda = 1/2 (trapezoidal, second order)
+    and about 2x for lambda = 1 (exponential Euler, first order). float64;
+    accepted ratio window: expected value +/- 12%."""
+    a, t_end = -0.5, 2.0
+    exact = (-a * math.sin(t_end) - math.cos(t_end) + math.exp(a * t_end)) / (1.0 + a * a)
+    block = Mamba3Block(d_model=1, d_state=1, headdim=1, expand=1).double()
+    with torch.no_grad():
+        block.a_real_log.fill_(math.log(-a))
+        block.theta.zero_()
+
+    def end_error(step: float) -> float:
+        n = round(t_end / step)
+        t = torch.arange(n + 1, dtype=torch.float64) * step
+        u = torch.sin(t).view(1, n + 1, 1, 1)
+        ones = torch.ones(1, n + 1, 1, 1, dtype=torch.float64)
+        delta = torch.full((1, n + 1, 1), step, dtype=torch.float64)
+        lam = torch.full((1, n + 1, 1), lam_value, dtype=torch.float64)
+        with torch.no_grad():
+            y = block.selective_scan(u, delta, ones, ones, lam)
+        return abs(y[0, -1, 0, 0].item() - exact)
+
+    ratio = end_error(0.1) / end_error(0.05)
+    assert expected_ratio * 0.88 < ratio < expected_ratio * 1.12, ratio

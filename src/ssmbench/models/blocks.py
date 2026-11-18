@@ -92,6 +92,24 @@ def masked_mean(h: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
     return (h * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1.0)
 
 
+def scan_dtype(*tensors: torch.Tensor) -> torch.dtype:
+    """Real dtype for an SSM scan: the promoted input dtype, never below float32.
+
+    float32 and lower-precision inputs (bf16/fp16 under autocast) scan in float32,
+    float64 inputs scan in float64, so float64 reference and gradcheck tests see
+    float64 arithmetic end to end.
+    """
+    dtype = torch.float32
+    for t in tensors:
+        dtype = torch.promote_types(dtype, t.dtype)
+    return dtype
+
+
+def complex_dtype_for(real_dtype: torch.dtype) -> torch.dtype:
+    """complex128 for float64 scans, complex64 otherwise."""
+    return torch.complex128 if real_dtype == torch.float64 else torch.complex64
+
+
 def sinusoidal_positions(d_model: int, max_len: int, device: torch.device) -> torch.Tensor:
     """Classic sin/cos positional table, shape (max_len, d_model)."""
     pos = torch.arange(max_len, device=device).unsqueeze(1).float()

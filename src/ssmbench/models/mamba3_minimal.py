@@ -43,6 +43,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .blocks import complex_dtype_for, scan_dtype
+
 
 class Mamba3Block(nn.Module):
     """Pre-norm residual block with the Mamba-3 complex selective recurrence.
@@ -126,19 +128,25 @@ class Mamba3Block(nn.Module):
         C_h: torch.Tensor,  # (B, T, H, N)
         lam: torch.Tensor,  # (B, T, H) in (0, 1)
     ) -> torch.Tensor:
-        """Sequential Mamba-3 recurrence. Returns y: (B, T, H, P) real."""
+        """Sequential Mamba-3 recurrence. Returns y: (B, T, H, P) real.
+
+        Computes in scan_dtype(...) with a complex state of the matching width:
+        float32/complex64, or float64/complex128 for float64 inputs.
+        """
         Bsz, T, H, P = x_h.shape
         N = self.d_state
-        A = -torch.exp(self.a_real_log.float()) + 1j * self.theta.float()  # (H, N) complex
+        dtype = scan_dtype(x_h, delta, B_h, C_h, lam)
+        cdtype = complex_dtype_for(dtype)
+        A = -torch.exp(self.a_real_log.to(dtype)) + 1j * self.theta.to(dtype)  # (H, N) complex
 
-        xT = x_h.transpose(0, 1).float()
-        dT = delta.transpose(0, 1).float()
-        bT = B_h.transpose(0, 1).float()
-        cT = C_h.transpose(0, 1).float()
-        lamT = lam.transpose(0, 1).float()
+        xT = x_h.transpose(0, 1).to(dtype)
+        dT = delta.transpose(0, 1).to(dtype)
+        bT = B_h.transpose(0, 1).to(dtype)
+        cT = C_h.transpose(0, 1).to(dtype)
+        lamT = lam.transpose(0, 1).to(dtype)
 
-        h = torch.zeros(Bsz, H, N, P, dtype=torch.complex64, device=x_h.device)
-        prev_inject = torch.zeros(Bsz, H, N, P, dtype=torch.complex64, device=x_h.device)
+        h = torch.zeros(Bsz, H, N, P, dtype=cdtype, device=x_h.device)
+        prev_inject = torch.zeros(Bsz, H, N, P, dtype=cdtype, device=x_h.device)
         ys = []
         for t in range(T):
             alpha = torch.exp(dT[t].unsqueeze(-1) * A.unsqueeze(0))  # (B, H, N) complex
@@ -149,10 +157,10 @@ class Mamba3Block(nn.Module):
             h = (
                 alpha_p * h
                 + beta.unsqueeze(-1) * prev_inject
-                + gamma.unsqueeze(-1).unsqueeze(-1) * inject_t.to(torch.complex64)
+                + gamma.unsqueeze(-1).unsqueeze(-1) * inject_t.to(cdtype)
             )
             ys.append(torch.einsum("bhnp,bhn->bhp", h.real, cT[t]))
-            prev_inject = inject_t.to(torch.complex64)
+            prev_inject = inject_t.to(cdtype)
         return torch.stack(ys, dim=1)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:

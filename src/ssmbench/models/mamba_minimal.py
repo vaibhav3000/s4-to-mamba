@@ -27,6 +27,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .blocks import scan_dtype
+
 
 class MambaBlock(nn.Module):
     """Pre-norm residual block: x + Mambaixer(LN(x)).
@@ -107,19 +109,21 @@ class MambaBlock(nn.Module):
             y_t = sum_n C_t[n] * h_t[n]  +  D * x_t
 
         x: (B, T, d_inner), delta: (B, T, d_inner), B/C: (B, T, N) -> y: (B, T, d_inner)
+        Computes in scan_dtype(...): float32, or float64 for float64 inputs.
         """
-        A = -torch.exp(self.A_log.float())  # (d_inner, N), negative
-        xT = x.transpose(0, 1)
-        deltaT = delta.transpose(0, 1)
-        BT = B.transpose(0, 1)
-        CT = C.transpose(0, 1)
+        dtype = scan_dtype(x, delta, B, C)
+        A = -torch.exp(self.A_log.to(dtype))  # (d_inner, N), negative
+        xT = x.transpose(0, 1).to(dtype)
+        deltaT = delta.transpose(0, 1).to(dtype)
+        BT = B.transpose(0, 1).to(dtype)
+        CT = C.transpose(0, 1).to(dtype)
 
-        h = torch.zeros(x.shape[0], self.d_inner, self.d_state, device=x.device, dtype=A.dtype)
+        h = torch.zeros(x.shape[0], self.d_inner, self.d_state, device=x.device, dtype=dtype)
         ys = []
         for t in range(x.shape[1]):
             alpha = torch.exp(deltaT[t].unsqueeze(-1) * A)  # (B, d_inner, N) in (0, 1)
             h = alpha * h + deltaT[t].unsqueeze(-1) * BT[t].unsqueeze(1) * xT[t].unsqueeze(-1)
-            ys.append(torch.einsum("bdn,bn->bd", h, CT[t].to(A.dtype)))
+            ys.append(torch.einsum("bdn,bn->bd", h, CT[t]))
         y = torch.stack(ys, dim=1)  # (B, T, d_inner)
         return y + x * self.D
 
@@ -164,7 +168,7 @@ class MambaBlock(nn.Module):
         delta = F.softplus(self.dt_proj(proj[:, : self.dt_rank]))
         _, B_t, C_t = torch.split(proj, [self.dt_rank, self.d_state, self.d_state], dim=-1)
 
-        A = -torch.exp(self.A_log.float())
+        A = -torch.exp(self.A_log.to(scan_dtype(delta)))
         alpha = torch.exp(delta.unsqueeze(-1) * A)  # (B, d_inner, N)
         h = alpha * state["h"] + delta.unsqueeze(-1) * B_t.unsqueeze(1) * conv_out.unsqueeze(-1)
         state["h"] = h

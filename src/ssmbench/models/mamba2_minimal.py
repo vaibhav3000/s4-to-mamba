@@ -29,6 +29,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .blocks import scan_dtype
+
 
 class Mamba2Block(nn.Module):
     """Pre-norm residual block implementing the Mamba-2 SSD layer.
@@ -118,7 +120,7 @@ class Mamba2Block(nn.Module):
             dim=-1,
         )
         delta = F.softplus(self.dt_proj(dt))  # (B, T, H)
-        A = -torch.exp(self.A_log.float())  # (H,)
+        A = -torch.exp(self.A_log.to(scan_dtype(delta)))  # (H,)
         alpha = torch.exp(delta * A)  # (B, T, H)
         rep = self.n_heads // self.n_groups
         B_h = B.repeat_interleave(rep, dim=-1).view(*B.shape[:-1], self.n_heads, self.d_state)
@@ -132,15 +134,19 @@ class Mamba2Block(nn.Module):
     def sequential_scan(
         self, x_h: torch.Tensor, alpha: torch.Tensor, Bx: torch.Tensor, C_h: torch.Tensor
     ) -> torch.Tensor:
-        """Reference recurrence. Inputs (B, T, H, ...) -> y (B, T, H, P), fp32 compute."""
+        """Reference recurrence. Inputs (B, T, H, ...) -> y (B, T, H, P).
+
+        Computes in scan_dtype(...): float32, or float64 for float64 inputs.
+        """
         Bsz, T, H, P = x_h.shape
         N = self.d_state
-        h = torch.zeros(Bsz, H, N, P, device=x_h.device, dtype=torch.float32)
+        dtype = scan_dtype(x_h, alpha, Bx, C_h)
+        h = torch.zeros(Bsz, H, N, P, device=x_h.device, dtype=dtype)
         ys = []
-        aT = alpha.transpose(0, 1).float()
-        xT = x_h.transpose(0, 1).float()
-        bT = Bx.transpose(0, 1).float()
-        cT = C_h.transpose(0, 1).float()
+        aT = alpha.transpose(0, 1).to(dtype)
+        xT = x_h.transpose(0, 1).to(dtype)
+        bT = Bx.transpose(0, 1).to(dtype)
+        cT = C_h.transpose(0, 1).to(dtype)
         for t in range(T):
             h = aT[t][:, :, None, None] * h + bT[t].unsqueeze(-1) * xT[t].unsqueeze(2)
             ys.append(torch.einsum("bhnp,bhn->bhp", h, cT[t]))
@@ -151,7 +157,7 @@ class Mamba2Block(nn.Module):
     def chunked_scan(
         self, x_h: torch.Tensor, alpha: torch.Tensor, Bx: torch.Tensor, C_h: torch.Tensor
     ) -> torch.Tensor:
-        """Chunked SSD algorithm (fp32 compute).
+        """Chunked SSD algorithm, computed in scan_dtype(...) (float32, or float64).
 
         For each chunk of length Csz with carried state S (N, P):
 
@@ -164,10 +170,11 @@ class Mamba2Block(nn.Module):
         """
         Bsz, T, H, P = x_h.shape
         N, Csz = self.d_state, self.chunk_size
-        x_f = x_h.float()
-        B_f = Bx.float()
-        C_f = C_h.float()
-        log_alpha = torch.log(alpha.float().clamp_min(1e-12))
+        dtype = scan_dtype(x_h, alpha, Bx, C_h)
+        x_f = x_h.to(dtype)
+        B_f = Bx.to(dtype)
+        C_f = C_h.to(dtype)
+        log_alpha = torch.log(alpha.to(dtype).clamp_min(1e-12))
 
         pad = (-T) % Csz
         if pad:
@@ -187,8 +194,8 @@ class Mamba2Block(nn.Module):
         # stay bounded; identical outputs, ~1GB less transient memory at 32K.
         group = 32
         cs_end = cs[:, :, -1]  # (B, nc, H)
-        y_intra = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=torch.float32)
-        S_partial = torch.empty(Bsz, nc, H, N, P, device=x_h.device, dtype=torch.float32)
+        y_intra = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=dtype)
+        S_partial = torch.empty(Bsz, nc, H, N, P, device=x_h.device, dtype=dtype)
         tril = torch.tril(torch.ones(Csz, Csz, dtype=torch.bool, device=x_h.device)).unsqueeze(
             -1
         )  # (Csz, Csz, 1) broadcasts over H
@@ -208,8 +215,8 @@ class Mamba2Block(nn.Module):
 
         # Loop over chunks (T/Csz iterations) for the carried state.
         C_prefix = Cl * torch.exp(cs).unsqueeze(-1)  # (B, nc, Csz, H, N)
-        y = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=torch.float32)
-        S = torch.zeros(Bsz, H, N, P, device=x_h.device, dtype=torch.float32)
+        y = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=dtype)
+        S = torch.zeros(Bsz, H, N, P, device=x_h.device, dtype=dtype)
         for c in range(nc):
             y_inter = torch.einsum("bihn,bhnp->bihp", C_prefix[:, c], S)
             y[:, c] = y_intra[:, c] + y_inter

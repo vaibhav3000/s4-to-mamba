@@ -50,7 +50,9 @@ def zoh_discretization(
     az = torch.exp(z)
     # (e^z - 1)/z with a series fallback for small |z|
     small = z.abs() < 1e-4
-    ratio = torch.where(small, 1.0 + z / 2.0 + z * z / 6.0, (az - 1.0) / z.where(small, torch.ones_like(z)))
+    ratio = torch.where(
+        small, 1.0 + z / 2.0 + z * z / 6.0, (az - 1.0) / z.where(small, torch.ones_like(z))
+    )
     return az, delta.unsqueeze(-1) * b * ratio
 
 
@@ -119,7 +121,11 @@ class S4DLayer(nn.Module):
         device = cb.device
         for start in range(0, L, chunk):
             k_idx = torch.arange(start, min(start + chunk, L), device=device, dtype=torch.float32)
-            powers = torch.exp(k_idx.view(-1, 1, 1) * p["delta"].view(1, -1, 1) * p["a"].view(1, -1, N := self.d_state))
+            powers = torch.exp(
+                k_idx.view(-1, 1, 1)
+                * p["delta"].view(1, -1, 1)
+                * p["a"].view(1, -1, N := self.d_state)
+            )
             ks.append(torch.einsum("ldn,dn->dl", powers, cb))
         return torch.cat(ks, dim=1).real  # y = x conv Re(K)
 
@@ -150,7 +156,9 @@ class S4DLayer(nn.Module):
 class S4DBlock(nn.Module):
     """Pre-norm residual block: x + S4D(LN(x)) (x) silu(LN(x)) — gated, as in S4 blocks."""
 
-    def __init__(self, d_model: int, d_state: int = 16, dropout: float = 0.0, init: str = "lin") -> None:
+    def __init__(
+        self, d_model: int, d_state: int = 16, dropout: float = 0.0, init: str = "lin"
+    ) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(d_model)
         self.layer = S4DLayer(d_model, d_state=d_state, init=init)
@@ -166,8 +174,11 @@ class S4DBlock(nn.Module):
     def init_state(self, batch_size: int, device: torch.device) -> dict[str, torch.Tensor]:
         return {
             "h": torch.zeros(
-                batch_size, self.layer.d_model, self.layer.d_state,
-                dtype=torch.complex64, device=device,
+                batch_size,
+                self.layer.d_model,
+                self.layer.d_state,
+                dtype=torch.complex64,
+                device=device,
             )
         }
 

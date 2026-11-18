@@ -105,7 +105,7 @@ class SelectiveCopyDataset(Dataset):
 
         targets = torch.full((self.seq_len,), IGNORE_INDEX, dtype=torch.long)
         answer_start = len(inputs) - k
-        targets[answer_start: answer_start + k] = torch.tensor(remembered, dtype=torch.long)
+        targets[answer_start : answer_start + k] = torch.tensor(remembered, dtype=torch.long)
         return {
             "input_ids": torch.tensor(inputs, dtype=torch.long),
             "targets": targets,
@@ -140,8 +140,12 @@ def collate_token_level(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
 
 
 def get_selective_copy_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, int]:
-    train = SelectiveCopyDataset(num_samples=cfg["train_samples"], seed=cfg.get("seed", 42), **cfg["train"])
-    test = SelectiveCopyDataset(num_samples=cfg["test_samples"], seed=cfg.get("seed", 42) + 1_000_000, **cfg["test"])
+    train = SelectiveCopyDataset(
+        num_samples=cfg["train_samples"], seed=cfg.get("seed", 42), **cfg["train"]
+    )
+    test = SelectiveCopyDataset(
+        num_samples=cfg["test_samples"], seed=cfg.get("seed", 42) + 1_000_000, **cfg["test"]
+    )
     bs = cfg["batch_size"]
     return (
         DataLoader(train, batch_size=bs, shuffle=True, collate_fn=collate_token_level),
@@ -151,8 +155,12 @@ def get_selective_copy_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, int]:
 
 
 def get_parity_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, int]:
-    train = ParityDataset(num_samples=cfg["train_samples"], seed=cfg.get("seed", 42), **cfg["train"])
-    test = ParityDataset(num_samples=cfg["test_samples"], seed=cfg.get("seed", 42) + 1_000_000, **cfg["test"])
+    train = ParityDataset(
+        num_samples=cfg["train_samples"], seed=cfg.get("seed", 42), **cfg["train"]
+    )
+    test = ParityDataset(
+        num_samples=cfg["test_samples"], seed=cfg.get("seed", 42) + 1_000_000, **cfg["test"]
+    )
     bs = cfg["batch_size"]
     return (
         DataLoader(train, batch_size=bs, shuffle=True, collate_fn=collate_token_level),
@@ -191,8 +199,7 @@ class ExactCopyDataset(Dataset):
         required = 2 + string_len + 1 + string_len + 1  # bos + s + sep + s + eos
         if seq_len < required:
             raise ValueError(
-                f"seq_len {seq_len} too small for string_len {string_len} "
-                f"(needs >= {required})"
+                f"seq_len {seq_len} too small for string_len {string_len} (needs >= {required})"
             )
         self.seq_len = seq_len
 
@@ -228,16 +235,24 @@ def get_exact_copy_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, dict[int,
     seq_len = 2 * max_eval + 8
     bs = cfg["batch_size"]
     train = ExactCopyDataset(
-        num_samples=cfg["train_samples"], string_len=cfg["train"]["max_len"],
-        seq_len=seq_len, alphabet_size=cfg["alphabet_size"], seed=cfg.get("seed", 42),
+        num_samples=cfg["train_samples"],
+        string_len=cfg["train"]["max_len"],
+        seq_len=seq_len,
+        alphabet_size=cfg["alphabet_size"],
+        seed=cfg.get("seed", 42),
     )
     eval_loaders: dict[int, DataLoader] = {}
     for L in cfg["eval_lengths"]:
         ds = ExactCopyDataset(
-            num_samples=cfg["eval_samples"], string_len=L, seq_len=seq_len,
-            alphabet_size=cfg["alphabet_size"], seed=cfg.get("seed", 42) + 1_000_000 + L,
+            num_samples=cfg["eval_samples"],
+            string_len=L,
+            seq_len=seq_len,
+            alphabet_size=cfg["alphabet_size"],
+            seed=cfg.get("seed", 42) + 1_000_000 + L,
         )
-        eval_loaders[L] = DataLoader(ds, batch_size=bs, shuffle=False, collate_fn=collate_token_level)
+        eval_loaders[L] = DataLoader(
+            ds, batch_size=bs, shuffle=False, collate_fn=collate_token_level
+        )
     in_dist = eval_loaders[min(cfg["eval_lengths"])]
     vocab_size = 4 + cfg["alphabet_size"]
     return (

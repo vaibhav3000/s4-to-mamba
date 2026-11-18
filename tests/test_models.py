@@ -48,9 +48,7 @@ def test_s4d_conv_equals_recurrent() -> None:
         ys.append(y_t)
     y_rec = torch.stack(ys, dim=1)
 
-    assert torch.allclose(y_conv, y_rec, atol=1e-3, rtol=1e-3), (
-        (y_conv - y_rec).abs().max().item()
-    )
+    assert torch.allclose(y_conv, y_rec, atol=1e-3, rtol=1e-3), (y_conv - y_rec).abs().max().item()
 
 
 # ---------------------------------------------------------------- mamba2
@@ -61,9 +59,7 @@ def test_mamba2_chunked_equals_sequential() -> None:
     torch.manual_seed(1)
     B, T, H, P, N = 2, 96, 3, 8, 12
     for chunk_size in (32, 64):  # aligned and misaligned (96 = 32*3, 96/64 pads)
-        block = Mamba2Block(
-            d_model=24, d_state=N, headdim=P, expand=1, chunk_size=chunk_size
-        )
+        block = Mamba2Block(d_model=24, d_state=N, headdim=P, expand=1, chunk_size=chunk_size)
         # expand=1 -> d_inner = 24 -> n_heads = 24 // 8 = 3 ✓
         x_h = torch.randn(B, T, H, P)
         alpha = torch.rand(B, T, H) * 0.9 + 0.05  # decays in (0.05, 0.95)
@@ -119,14 +115,16 @@ def test_mamba3_reduces_to_exp_euler() -> None:
     ys = []
     for t in range(T):
         alpha = torch.exp(delta[:, t].unsqueeze(-1) * A)  # (B, H, N)
-        inject = B_h[:, t].unsqueeze(-1) * delta[:, t].unsqueeze(-1).unsqueeze(-1) * x_h[:, t].unsqueeze(2)
+        inject = (
+            B_h[:, t].unsqueeze(-1)
+            * delta[:, t].unsqueeze(-1).unsqueeze(-1)
+            * x_h[:, t].unsqueeze(2)
+        )
         h = alpha.unsqueeze(-1) * h + inject
         ys.append(torch.einsum("bhnp,bhn->bhp", h, C_h[:, t]))
     y_ref = torch.stack(ys, dim=1)
 
-    assert torch.allclose(y_m3, y_ref, atol=1e-3, rtol=1e-3), (
-        (y_m3 - y_ref).abs().max().item()
-    )
+    assert torch.allclose(y_m3, y_ref, atol=1e-3, rtol=1e-3), (y_m3 - y_ref).abs().max().item()
 
 
 def test_mamba3_alpha_is_contractive_with_rotation() -> None:
@@ -225,7 +223,9 @@ def test_make_figures_smoke(tmp_path) -> None:
     import importlib.util
 
     repo_root = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location("make_figures", repo_root / "scripts" / "make_figures.py")
+    spec = importlib.util.spec_from_file_location(
+        "make_figures", repo_root / "scripts" / "make_figures.py"
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
@@ -269,8 +269,7 @@ def test_exact_copy_dataset_contract() -> None:
     from ssmbench.data.synthetic import EC_BOS, EC_EOS, EC_SEP, ExactCopyDataset
 
     L, V = 12, 26
-    ds = ExactCopyDataset(num_samples=8, string_len=L, seq_len=2 * 128 + 8,
-                          alphabet_size=V, seed=0)
+    ds = ExactCopyDataset(num_samples=8, string_len=L, seq_len=2 * 128 + 8, alphabet_size=V, seed=0)
     s = ds[0]
     x, y = s["input_ids"], s["targets"]
     assert x.shape == (2 * 128 + 8,) and y.shape == x.shape

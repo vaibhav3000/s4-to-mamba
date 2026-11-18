@@ -6,6 +6,7 @@
 Everything the explorer renders is a committed measurement; nothing is
 hand-typed. Re-run after regenerating results.
 """
+
 import json
 from pathlib import Path
 

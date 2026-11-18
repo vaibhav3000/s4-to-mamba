@@ -83,8 +83,12 @@ class Mamba3Block(nn.Module):
         self.norm = nn.LayerNorm(d_model)
         self.in_proj = nn.Linear(d_model, 2 * self.d_inner, bias=False)
         self.conv1d = nn.Conv1d(
-            self.d_inner, self.d_inner, kernel_size=d_conv, groups=self.d_inner,
-            bias=True, padding=0,
+            self.d_inner,
+            self.d_inner,
+            kernel_size=d_conv,
+            groups=self.d_inner,
+            bias=True,
+            padding=0,
         )
         # x -> (dt_rank, B(n_groups*N), C(n_groups*N), lambda(n_groups))
         self.x_proj = nn.Linear(
@@ -111,16 +115,16 @@ class Mamba3Block(nn.Module):
             u = torch.linspace(0.0, 1.0, self.n_heads)
             dt = torch.exp(u * math.log(dt_max) + (1 - u) * math.log(dt_min))
             self.dt_proj.bias.copy_(dt + torch.log(-torch.expm1(-dt)))
-            std = self.dt_rank ** -0.5
+            std = self.dt_rank**-0.5
             nn.init.uniform_(self.dt_proj.weight, -std, std)
 
     def selective_scan(
         self,
-        x_h: torch.Tensor,      # (B, T, H, P)
-        delta: torch.Tensor,    # (B, T, H)
-        B_h: torch.Tensor,      # (B, T, H, N)  (group-expanded, real)
-        C_h: torch.Tensor,      # (B, T, H, N)
-        lam: torch.Tensor,      # (B, T, H) in (0, 1)
+        x_h: torch.Tensor,  # (B, T, H, P)
+        delta: torch.Tensor,  # (B, T, H)
+        B_h: torch.Tensor,  # (B, T, H, N)  (group-expanded, real)
+        C_h: torch.Tensor,  # (B, T, H, N)
+        lam: torch.Tensor,  # (B, T, H) in (0, 1)
     ) -> torch.Tensor:
         """Sequential Mamba-3 recurrence. Returns y: (B, T, H, P) real."""
         Bsz, T, H, P = x_h.shape
@@ -161,7 +165,12 @@ class Mamba3Block(nn.Module):
         x_conv = F.silu(x_conv)
 
         proj = self.x_proj(x_conv)
-        sizes = [self.dt_rank, self.n_groups * self.d_state, self.n_groups * self.d_state, self.n_groups]
+        sizes = [
+            self.dt_rank,
+            self.n_groups * self.d_state,
+            self.n_groups * self.d_state,
+            self.n_groups,
+        ]
         dt, B, C, lam_raw = torch.split(proj, sizes, dim=-1)
         delta = F.softplus(self.dt_proj(dt))  # (B, T, H)
         lam = torch.sigmoid(self.lambda_proj(lam_raw))  # (B, T, H)
@@ -194,7 +203,10 @@ class Mamba3Backbone(nn.Module):
         self.blocks = nn.ModuleList(
             [
                 Mamba3Block(
-                    d_model, d_state=d_state, headdim=headdim, expand=expand,
+                    d_model,
+                    d_state=d_state,
+                    headdim=headdim,
+                    expand=expand,
                     n_groups=n_groups,
                 )
                 for _ in range(n_layers)

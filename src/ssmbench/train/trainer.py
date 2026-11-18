@@ -42,7 +42,7 @@ class TrainConfig:
     grad_clip: float = 1.0
     scheduler: str = "cosine"  # "cosine" | "none"
     warmup_frac: float = 0.05
-    amp: bool = False          # bfloat16 autocast on CUDA
+    amp: bool = False  # bfloat16 autocast on CUDA
     seed: int = 42
     optimizer: str = "adamw"
 
@@ -132,7 +132,9 @@ def evaluate(model: nn.Module, loader: DataLoader, task: str, device: torch.devi
         else:
             targets = batch["targets"].to(device)
             logits = model(tokens)  # (B, T, C)
-            loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100)
+            loss = F.cross_entropy(
+                logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100
+            )
             mask = targets.ne(-100)
             preds = logits.argmax(-1)
             correct = (preds == targets) & mask
@@ -201,7 +203,11 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         ep_start = time.time()
         for batch in train_loader:
             tokens = batch["input_ids"].to(device)
-            with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=tcfg.amp and device.type == "cuda"):
+            with torch.autocast(
+                device_type=device.type,
+                dtype=torch.bfloat16,
+                enabled=tcfg.amp and device.type == "cuda",
+            ):
                 if task == "classification":
                     logits = model(tokens)
                     loss = F.cross_entropy(logits, batch["label"].to(device))
@@ -228,7 +234,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         }
         history.append(entry)
         print(
-            f"[{cfg['name']}] epoch {epoch+1}/{tcfg.epochs} "
+            f"[{cfg['name']}] epoch {epoch + 1}/{tcfg.epochs} "
             f"loss={entry['train_loss']:.4f} val={ {k: round(v, 4) if isinstance(v, float) else v for k, v in val_metrics.items()} }",
             flush=True,
         )

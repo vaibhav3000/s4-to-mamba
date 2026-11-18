@@ -79,7 +79,9 @@ class TransformerBackbone(nn.Module):
             [TransformerBlock(d_model, n_heads, d_mlp, dropout) for _ in range(n_layers)]
         )
         # Positions are added once per forward; SSM baselines need no equivalent.
-        self.register_buffer("pe", sinusoidal_positions(d_model, max_len, torch.device("cpu")), persistent=False)
+        self.register_buffer(
+            "pe", sinusoidal_positions(d_model, max_len, torch.device("cpu")), persistent=False
+        )
 
     def forward(self, emb: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         T = emb.shape[1]

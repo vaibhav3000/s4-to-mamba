@@ -73,8 +73,12 @@ class Mamba2Block(nn.Module):
         self.norm = nn.LayerNorm(d_model)
         self.in_proj = nn.Linear(d_model, 2 * self.d_inner, bias=False)
         self.conv1d = nn.Conv1d(
-            self.d_inner, self.d_inner, kernel_size=d_conv, groups=self.d_inner,
-            bias=True, padding=0,
+            self.d_inner,
+            self.d_inner,
+            kernel_size=d_conv,
+            groups=self.d_inner,
+            bias=True,
+            padding=0,
         )
         # x -> (dt_rank, B for n_groups, C for n_groups)
         self.x_proj = nn.Linear(self.d_inner, self.dt_rank + 2 * n_groups * d_state, bias=False)
@@ -93,7 +97,7 @@ class Mamba2Block(nn.Module):
             u = torch.linspace(0.0, 1.0, self.n_heads)
             dt = torch.exp(u * math.log(dt_max) + (1 - u) * math.log(dt_min))
             self.dt_proj.bias.copy_(dt + torch.log(-torch.expm1(-dt)))
-            std = self.dt_rank ** -0.5
+            std = self.dt_rank**-0.5
             nn.init.uniform_(self.dt_proj.weight, -std, std)
 
     def _scan_inputs(
@@ -109,7 +113,8 @@ class Mamba2Block(nn.Module):
         """
         proj = self.x_proj(x)
         dt, B, C = torch.split(
-            proj, [self.dt_rank, self.n_groups * self.d_state, self.n_groups * self.d_state],
+            proj,
+            [self.dt_rank, self.n_groups * self.d_state, self.n_groups * self.d_state],
             dim=-1,
         )
         delta = F.softplus(self.dt_proj(dt))  # (B, T, H)
@@ -184,21 +189,20 @@ class Mamba2Block(nn.Module):
         cs_end = cs[:, :, -1]  # (B, nc, H)
         y_intra = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=torch.float32)
         S_partial = torch.empty(Bsz, nc, H, N, P, device=x_h.device, dtype=torch.float32)
-        tril = torch.tril(
-            torch.ones(Csz, Csz, dtype=torch.bool, device=x_h.device)
-        ).unsqueeze(-1)  # (Csz, Csz, 1) broadcasts over H
+        tril = torch.tril(torch.ones(Csz, Csz, dtype=torch.bool, device=x_h.device)).unsqueeze(
+            -1
+        )  # (Csz, Csz, 1) broadcasts over H
         for g0 in range(0, nc, group):
             g1 = min(g0 + group, nc)
             cs_g = cs[:, g0:g1]  # (B, g, Csz, H)
             diff = cs_g.unsqueeze(3) - cs_g.unsqueeze(2)  # (B, g, t, s, H)
             L = torch.exp(diff.clamp(max=0.0)) * tril  # lower-tri decay, upper masked
             attn = torch.einsum("bgihn,bgjhn->bgijh", Cl[:, g0:g1], Bl[:, g0:g1])
-            y_intra[:, g0:g1] = torch.einsum(
-                "bgijh,bgjhp->bgihp", L * attn, xl[:, g0:g1]
-            )
+            y_intra[:, g0:g1] = torch.einsum("bgijh,bgjhp->bgihp", L * attn, xl[:, g0:g1])
             alpha_suffix = torch.exp(cs_end[:, g0:g1].unsqueeze(2) - cs_g)
             S_partial[:, g0:g1] = torch.einsum(
-                "bgjhn,bgjhp->bghnp", Bl[:, g0:g1] * alpha_suffix.unsqueeze(-1),
+                "bgjhn,bgjhp->bghnp",
+                Bl[:, g0:g1] * alpha_suffix.unsqueeze(-1),
                 xl[:, g0:g1],
             )
 
@@ -247,8 +251,13 @@ class Mamba2Backbone(nn.Module):
         self.blocks = nn.ModuleList(
             [
                 Mamba2Block(
-                    d_model, d_state=d_state, headdim=headdim, expand=expand,
-                    n_groups=n_groups, chunk_size=chunk_size, scan_mode=scan_mode,
+                    d_model,
+                    d_state=d_state,
+                    headdim=headdim,
+                    expand=expand,
+                    n_groups=n_groups,
+                    chunk_size=chunk_size,
+                    scan_mode=scan_mode,
                 )
                 for _ in range(n_layers)
             ]

@@ -84,7 +84,7 @@ class MambaBlock(nn.Module):
         """
         dt_min, dt_max = 1e-3, 1e-1
         with torch.no_grad():
-            std = self.dt_rank ** -0.5
+            std = self.dt_rank**-0.5
             nn.init.uniform_(self.dt_proj.weight, -std, std)
             # Per-channel log-uniform time-scale bias, as in the official code.
             u_d = torch.linspace(0.0, 1.0, self.d_inner)
@@ -155,7 +155,7 @@ class MambaBlock(nn.Module):
         calls instead of recomputed from the prefix.
         """
         xz = self.in_proj(self.norm(x_t))  # (B, 1, 2*d_inner)
-        x_in, z = xz.chunk(2, dim=-1)      # (B, 1, d_inner)
+        x_in, z = xz.chunk(2, dim=-1)  # (B, 1, d_inner)
         conv = torch.cat([state["conv"], x_in.squeeze(1).unsqueeze(-1)], dim=-1)
         conv_out = F.silu(self.conv1d(conv)[..., -1])  # (B, d_inner) last output
         state["conv"] = conv[:, :, 1:]  # drop oldest input, keep last d_conv-1

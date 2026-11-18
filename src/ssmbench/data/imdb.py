@@ -25,11 +25,12 @@ def _tokenize(text: str) -> list[str]:
 
 
 class IMDBDataset(Dataset):
-    def __init__(self, texts: list[str], labels: list[int], vocab: dict[str, int], max_len: int) -> None:
+    def __init__(
+        self, texts: list[str], labels: list[int], vocab: dict[str, int], max_len: int
+    ) -> None:
         self.encoded = [
             torch.tensor(
-                [_UNK if w not in vocab else vocab[w] for w in _tokenize(t)][:max_len]
-                or [_UNK],
+                [_UNK if w not in vocab else vocab[w] for w in _tokenize(t)][:max_len] or [_UNK],
                 dtype=torch.long,
             )
             for t in texts
@@ -96,11 +97,18 @@ def get_imdb_loaders(
     val_ds = IMDBDataset(val_texts, val_labels, vocab, max_len)
 
     train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate,
-        num_workers=num_workers, drop_last=False,
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=collate,
+        num_workers=num_workers,
+        drop_last=False,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate,
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=collate,
         num_workers=num_workers,
     )
     return train_loader, val_loader, vocab, 2

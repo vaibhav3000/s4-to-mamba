@@ -112,10 +112,34 @@ def efficiency_figures(results: Path, out: Path) -> None:
                 ooms[target][model].append(L)
 
     specs = [
-        ("latency", "Training step time vs sequence length", "train step time (ms)", "fig_efficiency_latency", True),
-        ("memory", "Peak GPU memory vs sequence length", "peak memory (MB)", "fig_efficiency_memory", False),
-        ("throughput", "Training throughput vs sequence length", "tokens / s", "fig_efficiency_throughput", True),
-        ("decode", "Decode cost per token vs sequence length", "per-token cost (ms)", "fig_efficiency_decode", True),
+        (
+            "latency",
+            "Training step time vs sequence length",
+            "train step time (ms)",
+            "fig_efficiency_latency",
+            True,
+        ),
+        (
+            "memory",
+            "Peak GPU memory vs sequence length",
+            "peak memory (MB)",
+            "fig_efficiency_memory",
+            False,
+        ),
+        (
+            "throughput",
+            "Training throughput vs sequence length",
+            "tokens / s",
+            "fig_efficiency_throughput",
+            True,
+        ),
+        (
+            "decode",
+            "Decode cost per token vs sequence length",
+            "per-token cost (ms)",
+            "fig_efficiency_decode",
+            True,
+        ),
     ]
     for key, title, ylabel, name, loglog in specs:
         fig, ax = plt.subplots(figsize=(6, 4))
@@ -126,10 +150,16 @@ def efficiency_figures(results: Path, out: Path) -> None:
                 ax.plot(xs, ys, marker="o", ms=4, color=COLORS[model], label=LABELS[model])
             # measured hardware limits get their own marker + annotation
             for L in sorted(set(ooms[key].get(model, []))):
-                ax.annotate("OOM", (L, ax.get_ylim()[1] * 0.02), rotation=90,
-                            fontsize=7, color=COLORS[model], ha="right", va="bottom")
-                ax.plot([L], [ax.get_ylim()[1] * 0.02], marker="x", ms=6,
-                        color=COLORS[model])
+                ax.annotate(
+                    "OOM",
+                    (L, ax.get_ylim()[1] * 0.02),
+                    rotation=90,
+                    fontsize=7,
+                    color=COLORS[model],
+                    ha="right",
+                    va="bottom",
+                )
+                ax.plot([L], [ax.get_ylim()[1] * 0.02], marker="x", ms=6, color=COLORS[model])
             if loglog:
                 ax.set_xscale("log")
                 ax.set_yscale("log")
@@ -150,9 +180,24 @@ def training_figures(results: Path, out: Path) -> None:
 
     # quality bars per task
     task_specs = [
-        ("imdb", "IMDb sentiment (final epoch)", [("accuracy", "accuracy"), ("auc", "AUC")], "fig_imdb_quality"),
-        ("selective_copy", "Selective copying (final epoch)", [("sequence_success", "sequence success"), ("token_accuracy", "token accuracy")], "fig_selective_copy"),
-        ("parity", "Parity / state tracking (final epoch)", [("token_accuracy", "token accuracy")], "fig_parity"),
+        (
+            "imdb",
+            "IMDb sentiment (final epoch)",
+            [("accuracy", "accuracy"), ("auc", "AUC")],
+            "fig_imdb_quality",
+        ),
+        (
+            "selective_copy",
+            "Selective copying (final epoch)",
+            [("sequence_success", "sequence success"), ("token_accuracy", "token accuracy")],
+            "fig_selective_copy",
+        ),
+        (
+            "parity",
+            "Parity / state tracking (final epoch)",
+            [("token_accuracy", "token accuracy")],
+            "fig_parity",
+        ),
     ]
     for prefix, title, metrics, name in task_specs:
         task_runs = {rn: r for rn, r in runs.items() if rn.startswith(prefix)}
@@ -171,8 +216,13 @@ def training_figures(results: Path, out: Path) -> None:
                 if v is not None:
                     xs.append(pos + mi * width)
                     ys.append(v)
-            ax.bar(xs, ys, width=width * 0.9, label=label,
-                   color=plt.cm.viridis(mi / max(len(metrics) - 1, 1)))
+            ax.bar(
+                xs,
+                ys,
+                width=width * 0.9,
+                label=label,
+                color=plt.cm.viridis(mi / max(len(metrics) - 1, 1)),
+            )
         ax.set_xticks([i + width * (len(metrics) - 1) / 2 for i in range(len(models_present))])
         ax.set_xticklabels([LABELS.get(m, m) for m in models_present], fontsize=9)
         ax.set_title(title)
@@ -227,9 +277,6 @@ def main() -> None:
     task_formulation_figure(results, out)
 
 
-
-
-
 def exact_copy_figures(results: Path, out: Path) -> None:
     """Repeat-After-Me reproduction figures: metrics vs string length per model."""
     runs = {}
@@ -243,8 +290,18 @@ def exact_copy_figures(results: Path, out: Path) -> None:
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 4))
     for ax, key, title, ylabel in [
-        (axes[0], "token_accuracy", "Exact copy: token accuracy vs string length", "token accuracy"),
-        (axes[1], "sequence_success", "Exact copy: full-sequence success vs length", "sequence success"),
+        (
+            axes[0],
+            "token_accuracy",
+            "Exact copy: token accuracy vs string length",
+            "token accuracy",
+        ),
+        (
+            axes[1],
+            "sequence_success",
+            "Exact copy: full-sequence success vs length",
+            "sequence success",
+        ),
     ]:
         chance = 1 / 30
         for model, run in runs.items():
@@ -254,8 +311,15 @@ def exact_copy_figures(results: Path, out: Path) -> None:
                 xs, ys = zip(*pts)
                 ax.plot(xs, ys, marker="o", ms=5, color=COLORS[model], label=LABELS[model])
         ax.axhline(chance, ls="--", lw=1, color="gray")
-        ax.text(0.98, chance + 0.02, "chance", transform=ax.get_yaxis_transform(),
-                ha="right", fontsize=8, color="gray")
+        ax.text(
+            0.98,
+            chance + 0.02,
+            "chance",
+            transform=ax.get_yaxis_transform(),
+            ha="right",
+            fontsize=8,
+            color="gray",
+        )
         ax.set_xscale("log", base=2)
         ax.set_xticks([32, 64, 128])
         ax.set_xticklabels(["32", "64", "128"])
@@ -279,7 +343,7 @@ def task_formulation_figure(results: Path, out: Path) -> None:
             v = _final(r, "sequence_success")
             if v is not None:
                 sel[model] = v
-        p3 = (results / f"exact_copy_{model}.json")
+        p3 = results / f"exact_copy_{model}.json"
         if p3.exists():
             fb = json.loads(p3.read_text(encoding="utf-8")).get("final_by_length") or {}
             v = fb.get("32", {}).get("sequence_success")
@@ -292,18 +356,44 @@ def task_formulation_figure(results: Path, out: Path) -> None:
     x = np.arange(len(models_present))
     w = 0.38
     fig, ax = plt.subplots(figsize=(7.5, 4))
-    ax.bar(x - w / 2, [sel.get(m, 0) for m in models_present], w,
-           label="selective copy (test L=128)", color="#0a7d33")
-    ax.bar(x + w / 2, [exact.get(m, 0) for m in models_present], w,
-           label="exact copy (in-dist L=32)", color="#0a5aa0")
+    ax.bar(
+        x - w / 2,
+        [sel.get(m, 0) for m in models_present],
+        w,
+        label="selective copy (test L=128)",
+        color="#0a7d33",
+    )
+    ax.bar(
+        x + w / 2,
+        [exact.get(m, 0) for m in models_present],
+        w,
+        label="exact copy (in-dist L=32)",
+        color="#0a5aa0",
+    )
     # mark genuinely-not-measured cells so a missing bar is not read as 0.0
     for xi, m in zip(x, models_present):
         if m not in sel:
-            ax.text(xi - w / 2, 0.02, "not run", rotation=90, fontsize=7,
-                    ha="center", va="bottom", color="#0a7d33")
+            ax.text(
+                xi - w / 2,
+                0.02,
+                "not run",
+                rotation=90,
+                fontsize=7,
+                ha="center",
+                va="bottom",
+                color="#0a7d33",
+            )
         if m not in exact:
-            ax.text(xi + w / 2, 0.02, "not run", rotation=90, fontsize=7,
-                    ha="center", va="bottom", color="#0a5aa0")
+            ax.text(
+                xi + w / 2,
+                0.02,
+                "not run",
+                rotation=90,
+                fontsize=7,
+                ha="center",
+                va="bottom",
+                color="#0a5aa0",
+            )
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS.get(m, m) for m in models_present], fontsize=9)
     ax.set_ylabel("full-sequence success")

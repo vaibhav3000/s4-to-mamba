@@ -27,8 +27,14 @@ _KWARGS: dict[str, set[str]] = {
     "s4d": {"d_model", "n_layers", "d_state", "dropout", "init"},
     "mamba": {"d_model", "n_layers", "d_state", "d_conv", "expand"},
     "mamba2": {
-        "d_model", "n_layers", "d_state", "headdim", "expand", "n_groups",
-        "chunk_size", "scan_mode",
+        "d_model",
+        "n_layers",
+        "d_state",
+        "headdim",
+        "expand",
+        "n_groups",
+        "chunk_size",
+        "scan_mode",
     },
     "mamba3": {"d_model", "n_layers", "d_state", "headdim", "expand", "n_groups"},
 }

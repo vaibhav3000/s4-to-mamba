@@ -43,16 +43,17 @@ def zoh_discretization(
     Abar = exp(delta * A)
     Bbar = A^{-1} (exp(delta * A) - 1) * B = delta * B * (e^{z}-1)/z with z = delta*A.
 
-    (e^{z}-1)/z is computed as exp(z/2) * sinc-form; near z=0 the analytic limit 1
-    is approached with a Taylor series to keep the kernel finite at delta*A -> 0.
+    (e^{z}-1)/z is evaluated directly. For |z| < 1e-4 the Taylor series
+    1 + z/2 + z^2/6 replaces it (truncation error below |z|^3/24 < 5e-14), which
+    keeps the value and its gradient finite as delta*A -> 0.
     """
     z = delta.unsqueeze(-1) * a  # (..., D, N)
     az = torch.exp(z)
-    # (e^z - 1)/z with a series fallback for small |z|
     small = z.abs() < 1e-4
-    ratio = torch.where(
-        small, 1.0 + z / 2.0 + z * z / 6.0, (az - 1.0) / z.where(small, torch.ones_like(z))
-    )
+    # Divide by z only outside the series branch; the masked divisor keeps the
+    # unused branch, and its gradient, finite.
+    safe_z = torch.where(small, torch.ones_like(z), z)
+    ratio = torch.where(small, 1.0 + z / 2.0 + z * z / 6.0, (az - 1.0) / safe_z)
     return az, delta.unsqueeze(-1) * b * ratio
 
 

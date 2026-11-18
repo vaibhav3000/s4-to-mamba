@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blocks import scan_dtype
+from .blocks import expand_groups_to_heads, scan_dtype
 
 
 class Mamba2Block(nn.Module):
@@ -110,7 +110,7 @@ class Mamba2Block(nn.Module):
         Returns:
             x_h: (B, T, H, P)
             alpha: (B, T, H) = exp(delta * A)
-            Bx: (B, T, H, N)  the state input delta_t * B_t, expanded to heads
+            Bx: (B, T, H, N)  the state input delta_t * B_t; head h reads group h // (H/G)
             C_h: (B, T, H, N)
         """
         proj = self.x_proj(x)
@@ -122,9 +122,8 @@ class Mamba2Block(nn.Module):
         delta = F.softplus(self.dt_proj(dt))  # (B, T, H)
         A = -torch.exp(self.A_log.to(scan_dtype(delta)))  # (H,)
         alpha = torch.exp(delta * A)  # (B, T, H)
-        rep = self.n_heads // self.n_groups
-        B_h = B.repeat_interleave(rep, dim=-1).view(*B.shape[:-1], self.n_heads, self.d_state)
-        C_h = C.repeat_interleave(rep, dim=-1).view(*C.shape[:-1], self.n_heads, self.d_state)
+        B_h = expand_groups_to_heads(B, self.n_groups, self.n_heads)  # (B, T, H, N)
+        C_h = expand_groups_to_heads(C, self.n_groups, self.n_heads)  # (B, T, H, N)
         Bx = B_h * delta.unsqueeze(-1)  # state input = delta * B (gamma_t * B_t)
         x_h = x.view(*x.shape[:-1], self.n_heads, self.headdim)
         return x_h, alpha, Bx, C_h

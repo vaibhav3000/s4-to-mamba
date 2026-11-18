@@ -43,7 +43,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blocks import complex_dtype_for, scan_dtype
+from .blocks import complex_dtype_for, expand_groups_to_heads, scan_dtype
 
 
 class Mamba3Block(nn.Module):
@@ -183,9 +183,9 @@ class Mamba3Block(nn.Module):
         delta = F.softplus(self.dt_proj(dt))  # (B, T, H)
         lam = torch.sigmoid(self.lambda_proj(lam_raw))  # (B, T, H)
 
-        rep = self.n_heads // self.n_groups
-        B_h = B.repeat_interleave(rep, dim=-1).view(*B.shape[:-1], self.n_heads, self.d_state)
-        C_h = C.repeat_interleave(rep, dim=-1).view(*C.shape[:-1], self.n_heads, self.d_state)
+        # Head h reads the full N-vectors B and C of group h // (H / G).
+        B_h = expand_groups_to_heads(B, self.n_groups, self.n_heads)  # (B, T, H, N)
+        C_h = expand_groups_to_heads(C, self.n_groups, self.n_heads)  # (B, T, H, N)
         # lambda_proj outputs one weight per head directly (no group expansion).
         lam_h = lam
         x_h = x_conv.view(*x_conv.shape[:-1], self.n_heads, self.headdim)

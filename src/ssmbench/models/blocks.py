@@ -110,6 +110,21 @@ def complex_dtype_for(real_dtype: torch.dtype) -> torch.dtype:
     return torch.complex128 if real_dtype == torch.float64 else torch.complex64
 
 
+def expand_groups_to_heads(x: torch.Tensor, n_groups: int, n_heads: int) -> torch.Tensor:
+    """Expand grouped SSM inputs (..., G*N) to per-head inputs (..., H, N).
+
+    The H heads form G contiguous groups of H/G heads, and every head in group g
+    reads the full N-vector of group g (Mamba-2's n_groups semantics; G = 1 means
+    all heads share one B and one C).
+    """
+    if n_heads % n_groups != 0 or x.shape[-1] % n_groups != 0:
+        raise ValueError(
+            f"cannot split {x.shape[-1]} features into {n_groups} groups for {n_heads} heads"
+        )
+    grouped = x.unflatten(-1, (n_groups, x.shape[-1] // n_groups))  # (..., G, N)
+    return grouped.repeat_interleave(n_heads // n_groups, dim=-2)  # (..., H, N)
+
+
 def sinusoidal_positions(d_model: int, max_len: int, device: torch.device) -> torch.Tensor:
     """Classic sin/cos positional table, shape (max_len, d_model)."""
     pos = torch.arange(max_len, device=device).unsqueeze(1).float()

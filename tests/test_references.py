@@ -25,6 +25,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ssmbench.models import build_backbone
 from ssmbench.models.mamba2_minimal import Mamba2Block
 from ssmbench.models.mamba3_minimal import Mamba3Block
 from ssmbench.models.mamba_minimal import MambaBlock
@@ -551,3 +552,29 @@ def test_mamba2_chunked_gradient_survives_decay_underflow() -> None:
     assert grad_chunked is not None and grad_sequential is not None
     assert grad_sequential.abs().min() > 0
     torch.testing.assert_close(grad_chunked, grad_sequential, rtol=1e-10, atol=0)
+
+
+# ---------------------------------------------------------------- determinism
+
+SMALL_KWARGS: dict[str, dict[str, int]] = {
+    "transformer": {"d_model": 32, "n_layers": 2, "n_heads": 4, "max_len": 64},
+    "s4d": {"d_model": 32, "n_layers": 2, "d_state": 8},
+    "mamba": {"d_model": 32, "n_layers": 2, "d_state": 8},
+    "mamba2": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16, "chunk_size": 16},
+    "mamba3": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16},
+}
+
+
+@pytest.mark.parametrize("name", list(SMALL_KWARGS))
+def test_seeded_rebuild_is_bitwise_deterministic(name: str) -> None:
+    """Rebuilding the model and the input from the same seed gives bitwise-equal
+    outputs on CPU (not just two calls on one instance)."""
+
+    def run() -> torch.Tensor:
+        torch.manual_seed(123)
+        backbone = build_backbone(name, SMALL_KWARGS[name])
+        x = torch.randn(2, 20, 32)
+        with torch.no_grad():
+            return backbone(x)
+
+    assert torch.equal(run(), run())

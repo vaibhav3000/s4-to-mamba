@@ -119,10 +119,12 @@ def s4d_kernel_reference(layer: S4DLayer, length: int) -> torch.Tensor:
 
 
 @pytest.mark.parametrize("seed", [0, 1])
-@pytest.mark.parametrize("delta_scale", [1.0, 1e-5], ids=["series-off", "series-on"])
+@pytest.mark.parametrize("delta_scale", [1.0, 4e-5], ids=["series-off", "series-on"])
 def test_s4d_zoh_matches_matrix_exponential(seed: int, delta_scale: float) -> None:
-    """Abar and Bbar equal the matrix-exponential ZOH in both branches of the
-    (e^z - 1) / z evaluation (|z| >= 1e-4 direct, |z| < 1e-4 Taylor). float64, 1e-10."""
+    """Abar and Bbar equal the matrix-exponential ZOH in both float64 branches of the
+    (e^z - 1) / z evaluation (|z| >= 1e-4 direct, |z| < 1e-4 Taylor; the series case
+    reaches |z| ~ 9e-5 so the z^2 term matters). float64, rtol = 1e-10 and atol = 0,
+    because Bbar is as small as 1e-9 in the series case."""
     torch.manual_seed(seed)
     layer = S4DLayer(d_model=4, d_state=8)
     a, delta, b, _ = s4d_params64(layer)
@@ -131,11 +133,54 @@ def test_s4d_zoh_matches_matrix_exponential(seed: int, delta_scale: float) -> No
     if delta_scale == 1.0:
         assert (z.abs() >= 1e-4).all()
     else:
-        assert (z.abs() < 1e-4).all()
+        assert (z.abs() < 1e-4).all() and z.abs().max() > 5e-5
     a_bar, b_bar = zoh_discretization(delta, a, b)
     a_ref, b_ref = zoh_reference(delta, a, b)
-    torch.testing.assert_close(a_bar, a_ref, **FP64)
-    torch.testing.assert_close(b_bar, b_ref, **FP64)
+    torch.testing.assert_close(a_bar, a_ref, rtol=1e-10, atol=0)
+    torch.testing.assert_close(b_bar, b_ref, rtol=1e-10, atol=0)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_s4d_zoh_at_zero_step_is_finite(dtype: torch.dtype) -> None:
+    """delta = 0 gives Abar = 1 and Bbar = 0 with finite gradients w.r.t. delta and A
+    (the series branch, not a 0/0). Exact values; gradients only checked for finiteness."""
+    torch.manual_seed(21)
+    layer = S4DLayer(d_model=3, d_state=4).to(dtype)
+    a, _, b, _ = (t.detach() for t in s4d_params64(layer))
+    complex_dtype = torch.complex64 if dtype == torch.float32 else torch.complex128
+    a = a.to(complex_dtype).requires_grad_(True)
+    delta = torch.zeros(3, dtype=dtype, requires_grad=True)
+    a_bar, b_bar = zoh_discretization(delta, a, b.to(complex_dtype))
+    assert torch.equal(a_bar.detach(), torch.ones_like(a_bar))
+    assert torch.equal(b_bar.detach(), torch.zeros_like(b_bar))
+    (a_bar.real + a_bar.imag + b_bar.real + b_bar.imag).sum().backward()
+    assert delta.grad is not None and a.grad is not None
+    assert torch.isfinite(delta.grad).all() and torch.isfinite(torch.view_as_real(a.grad)).all()
+
+
+def test_s4d_zoh_float32_value_and_gradient_match_float64() -> None:
+    """(e^z - 1) / z in float32 against float64 over |z| in [1e-5, 1] and phases with
+    Re(z) <= 0 (S4D's half plane), including just above every switch point. Plain
+    (e^z - 1) / z cancels there: about 4e-4 relative error in value and a gradient
+    off by several times its size. Bounds: value 1e-6, gradient w.r.t. a 1e-3 relative."""
+    mags = torch.tensor([1e-5, 5e-5, 1.0001e-4, 2e-4, 5e-4, 1e-3, 3e-3, 1.0001e-2, 3e-2, 0.1, 1.0])
+    phases = math.pi * (0.5 + torch.arange(12) / 12.0)
+    z64 = (mags[:, None] * torch.exp(1j * phases[None, :])).to(torch.complex128).reshape(1, -1)
+
+    def ratio_and_grad(
+        z: torch.Tensor, real_dtype: torch.dtype
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        a = z.detach().clone().requires_grad_(True)
+        delta = torch.ones(1, dtype=real_dtype)
+        _, b_bar = zoh_discretization(delta, a, torch.ones_like(a))  # Bbar = ratio here
+        (b_bar.real + b_bar.imag).sum().backward()
+        assert a.grad is not None
+        return b_bar.detach().to(torch.complex128), a.grad.to(torch.complex128)
+
+    v32, g32 = ratio_and_grad(z64.to(torch.complex64), torch.float32)
+    v64, g64 = ratio_and_grad(z64, torch.float64)
+    assert ((v32 - v64).abs() / v64.abs()).max() < 1e-6
+    assert ((g32 - g64).abs() / g64.abs()).max() < 1e-3
 
 
 def test_s4d_steady_state_is_the_continuous_dc_gain() -> None:

@@ -32,6 +32,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def _expm1(z: torch.Tensor) -> torch.Tensor:
+    """e^z - 1 without cancellation for small |z|, real or complex.
+
+    For complex z = x + iy: e^z - 1 = (expm1(x) cos y - 2 sin^2(y/2)) + i e^x sin y,
+    built from real ops only, so it runs wherever real expm1, sin and cos do.
+    """
+    if not z.is_complex():
+        return torch.expm1(z)
+    x, y = z.real, z.imag
+    return torch.complex(
+        torch.expm1(x) * torch.cos(y) - 2.0 * torch.sin(0.5 * y) ** 2,
+        torch.exp(x) * torch.sin(y),
+    )
+
+
 def zoh_discretization(
     delta: torch.Tensor, a: torch.Tensor, b: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -43,17 +58,22 @@ def zoh_discretization(
     Abar = exp(delta * A)
     Bbar = A^{-1} (exp(delta * A) - 1) * B = delta * B * (e^{z}-1)/z with z = delta*A.
 
-    (e^{z}-1)/z is evaluated directly. For |z| < 1e-4 the Taylor series
-    1 + z/2 + z^2/6 replaces it (truncation error below |z|^3/24 < 5e-14), which
-    keeps the value and its gradient finite as delta*A -> 0.
+    (e^{z}-1)/z is evaluated as expm1(z)/z, which avoids the cancellation in
+    e^z - 1. Its autograd derivative still loses about eps/|z| relative, so below
+    a switch point the Taylor series 1 + z/2 + z^2/6 + z^3/24 is used instead:
+    |z| < 1e-2 in float32 and below (truncation under |z|^4/120 < 1e-10) and
+    |z| < 1e-4 in float64 (truncation under 1e-18). The series also keeps the
+    value and its gradient finite as delta*A -> 0.
     """
     z = delta.unsqueeze(-1) * a  # (..., D, N)
     az = torch.exp(z)
-    small = z.abs() < 1e-4
+    switch = 1e-4 if z.real.dtype == torch.float64 else 1e-2
+    small = z.abs() < switch
     # Divide by z only outside the series branch; the masked divisor keeps the
     # unused branch, and its gradient, finite.
     safe_z = torch.where(small, torch.ones_like(z), z)
-    ratio = torch.where(small, 1.0 + z / 2.0 + z * z / 6.0, (az - 1.0) / safe_z)
+    series = 1.0 + z / 2.0 + z * z / 6.0 + z * z * z / 24.0
+    ratio = torch.where(small, series, _expm1(z) / safe_z)
     return az, delta.unsqueeze(-1) * b * ratio
 
 

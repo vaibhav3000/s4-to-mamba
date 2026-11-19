@@ -126,29 +126,27 @@ class _StepBlock(Protocol):
 
 
 def _decode_stepwise(
-    backbone: nn.Module, embed: nn.Module, head: nn.Module, seq_len: int, device: torch.device
+    backbone: nn.Module, embed: nn.Module, head: nn.Module, tokens: torch.Tensor
 ) -> None:
-    """True incremental decode for backbones whose blocks expose step()."""
+    """True incremental decode of tokens (1, T) for backbones whose blocks expose
+    step(). The timed session includes one init_state() per block (for S4D, the
+    one-off discretization) and T steps; the tokens are generated beforehand."""
     with torch.no_grad():
         blocks = backbone.blocks
         if not isinstance(blocks, nn.ModuleList):
             raise TypeError(f"{type(backbone).__name__} has no ModuleList of blocks to step")
         steppers = [cast(_StepBlock, block) for block in blocks]
-        states = [block.init_state(1, device) for block in steppers]
-        for _ in range(seq_len):
-            token = torch.randint(1, VOCAB, (1, 1), device=device)
-            h = embed(token)
+        states = [block.init_state(1, tokens.device) for block in steppers]
+        for t in range(tokens.shape[1]):
+            h = embed(tokens[:, t : t + 1])
             for block, state in zip(steppers, states, strict=True):
                 h = block.step(h, state)
             head(h)
 
 
-def _prefill(
-    backbone: nn.Module, embed: nn.Module, head: nn.Module, seq_len: int, device: torch.device
-) -> None:
-    """One full forward over a fresh batch-1 prompt of seq_len tokens."""
+def _prefill(backbone: nn.Module, embed: nn.Module, head: nn.Module, tokens: torch.Tensor) -> None:
+    """One full forward over a prompt of shape (1, T)."""
     with torch.no_grad():
-        tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)
         head(backbone(embed(tokens)))
 
 
@@ -258,10 +256,11 @@ def benchmark_single(
     # ---- decode ----
     try:
         rep_d = max(repeats // 2, 1)
+        prompt = torch.randint(1, VOCAB, (1, seq_len), device=device)  # outside timing
         if name in ("mamba", "s4d"):
 
             def decode_steps() -> None:
-                _decode_stepwise(backbone, embed, head, seq_len, device)
+                _decode_stepwise(backbone, embed, head, prompt)
 
             entry["decode_mode"] = "stepwise (O(1) state)"
             mean_ms, _ = _time_gpu(decode_steps, rep_d, warmup=1, device=device.type)
@@ -270,7 +269,7 @@ def benchmark_single(
         elif name in ("mamba2", "mamba3"):
 
             def prefill() -> None:
-                _prefill(backbone, embed, head, seq_len, device)
+                _prefill(backbone, embed, head, prompt)
 
             entry["decode_mode"] = (
                 "not measured: no step() path; prefill_per_token_ms is one full forward / T"
@@ -278,11 +277,9 @@ def benchmark_single(
             mean_ms, _ = _time_gpu(prefill, rep_d, warmup=1, device=device.type)
             entry["prefill_per_token_ms"] = round(mean_ms / seq_len, 4)
         else:  # transformer: no KV cache, so each new token re-runs the full prefix
-            tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)
 
             def decode_tr() -> None:
-                with torch.no_grad():
-                    head(backbone(embed(tokens)))
+                _prefill(backbone, embed, head, prompt)
 
             entry["decode_mode"] = "full-prefix recompute per new token (no KV cache)"
             mean_ms, _ = _time_gpu(decode_tr, rep_d, warmup=1, device=device.type)
@@ -301,13 +298,34 @@ class ProvenanceMismatchError(RuntimeError):
     """The results file holds entries measured with different code."""
 
 
-def _load_prior_entries(out_path: Path, source_hash: str, force: bool) -> list[dict]:
+# Provenance fields that must match for a prior entry to count as the same setup.
+RESUME_PROVENANCE_KEYS = ("source_sha256", "torch", "cuda", "gpu")
+# Run settings, stored on every entry, that must match too.
+RESUME_SETTING_KEYS = ("batch_size", "repeats")
+
+
+def _resume_mismatch(entry: dict, provenance: dict, settings: dict) -> str | None:
+    """Why entry cannot be reused in this run, or None if it can."""
+    prior = entry.get("provenance") or {}
+    for key in RESUME_PROVENANCE_KEYS:
+        if prior.get(key) != provenance[key]:
+            return key
+    for key in RESUME_SETTING_KEYS:
+        if entry.get(key) != settings[key]:
+            return key
+    return None
+
+
+def _load_prior_entries(
+    out_path: Path, provenance: dict, settings: dict, force: bool
+) -> list[dict]:
     """Entries already in out_path that may be kept when resuming a sweep.
 
-    Resuming is for finishing an interrupted sweep of the SAME code. Entries whose
-    provenance.source_sha256 differs from source_hash (including entries written
-    before provenance existed) make this raise, unless force is set. Error entries
-    are dropped so those points are measured again.
+    Resuming is for finishing an interrupted sweep of the SAME setup: the same
+    package source, torch, CUDA and GPU (RESUME_PROVENANCE_KEYS) and the same
+    batch_size and repeats. Any other entry, including those written before
+    provenance existed, makes this raise unless force is set. Error entries are
+    dropped so those points are measured again.
     """
     if not out_path.exists():
         return []
@@ -316,20 +334,21 @@ def _load_prior_entries(out_path: Path, source_hash: str, force: bool) -> list[d
     dropped = len(prior.get("entries", [])) - len(entries)
     if dropped:
         print(f"re-measuring {dropped} point(s) that ended in an error", flush=True)
-    foreign = [
-        f"{e.get('model')}@{e.get('seq_len')}"
-        for e in entries
-        if (e.get("provenance") or {}).get("source_sha256") != source_hash
-    ]
+    foreign = []
+    for e in entries:
+        reason = _resume_mismatch(e, provenance, settings)
+        if reason is not None:
+            foreign.append(f"{e.get('model')}@{e.get('seq_len')} ({reason} differs)")
     if foreign and not force:
         raise ProvenanceMismatchError(
-            f"{out_path} holds {len(foreign)} entries measured with other code or without "
-            f"provenance ({', '.join(foreign[:5])}{', ...' if len(foreign) > 5 else ''}). "
-            "Resuming would mix code versions in one table. Move the file away to start "
-            "a clean sweep, or pass --force to merge anyway."
+            f"{out_path} holds {len(foreign)} entries measured with other code, another "
+            f"environment or other settings, or without provenance "
+            f"({', '.join(foreign[:5])}{', ...' if len(foreign) > 5 else ''}). "
+            "Resuming would mix them in one table. Move the file away to start a clean "
+            "sweep, or pass --force to merge anyway."
         )
     if foreign:
-        print(f"warning: merging {len(foreign)} entries from other code (--force)", flush=True)
+        print(f"warning: merging {len(foreign)} mismatched entries (--force)", flush=True)
     return entries
 
 
@@ -342,7 +361,8 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
     device = resolve_device(cfg.get("device", "auto"))
     out_path = Path(cfg["out_path"])
     provenance = run_provenance(device)
-    entries = _load_prior_entries(out_path, provenance["source_sha256"], force)
+    settings = {"batch_size": cfg.get("batch_size", 8), "repeats": cfg.get("repeats", 5)}
+    entries = _load_prior_entries(out_path, provenance, settings, force)
     done = {(str(e["model"]), int(e["seq_len"])) for e in entries}
     results = {
         "environment": {**provenance, "date": time.strftime("%Y-%m-%d")},
@@ -362,7 +382,7 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
             print(f"benchmarking {name} @ T={L} ...", flush=True)
             try:
                 entry = benchmark_single(
-                    name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
+                    name, L, settings["batch_size"], settings["repeats"], device
                 )
             except Exception as exc:
                 if not _is_oom(exc):
@@ -370,7 +390,13 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
                     # broken CUDA context is never plotted as an OOM.
                     error = f"{type(exc).__name__}: {exc}"[:300]
                     results["entries"].append(
-                        {"model": name, "seq_len": L, "error": error, "provenance": provenance}
+                        {
+                            "model": name,
+                            "seq_len": L,
+                            "error": error,
+                            **settings,
+                            "provenance": provenance,
+                        }
                     )
                     dump_json(results, out_path)
                     raise RuntimeError(
@@ -378,7 +404,7 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
                         f"(recorded in {out_path})"
                     ) from exc
                 entry = {"model": name, "seq_len": L, "oom": True}
-            entry["provenance"] = provenance
+            entry.update(settings, provenance=provenance)
             results["entries"].append(entry)
             dump_json(results, out_path)
             if any(entry.get(k) for k in ("oom", "oom_train", "oom_infer", "oom_decode")):

@@ -234,6 +234,58 @@ def test_resume_refuses_entries_from_other_code_unless_forced(
     ]
 
 
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ({"batch_size": 4}, "batch_size differs"),
+        ({"repeats": 3}, "repeats differs"),
+        ({"provenance_torch": "0.0.0"}, "torch differs"),
+    ],
+)
+def test_resume_refuses_entries_from_other_settings_or_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, change: dict, reason: str
+) -> None:
+    """Same code is not enough: a point measured with another batch size, repeat
+    count or torch build is not the same measurement."""
+    monkeypatch.setattr(efficiency, "benchmark_single", _fake_benchmark)
+    cfg = _sweep_cfg(tmp_path, ["s4d"], [16, 32])
+    efficiency.run_efficiency(dict(cfg, seq_lengths=[16]))
+    if "provenance_torch" in change:
+        path = Path(cfg["out_path"])
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        saved["entries"][0]["provenance"]["torch"] = change["provenance_torch"]
+        path.write_text(json.dumps(saved), encoding="utf-8")
+        new_cfg = cfg
+    else:
+        new_cfg = dict(cfg, **change)
+    with pytest.raises(efficiency.ProvenanceMismatchError, match=reason):
+        efficiency.run_efficiency(new_cfg)
+
+
+def test_stepwise_decode_runs_in_eval_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S4D and Mamba-1 decode through block.step(), which forward hooks do not see;
+    check the modes when the decode session starts."""
+    seen: list[list[bool]] = []
+    real_decode = efficiency._decode_stepwise
+
+    def recording_decode(
+        backbone: nn.Module, embed: nn.Module, head: nn.Module, tokens: torch.Tensor
+    ) -> None:
+        seen.append([m.training for m in (embed, backbone, head, *backbone.modules())])
+        real_decode(backbone, embed, head, tokens)
+
+    monkeypatch.setattr(efficiency, "_decode_stepwise", recording_decode)
+    efficiency.benchmark_single(
+        "s4d",
+        seq_len=8,
+        batch_size=2,
+        repeats=2,
+        device=torch.device("cpu"),
+        model_kwargs={"d_model": 32, "n_layers": 1, "d_state": 4},
+    )
+    assert seen and not any(any(flags) for flags in seen)
+
+
 def test_resume_remeasures_points_that_ended_in_an_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

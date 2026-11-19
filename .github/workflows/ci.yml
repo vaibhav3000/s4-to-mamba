@@ -8,34 +8,24 @@ on:
 permissions:
   contents: read
 
-env:
-  TORCH_SPEC: "torch==2.14.*"
-  TORCH_INDEX: https://download.pytorch.org/whl/cpu
-
 jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.13"
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      # pyproject.toml points pyright at .venv, so the tools run from one.
-      - name: Create .venv
-        run: python -m venv .venv
-      - name: Install CPU torch
-        run: .venv/bin/python -m pip install "$TORCH_SPEC" --index-url "$TORCH_INDEX"
-      - name: Install package with dev tools
-        run: .venv/bin/python -m pip install -e ".[dev]"
+      # The locked environment with CPU torch (uv.lock, cpu extra) and the dev group.
+      - name: Sync the locked environment
+        run: uv sync --locked --extra cpu
       - name: ruff check
-        run: .venv/bin/ruff check .
+        run: uv run --locked ruff check .
       - name: ruff format
-        run: .venv/bin/ruff format --check .
+        run: uv run --locked ruff format --check .
       - name: pyright
-        run: .venv/bin/pyright
+        run: uv run --locked pyright
 
   test:
     runs-on: ubuntu-latest
@@ -46,17 +36,13 @@ jobs:
         python-version: ["3.11", "3.13"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      - name: Install CPU torch
-        run: python -m pip install "$TORCH_SPEC" --index-url "$TORCH_INDEX"
-      - name: Install package
-        run: python -m pip install ".[dev]"
+      - name: Sync the locked environment
+        run: uv sync --locked --extra cpu
       - name: Run tests
-        run: python -m pytest -q
+        run: uv run --locked pytest -q
 
   docker:
     runs-on: ubuntu-latest

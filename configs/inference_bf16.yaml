@@ -1,0 +1,25 @@
+# Inference benchmark under bf16 autocast: time to first token, decode latency, tokens/s
+# and decode memory versus prompt length (src/ssmbench/benchmarks/inference.py).
+# Run: ssmbench-inference --config configs/inference_bf16.yaml
+device: auto
+out_path: results/inference/decode_bf16.json
+precision: bf16
+batch_size: 1
+repeats: 5          # timed sessions per point (prefill + new_tokens decode steps each)
+warmup: 1
+new_tokens: 64
+seq_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
+models:
+  - transformer_flash
+  - transformer_efficient
+  - s4d
+  - mamba
+  - mamba2
+  - mamba3
+# d_model 256 and 2 layers come from DEFAULT_KWARGS in efficiency.py.
+variants:
+  transformer_flash:     {backbone: transformer, attn_backend: flash}
+  transformer_efficient: {backbone: transformer, attn_backend: efficient}
+# Mamba-1 prefills with its Python-loop scan, one step per prompt token.
+model_length_limits:
+  mamba: 8192

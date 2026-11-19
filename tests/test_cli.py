@@ -17,7 +17,12 @@ def test_console_scripts_resolve_to_callables() -> None:
     scripts = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
         "scripts"
     ]
-    assert set(scripts) == {"ssmbench-train", "ssmbench-efficiency", "ssmbench-summarize"}
+    assert set(scripts) == {
+        "ssmbench-train",
+        "ssmbench-efficiency",
+        "ssmbench-summarize",
+        "ssmbench-inference",
+    }
     for target in scripts.values():
         module_name, func_name = target.split(":")
         assert callable(getattr(importlib.import_module(module_name), func_name))

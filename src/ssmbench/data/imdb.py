@@ -19,6 +19,10 @@ from torch.utils.data import DataLoader, Dataset
 from .loaders import TaskLoaders
 
 _PAD, _UNK = 0, 1
+# The Hugging Face dataset and the commit every run reads. huggingface_hub no longer
+# resolves the legacy id "imdb"; this revision is the one that id resolved to.
+IMDB_DATASET = "stanfordnlp/imdb"
+IMDB_REVISION = "e6281661ce1c48d982bc483cf8a173c1bbeb5d31"
 _TOKEN_RE = re.compile(r"[a-z0-9']+")
 
 
@@ -93,7 +97,11 @@ def get_imdb_loaders(
     from the training reviews only. The single test set, "test", is the test split (its
     first test_subset reviews when given). seed is the data seed.
     """
-    ds = load_dataset("imdb", cache_dir=str(cache_dir) if cache_dir else None)
+    ds = load_dataset(
+        IMDB_DATASET,
+        revision=IMDB_REVISION,
+        cache_dir=str(cache_dir) if cache_dir else None,
+    )
     texts, labels = ds["train"]["text"], ds["train"]["label"]
     test_texts, test_labels = ds["test"]["text"], ds["test"]["label"]
     train_size = train_subset if train_subset else len(texts) - val_size

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 
 from ssmbench.data.imdb import split_train_indices
@@ -143,3 +144,24 @@ def test_legacy_single_test_configs_still_load() -> None:
     loaders = get_parity_loaders(cfg)
     assert set(loaders.tests) == {"test"}
     assert dataset_size(loaders.val) == cfg["test_samples"]
+
+
+def test_imdb_loads_the_canonical_dataset_at_a_pinned_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Current huggingface_hub rejects the legacy id "imdb"; the loader asks for
+    stanfordnlp/imdb at a fixed revision so every run reads the same data."""
+    from ssmbench.data import imdb
+
+    calls: list[tuple[str, dict]] = []
+
+    def fake_load(name: str, **kwargs: object) -> dict:
+        calls.append((name, dict(kwargs)))
+        split = {"text": ["good film", "bad film", "fine", "awful"], "label": [1, 0, 1, 0]}
+        return {"train": split, "test": split}
+
+    monkeypatch.setattr(imdb, "load_dataset", fake_load)
+    loaders, _ = imdb.get_imdb_loaders(batch_size=2, train_subset=2, val_size=2)
+    assert calls[0][0] == "stanfordnlp/imdb"
+    assert calls[0][1]["revision"] == imdb.IMDB_REVISION and len(imdb.IMDB_REVISION) == 40
+    assert dataset_size(loaders.train) == 2 and dataset_size(loaders.val) == 2

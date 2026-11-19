@@ -1,148 +1,129 @@
 #!/usr/bin/env python
-"""Build demo-site/data.js from the committed results/ JSONs.
+"""Build demo-site/data.js from the committed results (docs/adr/0006).
 
     python demo-site/build.py        # from the repo root
 
-Everything the explorer renders is a committed measurement; nothing is
-hand-typed. Re-run after regenerating results. Decode labels, spill flags and
-pre-fix markers are derived from the committed entries; no number is changed.
+Everything the explorer renders is a committed measurement; nothing is hand-typed.
+Training numbers are means over run seeds from results/train/<config>/summary.json, with
+their sample std and seed count; efficiency rows come from the bf16 sweep (the fp32
+sweep when bf16 is missing) and decode latency from the matching inference sweep.
+Missing results leave their section empty and set results_status.pending.
 """
 
+from __future__ import annotations
+
 import json
+import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from ssmbench.analysis.results import (  # noqa: E402
+    LABELS,
+    load_json,
+    load_summary,
+    load_sweep,
+    point_status,
+    variants_in,
+)
+
 RESULTS = ROOT / "results"
 
-MODELS = ["transformer", "s4d", "mamba", "mamba2", "mamba3"]
-LABELS = {
-    "transformer": "Transformer",
-    "s4d": "S4D (LTI)",
-    "mamba": "Mamba-1",
-    "mamba2": "Mamba-2 (SSD)",
-    "mamba3": "Mamba-3 (complex)",
-}
+
+def _stat(summary: dict[str, Any] | None, label: str, eval_name: str, metric: str) -> dict:
+    if summary is None or label not in summary["variants"]:
+        return {}
+    stats = summary["variants"][label]["evals"].get(eval_name, {}).get(metric)
+    if not stats:
+        return {}
+    return {metric: stats["mean"], f"{metric}_std": stats["std"], "n": stats["n"]}
 
 
-# GPU memory reported by the CUDA allocator during the committed sweep
-# (experiments.log:209, "total: 6438780928" bytes = 6140.5 MiB). peak_train_mb
-# is torch.cuda.max_memory_allocated() / 1024**2, so it is in MiB as well.
-DEVICE_TOTAL_MIB = 6438780928 / 1024**2
-
-# Keys written into each entry by the fixed benchmark. Entries without the
-# provenance key were produced by the pre-fix code.
-PROVENANCE_KEY = "provenance"
-SPILL_KEY = "spilled_train"
-
-# What the decode_mode strings written by the pre-fix benchmark actually measure.
-# Both are one batch-1 forward over the whole sequence divided by T.
-LEGACY_DECODE_LABELS = {
-    # Transformer entries come from b327a35, which stored forward_ms / T, not the
-    # full forward per new token that the label suggests.
-    "full-prefix recompute (no KV cache)": "prefill / T (no KV cache)",
-    # mamba2/mamba3 have no step(); mamba2 ran its chunked form, not the sequential scan.
-    "sequential scan over full sequence (per-token = time/T)": "prefill / T (no step() path)",
-    # Written by the fixed benchmark, which stores the value as prefill_per_token_ms.
-    "not measured: no step() path; prefill_per_token_ms is one full forward / T": (
-        "prefill / T (no step() path)"
-    ),
-}
-
-
-def load(name: str) -> dict:
-    return json.loads((RESULTS / name).read_text(encoding="utf-8"))
-
-
-def final(run: dict, key: str):
-    for entry in reversed(run.get("history", [])):
-        if entry.get(key) is not None:
-            return entry[key]
-    return None
-
-
-def task_results(prefix: str, keys: list[str]) -> dict:
+def task(config: str, eval_name: str, metrics: list[str]) -> dict[str, dict]:
+    summary = load_summary(RESULTS, config)
+    if summary is None:
+        return {}
     out = {}
-    for model in MODELS:
-        path = RESULTS / f"{prefix}_{model}.json"
-        if path.exists():
-            run = load(path.name)
-            out[model] = {k: final(run, k) for k in keys}
+    for label in variants_in(summary):
+        row: dict[str, Any] = {}
+        for metric in metrics:
+            row.update(_stat(summary, label, eval_name, metric))
+        out[label] = row
     return out
 
 
-def exact_copy_in_dist() -> dict:
-    out = {}
-    for model in MODELS:
-        path = RESULTS / f"exact_copy_{model}.json"
-        if path.exists():
-            run = load(path.name)
-            by_len = run.get("final_by_length") or {}
-            in_dist = by_len.get("32", {})
-            out[model] = {
-                "sequence_success": in_dist.get("sequence_success"),
-                "token_accuracy": in_dist.get("token_accuracy"),
-            }
-    return out
-
-
-def decode_label(entry: dict) -> str | None:
-    """Describe what decode_per_token_ms measures for this entry."""
-    mode = entry.get("decode_mode")
-    if mode is None:
-        return None
-    return LEGACY_DECODE_LABELS.get(mode, mode)
-
-
-def spilled(entry: dict) -> bool | None:
-    """True when the training step needed more memory than the GPU has.
-
-    Prefers the flag recorded by the fixed benchmark. For older entries, compares
-    the allocated training peak with the device total from the sweep log.
-    """
-    if entry.get(SPILL_KEY) is not None:
-        return bool(entry[SPILL_KEY])
-    peak = entry.get("peak_train_mb")
-    if peak is None:
-        return None
-    return peak > DEVICE_TOTAL_MIB
-
-
-eff = load("efficiency_gpu.json")
-# Results written by the fixed code carry provenance; anything without it is pre-fix.
-training_runs = [load(p.name) for p in RESULTS.glob("*.json") if p.name != "efficiency_gpu.json"]
-RESULTS_PRE_FIX = not all(PROVENANCE_KEY in r for r in [*eff.get("entries", []), *training_runs])
-data = {
-    "results_status": {"pre_fix": RESULTS_PRE_FIX, "details": "results/PROVENANCE.md"},
-    "environment": eff.get("environment", {}),
-    "models": [{"id": m, "label": LABELS[m]} for m in MODELS],
-    "parity": task_results("parity", ["token_accuracy", "sequence_success"]),
-    "selective_copy": task_results("selective_copy", ["sequence_success", "token_accuracy"]),
-    "exact_copy_in_dist": exact_copy_in_dist(),
-    "imdb": task_results("imdb", ["accuracy", "auc"]),
-    "efficiency": [
-        {
-            "model": e.get("model"),
-            "seq_len": e.get("seq_len"),
-            "train_step_ms": e.get("train_step_ms"),
-            "peak_train_mb": e.get("peak_train_mb"),
-            "train_tokens_per_s": e.get("train_tokens_per_s"),
-            "decode_per_token_ms": e.get("decode_per_token_ms"),
-            "prefill_per_token_ms": e.get("prefill_per_token_ms"),
-            "decode_mode": e.get("decode_mode"),
-            "decode_label": decode_label(e),
-            "oom": bool(e.get("oom") or e.get("oom_train") or e.get("oom_infer")),
-            "spill": spilled(e),
-            "pre_fix": PROVENANCE_KEY not in e,
+def efficiency() -> tuple[str | None, list[dict]]:
+    for precision in ("bf16", "fp32"):
+        sweep = load_sweep(RESULTS, "efficiency", precision)
+        if sweep is None:
+            continue
+        decode = load_sweep(RESULTS, "inference", precision) or {"entries": []}
+        per_token = {
+            (e["architecture"], int(e["seq_len"])): e.get("decode_ms_per_token_median")
+            for e in decode["entries"]
         }
-        for e in eff.get("entries", [])
-    ],
-}
+        rows = []
+        for e in sweep["entries"]:
+            status = point_status(e)
+            rows.append(
+                {
+                    "model": e["model"],
+                    "seq_len": e["seq_len"],
+                    "train_step_ms": e.get("train_step_ms_median"),
+                    "peak_train_mb": e.get("peak_train_mb"),
+                    "train_tokens_per_s": e.get("train_tokens_per_s"),
+                    "decode_per_token_ms": per_token.get(
+                        (e.get("architecture"), int(e["seq_len"]))
+                    ),
+                    "decode_label": "prefill then step(), median per token (ssmbench-inference)",
+                    "oom": status == "OOM",
+                    "unavailable": status,
+                    "spill": bool(e.get("spilled_train")),
+                    "pre_fix": False,
+                }
+            )
+        return precision, rows
+    return None, []
 
-out_path = Path(__file__).resolve().parent / "data.js"
-out_path.write_text(
-    "// Generated by demo-site/build.py from committed results/ - do not hand-edit.\n"
-    "window.DATA = " + json.dumps(data, indent=1) + ";\n",
-    encoding="utf-8",
-    newline="\n",
-)
-print(f"wrote {out_path}")
+
+def main() -> None:
+    environment = load_json(RESULTS / "ENVIRONMENT.json") or {}
+    parity = task("parity", "T=128", ["token_accuracy", "sequence_success"])
+    precision, eff = efficiency()
+    labels = list(parity) or ["transformer", "transformer_rope", "s4d", "mamba", "mamba2", "mamba3"]
+    for row in eff:
+        if row["model"] not in labels:
+            labels.append(row["model"])
+    data = {
+        "results_status": {
+            "pre_fix": False,
+            "pending": not parity,
+            "details": "results/PROVENANCE.md",
+        },
+        "environment": {
+            "gpu": environment.get("gpu"),
+            "torch": environment.get("torch"),
+            "date": (environment.get("timestamp_utc") or "")[:10],
+            "efficiency_precision": precision,
+        },
+        "models": [{"id": m, "label": LABELS.get(m, m)} for m in labels],
+        "parity": parity,
+        "selective_copy": task("selective_copy", "ood", ["sequence_success", "token_accuracy"]),
+        "exact_copy_in_dist": task("exact_copy", "L=32", ["sequence_success", "token_accuracy"]),
+        "imdb": task("imdb", "test", ["accuracy", "auc"]),
+        "efficiency": eff,
+    }
+    out_path = Path(__file__).resolve().parent / "data.js"
+    out_path.write_text(
+        "// Generated by demo-site/build.py from committed results/ - do not hand-edit.\n"
+        "window.DATA = " + json.dumps(data, indent=1) + ";\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    print(f"wrote {out_path}")
+
+
+if __name__ == "__main__":
+    main()

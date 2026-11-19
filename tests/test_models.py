@@ -161,6 +161,37 @@ def test_mamba_step_equals_forward() -> None:
     )
 
 
+def test_s4d_block_step_equals_forward_and_reuses_its_discretization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S4DBlock decode equals forward() (float64, rtol = atol = 1e-10), and the ZOH
+    discretization runs once per decode session (in init_state), not once per token."""
+    from ssmbench.models import s4_minimal
+
+    torch.manual_seed(22)
+    B, T, D = 2, 30, 8
+    block = s4_minimal.S4DBlock(d_model=D, d_state=4).double()
+    x = torch.randn(B, T, D, dtype=torch.float64)
+    with torch.no_grad():
+        y_full = block(x)
+
+    calls: list[int] = []
+    real_zoh = s4_minimal.zoh_discretization
+
+    def counting_zoh(
+        delta: torch.Tensor, a: torch.Tensor, b: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        calls.append(1)
+        return real_zoh(delta, a, b)
+
+    monkeypatch.setattr(s4_minimal, "zoh_discretization", counting_zoh)
+    state = block.init_state(B, x.device)
+    with torch.no_grad():
+        y_step = torch.cat([block.step(x[:, t : t + 1], state) for t in range(T)], dim=1)
+    assert len(calls) == 1
+    torch.testing.assert_close(y_step, y_full, rtol=1e-10, atol=1e-10)
+
+
 # ---------------------------------------------------------------- generic
 
 

@@ -137,6 +137,10 @@ def benchmark_single(
         torch.cuda.empty_cache()
         return entry
 
+    # Inference and decode are timed in eval mode (dropout off), as at deployment.
+    backbone.eval()
+    embed.eval()
+
     # ---- full forward, no grad, batch 1 ----
     try:
         tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)

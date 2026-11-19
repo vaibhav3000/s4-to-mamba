@@ -161,16 +161,33 @@ class S4DLayer(nn.Module):
         return y + x * self.D  # skip
 
     @torch.no_grad()
-    def step(self, x_t: torch.Tensor, state: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """One recurrent step. x_t: (B, D), state: (B, D, N) complex.
+    def discretized(self) -> dict[str, torch.Tensor]:
+        """(a_bar, b_bar, c), each (D, N) complex, for the recurrent form.
 
-        Returns (y_t, new_state) with y_t: (B, D). O(1) time, O(D*N) state.
+        They depend only on the parameters, so a decode session computes them once
+        and passes them to every step().
         """
         p = self._params()
-        a_bar, b_bar = zoh_discretization(p["delta"], p["a"], p["b"])  # (D, N)
-        new_state = a_bar * state + b_bar * x_t.unsqueeze(-1).to(state.dtype)
-        # y = Re(sum_n C_n h_n) — consistent with the kernel form K = C * Bbar * Abar^k
-        y_t = torch.einsum("bdn,dn->bd", new_state, p["c"]).real
+        a_bar, b_bar = zoh_discretization(p["delta"], p["a"], p["b"])
+        return {"a_bar": a_bar, "b_bar": b_bar, "c": p["c"]}
+
+    @torch.no_grad()
+    def step(
+        self,
+        x_t: torch.Tensor,
+        state: torch.Tensor,
+        cache: dict[str, torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """One recurrent step. x_t: (B, D), state: (B, D, N) complex.
+
+        cache: the output of discretized(); computed here when omitted.
+        Returns (y_t, new_state) with y_t: (B, D). O(1) time, O(D*N) state.
+        """
+        if cache is None:
+            cache = self.discretized()
+        new_state = cache["a_bar"] * state + cache["b_bar"] * x_t.unsqueeze(-1).to(state.dtype)
+        # y = Re(sum_n C_n h_n), consistent with the kernel form K = C * Bbar * Abar^k
+        y_t = torch.einsum("bdn,dn->bd", new_state, cache["c"]).real
         return y_t + x_t * self.D, new_state
 
 
@@ -193,20 +210,28 @@ class S4DBlock(nn.Module):
     # -------------------- incremental decode --------------------
 
     def init_state(self, batch_size: int, device: torch.device) -> dict[str, torch.Tensor]:
-        return {
-            "h": torch.zeros(
-                batch_size,
-                self.layer.d_model,
-                self.layer.d_state,
-                dtype=torch.complex64,
-                device=device,
-            )
-        }
+        """Decode state: the complex SSM state "h" plus the discretized (a_bar, b_bar, c),
+        computed once here so step() does not redo the ZOH for every token. Call it
+        again after any parameter update."""
+        cache = {k: v.to(device) for k, v in self.layer.discretized().items()}
+        h = torch.zeros(
+            batch_size,
+            self.layer.d_model,
+            self.layer.d_state,
+            dtype=cache["a_bar"].dtype,
+            device=device,
+        )
+        return {"h": h, **cache}
 
     def step(self, x_t: torch.Tensor, state: dict[str, torch.Tensor]) -> torch.Tensor:
-        """One decode step. x_t: (B, 1, D) -> (B, 1, D), O(1) per token."""
+        """One decode step. x_t: (B, 1, D) -> (B, 1, D), O(1) per token.
+
+        Uses the discretization cached by init_state(); a state dict holding only "h"
+        still works and recomputes it.
+        """
         h_in = self.norm(x_t.squeeze(1))
-        y, new_h = self.layer.step(h_in, state["h"])
+        cache = {k: state[k] for k in ("a_bar", "b_bar", "c")} if "a_bar" in state else None
+        y, new_h = self.layer.step(h_in, state["h"], cache)
         out = x_t + (y * F.silu(self.gate(h_in))).unsqueeze(1)
         state["h"] = new_h
         return out

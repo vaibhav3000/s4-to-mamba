@@ -36,6 +36,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A fresh checkout collects without an editable install.
+pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py311"

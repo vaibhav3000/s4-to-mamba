@@ -213,7 +213,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
     device = resolve_device(cfg.get("device", "auto"))
     # One process may train several models in a row (scripts and ssmbench-train
     # loop over a config's models), so the peak-memory window starts here.
-    reset_peak_memory(device)
+    available_at_start = reset_peak_memory(device)
 
     model = build_model(cfg).to(device)
     train_loader, val_loader, extra_eval = get_loaders(cfg)
@@ -278,8 +278,6 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
             flush=True,
         )
 
-    # Peak over model build, training and the per-epoch evaluations of this run only.
-    memory = peak_memory_stats(device)
     # Exact-copy extension: evaluate the SAME trained model at every string
     # length (in-distribution and extrapolation), stored per length.
     final_by_length: dict | None = None
@@ -287,6 +285,8 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         final_by_length = {}
         for length, loader in sorted(extra_eval.items()):
             final_by_length[str(length)] = evaluate(model, loader, task, device)
+    # Peak over this run only: model build, training, every evaluation.
+    memory = peak_memory_stats(device, available_at_start)
 
     results = {
         "name": cfg["name"],
@@ -303,6 +303,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         "peak_gpu_mb": memory["peak_allocated_mb"] if memory else None,
         "peak_gpu_reserved_mb": memory["peak_reserved_mb"] if memory else None,
         "device_total_mb": memory["device_total_mb"] if memory else None,
+        "gpu_available_at_start_mb": memory["available_at_start_mb"] if memory else None,
         "gpu_memory_spilled": memory["spilled"] if memory else None,
     }
     dump_json(results, out_dir / f"{cfg['name']}.json")

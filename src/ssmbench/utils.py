@@ -34,38 +34,51 @@ def resolve_device(device: str | None = None) -> torch.device:
     return torch.device(device)
 
 
-def reset_peak_memory(device: torch.device) -> None:
-    """Start a fresh peak-memory window on a CUDA device; no-op elsewhere.
+def reset_peak_memory(device: torch.device) -> int | None:
+    """Start a fresh peak-memory window on a CUDA device; no-op (None) elsewhere.
 
     Frees cached blocks first so the reserved peak reflects only what runs after
     this call, not memory left over from an earlier model in the same process.
+    Returns the bytes available to this process at the start of the window: the
+    driver's free memory plus what this process already holds. Pass it to
+    peak_memory_stats so the spill flag accounts for memory other processes use.
     """
     if device.type != "cuda":
-        return
+        return None
     gc.collect()
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats(device)
+    free, _total = torch.cuda.mem_get_info(device)
+    return free + torch.cuda.memory_reserved(device)
 
 
-def peak_memory_stats(device: torch.device) -> dict[str, float | bool] | None:
+def peak_memory_stats(
+    device: torch.device, available_at_start: int | None = None
+) -> dict[str, float | bool | None] | None:
     """Peak memory since the last reset_peak_memory(device), in MiB; None off CUDA.
 
-    Returns peak allocated and peak reserved memory, the device's total memory, and
-    ``spilled``: whether the peak reserved memory exceeded the device total. On
-    Windows (WDDM) the driver can back allocations with system memory instead of
-    failing, so a measurement taken while spilled includes PCIe paging and is not
-    a VRAM number.
+    Returns peak allocated and peak reserved memory, the device's total memory, the
+    memory available when the window opened (when given), and ``spilled``: whether
+    the peak reserved memory exceeded that availability (the device total when it
+    is not given). Above it the allocations needed memory that was not free on the
+    device; on Windows (WDDM) the driver then backs them with system memory instead
+    of failing, so a measurement taken while spilled includes PCIe paging and is
+    not a VRAM number.
     """
     if device.type != "cuda":
         return None
     mib = 1024**2
     reserved = torch.cuda.max_memory_reserved(device)
     total = torch.cuda.get_device_properties(device).total_memory
+    limit = total if available_at_start is None else min(total, available_at_start)
     return {
         "peak_allocated_mb": round(torch.cuda.max_memory_allocated(device) / mib, 1),
         "peak_reserved_mb": round(reserved / mib, 1),
         "device_total_mb": round(total / mib, 1),
-        "spilled": reserved > total,
+        "available_at_start_mb": (
+            None if available_at_start is None else round(available_at_start / mib, 1)
+        ),
+        "spilled": reserved > limit,
     }
 
 

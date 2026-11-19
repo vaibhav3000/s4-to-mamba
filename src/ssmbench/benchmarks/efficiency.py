@@ -86,18 +86,20 @@ def _time_gpu(
     return float(t.mean()), (float(t.std()) if len(times) > 1 else None)
 
 
-def _record_memory(entry: dict, phase: str, stats: dict[str, float | bool] | None) -> None:
-    """Store peak allocated/reserved memory, device total and the spill flag for a phase.
+def _record_memory(entry: dict, phase: str, stats: dict[str, float | bool | None] | None) -> None:
+    """Store peak allocated/reserved memory, device total, availability and spill flag.
 
     peak_<phase>_mb keeps its historical meaning (peak allocated). spilled_<phase> is
-    True when the peak reserved memory exceeded the device's total memory, which on
-    Windows means the driver paged to system memory and the timing is not a VRAM one.
+    True when the peak reserved memory exceeded what was available on the device when
+    the phase started, which on Windows means the driver paged to system memory and
+    the timing is not a VRAM one.
     """
     if stats is None:
         return
     entry[f"peak_{phase}_mb"] = stats["peak_allocated_mb"]
     entry[f"peak_{phase}_reserved_mb"] = stats["peak_reserved_mb"]
     entry["device_total_mb"] = stats["device_total_mb"]
+    entry[f"available_at_{phase}_start_mb"] = stats["available_at_start_mb"]
     entry[f"spilled_{phase}"] = stats["spilled"]
 
 
@@ -176,13 +178,13 @@ def _measure_train_step(
         loss.backward()
         opt.step()
 
-    reset_peak_memory(device)
+    available_at_start = reset_peak_memory(device)
     mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
     result = {
         "train_step_ms": round(mean_ms, 2),
         "train_step_ms_std": round(std_ms, 2) if std_ms is not None else None,
     }
-    _record_memory(result, "train", peak_memory_stats(device))
+    _record_memory(result, "train", peak_memory_stats(device, available_at_start))
     result["train_tokens_per_s"] = round(batch_size * seq_len / (mean_ms / 1000))
     return result
 
@@ -242,10 +244,10 @@ def benchmark_single(
             with torch.no_grad():
                 head(backbone(embed(tokens)))
 
-        reset_peak_memory(device)
+        available_at_start = reset_peak_memory(device)
         mean_ms, _ = _time_gpu(infer, repeats, device=device.type)
         entry["infer_ms"] = round(mean_ms, 2)
-        _record_memory(entry, "infer", peak_memory_stats(device))
+        _record_memory(entry, "infer", peak_memory_stats(device, available_at_start))
     except Exception as exc:
         if not _is_oom(exc):
             raise

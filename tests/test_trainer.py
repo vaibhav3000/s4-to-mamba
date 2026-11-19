@@ -21,7 +21,8 @@ SMALL_KWARGS: dict[str, dict[str, int]] = {
 # in particular every SSM dynamics parameter, must not.
 DECAYED_LEAVES: dict[str, set[str]] = {
     "transformer": {"attn.qkv.weight", "attn.proj.weight", "mlp.0.weight", "mlp.3.weight"},
-    "s4d": {"layer.C_re", "layer.C_im", "gate.weight"},
+    # B and C are ordinary weights, decayed symmetrically as in the reference code.
+    "s4d": {"layer.B_re", "layer.B_im", "layer.C_re", "layer.C_im", "gate.weight"},
     "mamba": {
         "in_proj.weight",
         "conv1d.weight",
@@ -50,8 +51,9 @@ DECAYED_LEAVES: dict[str, set[str]] = {
 @pytest.mark.parametrize("name", list(SMALL_KWARGS))
 def test_param_groups_exempt_ssm_dynamics_from_weight_decay(name: str) -> None:
     """Weight decay reaches only the expected matrices (plus the shared embedding and
-    head weights); S4D log_A_real, A_imag, dt_param, B_re, B_im, Mamba A_log, D and
-    Mamba-3 a_real_log, theta are exempt. Every parameter lands in exactly one group."""
+    head weights). The dynamics parameters are exempt: S4D log_A_real, A_imag and
+    dt_param, Mamba A_log and D, Mamba-3 a_real_log, theta and D. B and C are decayed.
+    Every parameter lands in exactly one group."""
     torch.manual_seed(0)
     model = TokenLevelClassifier(build_backbone(name, SMALL_KWARGS[name]), vocab_size=8, d_model=32)
     decay_group, no_decay_group = build_param_groups(model, weight_decay=0.05)

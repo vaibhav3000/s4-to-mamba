@@ -68,21 +68,22 @@ def _env_info(device: torch.device) -> dict:
     return info
 
 
-# Parameters that set the SSM dynamics: decay rates, rotation frequencies, step
-# sizes and the S4D input matrix. As in the official S4 and Mamba code they get
-# no weight decay, which would pull A toward -1, rotations toward 0 and B toward 0.
-# (Every 1-D parameter, including each D vector and Mamba-2's per-head A_log, is
-# already exempt by the ndim rule below.)
+# Parameters that set the SSM dynamics get no weight decay: the state matrix A
+# (decay rates and, for Mamba-3, rotation frequencies), the S4D step size and the
+# skip D. Decaying them would pull A toward -1 and the rotations toward 0. This
+# follows the reference implementations, which exempt the same kind of parameters
+# (S4D registers log_dt, A_real and A_imag with weight decay 0; Mamba marks A_log
+# and D as no-weight-decay) and treat B and C as ordinary weights, so B and C are
+# decayed here too. Every 1-D parameter, including each D vector, the S4D step size
+# and Mamba-2's per-head A_log, is already exempt by the ndim rule below.
 SSM_NO_DECAY_PARAMS = frozenset(
     {
         "log_A_real",  # S4D
         "A_imag",  # S4D
-        "dt_param",  # S4D
-        "B_re",  # S4D
-        "B_im",  # S4D
+        "dt_param",  # S4D step size (1-D)
         "A_log",  # Mamba-1 (d_inner, N) and Mamba-2 (H,)
         "a_real_log",  # Mamba-3
-        "theta",  # Mamba-3
+        "theta",  # Mamba-3 rotation frequencies
         "D",  # Mamba-1/2/3 and S4D skip
     }
 )

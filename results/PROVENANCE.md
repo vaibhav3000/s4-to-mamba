@@ -31,7 +31,7 @@ committed file or git object. "Inferred" means the evidence fits but does not pr
 |---|---|---|---|---|
 | P1 | Mamba-2 and Mamba-3 expanded grouped B and C with `repeat_interleave` on the state axis. With `n_groups=1` (every config), head h read N/H components of B and C, each repeated H times, instead of the group's full N-vector | `mamba2_minimal.py:119-120`, `mamba3_minimal.py:170-171` @ b327a35, bcc3f7d, 246f4cb | 0a2461a | every mamba2 and mamba3 result, task and efficiency |
 | P2 | S4D ZOH input matrix was delta\*B\*(e^z-1) instead of delta\*B\*(e^z-1)/z: `z.where(small, ones)` evaluates to `where(small, z, 1)`, so the divisor was 1 | `s4_minimal.py:53` @ b327a35 (unchanged until the fix) | 1751001 (4a8a6f8 then evaluates the factor without float32 cancellation) | every s4d result, task and efficiency |
-| D10 | Weight decay went to every parameter with more than one dimension, including 2-D SSM dynamics parameters. The fix exempts S4D `log_A_real`, `A_imag`, `dt_param`, `B_re`, `B_im`, Mamba-1 `A_log`, Mamba-3 `a_real_log`, `theta` | `trainer.py:159-161` @ b327a35, `trainer.py:172-174` @ 246f4cb | dcb4dd1 | task training of s4d, mamba and mamba3 only. Not mamba2 (its `A_log` and `D` are 1-D and were already exempt), not the Transformer, not the efficiency benchmark (it builds its own `AdamW` over all backbone parameters, `efficiency.py:114` @ bcc3f7d) |
+| D10 | Weight decay went to every parameter with more than one dimension, including 2-D SSM dynamics parameters. The fix exempts the dynamics parameters: S4D `log_A_real`, `A_imag` (and the 1-D `dt_param`), Mamba-1 `A_log`, Mamba-3 `a_real_log`, `theta` (and every 1-D `D`). B and C are decayed, as in the reference S4D and Mamba code | `trainer.py:159-161` @ b327a35, `trainer.py:172-174` @ 246f4cb | dcb4dd1, then "Decay S4D B like C; exempt only the SSM dynamics" (dcb4dd1 had also exempted S4D `B_re`, `B_im`) | task training of s4d, mamba and mamba3 only. Not mamba2 (its `A_log` and `D` are 1-D and were already exempt), not the Transformer, not the efficiency benchmark (it builds its own `AdamW` over all backbone parameters, `efficiency.py:114` @ bcc3f7d) |
 | D17 | Mamba-2's chunked scan took `log(clamp_min(exp(delta*A), 1e-12))` instead of using delta\*A, which loses the gradient once the exponent underflows | `mamba2_minimal.py:117`, `:165` @ b327a35, bcc3f7d | 52f53bf (c4e53e7 then accumulates every in-chunk decay sum directly) | every mamba2 result; every mamba2 run used the chunked scan (section 6) |
 | P16 | The efficiency train step had no LM head: backbone features of width d_model were fed to cross-entropy as d_model-way logits | `efficiency.py:115-122` @ b327a35, `:117-124` @ bcc3f7d | 0b58559 | `train_step_ms`, `train_step_ms_std`, `train_tokens_per_s`, `peak_train_mb` of every efficiency entry, and the `oom_train`/`oom` flags, which came from the same step |
 | P6 | The trainer read `torch.cuda.max_memory_allocated()` without ever resetting it, while one process trained every model of a config | `trainer.py:224` @ b327a35, `:237` @ 246f4cb; `scripts/run_training.py:38-48` @ b327a35 | 8d15605, 9824d80 | `peak_gpu_mb` of training files that were not the first model in their process (section 5) |
@@ -531,6 +531,10 @@ To re-run only part of a config, pass `--models`, for example `--models mamba2`.
 
 All four configs should be re-run in full, Transformer included: the Transformer metrics are
 not changed by any fix, but the committed files record no code version.
+
+The re-runs use the weight-decay policy in `SSM_NO_DECAY_PARAMS`
+(`src/ssmbench/train/trainer.py`): no decay on the dynamics parameters (A, including Mamba-3's
+`theta`, the S4D step size and D), ordinary decay on B, C and every other weight matrix.
 
 ### 9.3 Efficiency sweep
 

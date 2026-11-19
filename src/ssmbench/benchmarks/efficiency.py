@@ -6,8 +6,9 @@ Measures, per (architecture, sequence length):
   model (embedding, backbone, linear LM head over VOCAB tokens, cross-entropy)
   over `batch_size` sequences, in fp32. Peak allocated and peak reserved CUDA
   memory, the memory available when the phase started and the device total are
-  recorded, and ``spilled_train`` flags a reserved peak above what was available
-  (on Windows the driver then pages to system memory, so the timing is not a VRAM
+  recorded, and ``spilled_train`` flags a reserved peak within a 7% safety margin of
+  what was available, or under 2% of the card free at the end of the phase (on
+  Windows the driver then pages to system memory, so the timing is not a VRAM
   number).
 - ``infer_ms``: full forward pass including the LM head, no grad, batch 1, in
   eval mode with the training gradients dropped; memory as above.
@@ -104,9 +105,10 @@ def _record_memory(entry: dict, phase: str, stats: dict[str, float | bool | None
     """Store peak allocated/reserved memory, device total, availability and spill flag.
 
     peak_<phase>_mb keeps its historical meaning (peak allocated). spilled_<phase> is
-    True when the peak reserved memory exceeded what was available on the device when
-    the phase started, which on Windows means the driver paged to system memory and
-    the timing is not a VRAM one.
+    True when the phase most likely ran past the card's memory (see
+    utils.peak_memory_stats: a reserved peak within a safety margin of the memory
+    available at the start, or almost no free memory at the end), which on Windows
+    means the driver paged to system memory and the timing is not a VRAM one.
     """
     if stats is None:
         return
@@ -114,6 +116,7 @@ def _record_memory(entry: dict, phase: str, stats: dict[str, float | bool | None
     entry[f"peak_{phase}_reserved_mb"] = stats["peak_reserved_mb"]
     entry["device_total_mb"] = stats["device_total_mb"]
     entry[f"available_at_{phase}_start_mb"] = stats["available_at_start_mb"]
+    entry[f"free_at_{phase}_end_mb"] = stats["free_at_end_mb"]
     entry[f"spilled_{phase}"] = stats["spilled"]
 
 

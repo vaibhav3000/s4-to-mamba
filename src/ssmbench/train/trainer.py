@@ -308,6 +308,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         "peak_gpu_reserved_mb": memory["peak_reserved_mb"] if memory else None,
         "device_total_mb": memory["device_total_mb"] if memory else None,
         "gpu_available_at_start_mb": memory["available_at_start_mb"] if memory else None,
+        "gpu_free_at_end_mb": memory["free_at_end_mb"] if memory else None,
         "gpu_memory_spilled": memory["spilled"] if memory else None,
     }
     dump_json(results, out_dir / f"{cfg['name']}.json")

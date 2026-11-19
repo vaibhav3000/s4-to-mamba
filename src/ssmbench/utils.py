@@ -36,6 +36,12 @@ def resolve_device(device: str | None = None) -> torch.device:
     return torch.device(device)
 
 
+# Spill detection thresholds, as fractions of the device's total memory (see
+# peak_memory_stats). On a 6 GB card: a 430 MiB margin and 123 MiB of free memory.
+SPILL_MARGIN_FRACTION = 0.07
+LOW_FREE_FRACTION = 0.02
+
+
 def reset_peak_memory(device: torch.device) -> int | None:
     """Start a fresh peak-memory window on a CUDA device; no-op (None) elsewhere.
 
@@ -60,19 +66,27 @@ def peak_memory_stats(
     """Peak memory since the last reset_peak_memory(device), in MiB; None off CUDA.
 
     Returns peak allocated and peak reserved memory, the device's total memory, the
-    memory available when the window opened (when given), and ``spilled``: whether
-    the peak reserved memory exceeded that availability (the device total when it
-    is not given). Above it the allocations needed memory that was not free on the
-    device; on Windows (WDDM) the driver then backs them with system memory instead
-    of failing, so a measurement taken while spilled includes PCIe paging and is
-    not a VRAM number.
+    memory available when the window opened (when given), the driver's free memory
+    now (call this right at the end of the phase), and ``spilled``. On Windows (WDDM)
+    the driver backs allocations with system memory instead of failing once the card
+    is full, so a measurement taken while spilled includes PCIe paging and is not a
+    VRAM number. A phase counts as spilled when either:
+
+    - its peak reserved memory exceeded the memory available at the start (the device
+      total when not given) minus SPILL_MARGIN_FRACTION of the device: reserved
+      memory leaves out the CUDA context and lazily loaded cuBLAS/cuFFT modules, so
+      the card fills up before reserved memory reaches the limit; or
+    - less than LOW_FREE_FRACTION of the device was free at the end of the phase.
     """
     if device.type != "cuda":
         return None
     mib = 1024**2
     reserved = torch.cuda.max_memory_reserved(device)
     total = torch.cuda.get_device_properties(device).total_memory
-    limit = total if available_at_start is None else min(total, available_at_start)
+    free_at_end, _ = torch.cuda.mem_get_info(device)
+    available = total if available_at_start is None else min(total, available_at_start)
+    over_limit = reserved > available - SPILL_MARGIN_FRACTION * total
+    low_free = free_at_end < LOW_FREE_FRACTION * total
     return {
         "peak_allocated_mb": round(torch.cuda.max_memory_allocated(device) / mib, 1),
         "peak_reserved_mb": round(reserved / mib, 1),
@@ -80,7 +94,8 @@ def peak_memory_stats(
         "available_at_start_mb": (
             None if available_at_start is None else round(available_at_start / mib, 1)
         ),
-        "spilled": reserved > limit,
+        "free_at_end_mb": round(free_at_end / mib, 1),
+        "spilled": over_limit or low_free,
     }
 
 

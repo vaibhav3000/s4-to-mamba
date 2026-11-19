@@ -7,7 +7,7 @@ Supports two task types:
 
 Every run writes <out_dir>/<config name>.json containing the config
 snapshot, per-epoch history, final metrics, parameter count and environment
-information — the single source of truth for the paper's result tables.
+information. These files are the single source of truth for the result tables.
 """
 
 from __future__ import annotations

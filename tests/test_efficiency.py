@@ -557,3 +557,18 @@ def test_transformer_position_table_is_sized_to_the_point() -> None:
         "transformer", 16, 2, 2, torch.device("cpu"), TINY_KWARGS["transformer"]
     )
     assert entry["model_kwargs"]["max_len"] == 16
+
+
+def test_unsupported_kernel_errors_are_recognised_in_both_wordings() -> None:
+    """CUDA says "No available kernel"; CPU says "No viable backend ... was found". A real
+    refusal (the memory-efficient kernel pinned on CPU) must be recognised."""
+    from ssmbench.benchmarks.common import is_unsupported_kernel
+    from ssmbench.models.attention import attention
+
+    q = torch.randn(1, 2, 8, 4)
+    with pytest.raises(RuntimeError) as excinfo:
+        attention(q, q, q, causal=True, backend="efficient")
+    assert is_unsupported_kernel(excinfo.value)
+    assert is_unsupported_kernel(RuntimeError("No available kernel. Aborting execution."))
+    assert not is_unsupported_kernel(RuntimeError("CUDA error: an illegal memory access"))
+    assert not is_unsupported_kernel(ValueError("No available kernel"))

@@ -89,11 +89,16 @@ def summarize_ms(times: list[float], key: str) -> dict[str, float | int | None]:
     }
 
 
+_REFUSALS = ("no available kernel", "no viable backend for scaled_dot_product_attention")
+
+
 def is_unsupported_kernel(exc: BaseException) -> bool:
-    """True for SDPA's refusal of a pinned backend for these inputs ("No available
-    kernel"): a property of the backend and shape, recorded as unsupported rather than
-    treated as a bug or retried."""
-    return isinstance(exc, RuntimeError) and "no available kernel" in str(exc).lower()
+    """True for SDPA's refusal of a pinned backend for these inputs: "No available kernel"
+    (CUDA) or "No viable backend for scaled_dot_product_attention was found" (CPU). A
+    property of the backend and shape, recorded as unsupported rather than treated as a
+    bug or retried."""
+    message = str(exc).lower()
+    return isinstance(exc, RuntimeError) and any(r in message for r in _REFUSALS)
 
 
 def resolve_variant(label: str, variants: dict[str, dict[str, Any]] | None) -> tuple[str, dict]:

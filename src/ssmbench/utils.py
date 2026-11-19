@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import hashlib
+import importlib.metadata
 import json
 import os
 import platform
@@ -226,3 +227,53 @@ def dump_json(obj: Any, path: str | Path) -> None:
     except BaseException:
         Path(tmp_name).unlink(missing_ok=True)
         raise
+
+
+MANIFEST_PACKAGES = (
+    "torch",
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "datasets",
+    "matplotlib",
+    "pyyaml",
+    "tqdm",
+)
+
+
+def environment_manifest() -> dict[str, Any]:
+    """The software and hardware a set of results was produced with: Python, platform,
+    torch with its CUDA and cuDNN builds, GPU and driver, the versions of the project's
+    dependencies, the code (git commit, dirty flag, source hash) and the hash of uv.lock.
+    No host or user names, since results are committed."""
+    packages: dict[str, str | None] = {}
+    for name in MANIFEST_PACKAGES:
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+    lock = PACKAGE_DIR.parents[1] / "uv.lock"
+    cuda = torch.cuda.is_available()
+    provenance = run_provenance(torch.device("cuda" if cuda else "cpu"))
+    return {
+        "python": provenance["python"],
+        "platform": provenance["platform"],
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "cudnn": torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else None,
+        "gpu": provenance["gpu"],
+        "gpu_total_mb": (
+            round(torch.cuda.get_device_properties(0).total_memory / 1024**2, 1) if cuda else None
+        ),
+        "nvidia_driver": provenance["nvidia_driver"],
+        "git_sha": provenance["git_sha"],
+        "git_dirty": provenance["git_dirty"],
+        "source_sha256": provenance["source_sha256"],
+        "uv_lock_sha256": (
+            hashlib.sha256(lock.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+            if lock.exists()
+            else None
+        ),
+        "packages": packages,
+        "timestamp_utc": provenance["timestamp_utc"],
+    }

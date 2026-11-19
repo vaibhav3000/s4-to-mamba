@@ -180,6 +180,13 @@ def test_s4d_zoh_float32_value_and_gradient_match_float64() -> None:
 
     v32, g32 = ratio_and_grad(z64.to(torch.complex64), torch.float32)
     v64, g64 = ratio_and_grad(z64, torch.float64)
+    # Bounds: the value takes a handful of float32 operations (expm1, sin, cos, one
+    # division), so a few ulps, about 2.4e-7, is the expected error; 1e-6 (16 ulps)
+    # leaves room for other platforms' libm while staying far below the 3.9e-4 that
+    # plain (e^z - 1)/z gives. Measured here: 1.5e-7. The autograd derivative of
+    # expm1(z)/z cancels to about eps/|z| just above the 1e-2 switch, about 6e-6;
+    # measured 2.7e-5, against errors of 0.6 to 7.8 without the fix, so 1e-3 still
+    # separates the two by more than two orders of magnitude.
     assert ((v32 - v64).abs() / v64.abs()).max() < 1e-6
     assert ((g32 - g64).abs() / g64.abs()).max() < 1e-3
 
@@ -240,6 +247,54 @@ def test_gradcheck_s4d_layer() -> None:
     x = torch.randn(1, 5, 2, dtype=torch.float64, requires_grad=True)
     names = [n for n, _ in layer.named_parameters()]
     assert _gradcheck(layer, "forward", (x,), names)
+
+
+def test_gradcheck_s4d_zoh_in_the_series_branch() -> None:
+    """float64 gradcheck of Bbar where every |z| < 1e-4, so the Taylor branch is what
+    is differentiated: once through a with delta = b = 1 (Bbar is then the factor
+    (e^z - 1)/z, derivative about 1/2) and once through delta with an O(1) a."""
+    phases = math.pi * (0.5 + torch.arange(6, dtype=torch.float64) / 6.0)
+    mags = torch.tensor([1e-5, 3e-5, 9e-5], dtype=torch.float64)
+    z = (mags[:, None] * torch.exp(1j * phases[None, :])).reshape(1, -1)
+    assert (z.abs() < 1e-4).all()
+    one = torch.ones(1, dtype=torch.float64)
+
+    def bbar_of_a(a: torch.Tensor) -> torch.Tensor:
+        return zoh_discretization(one, a, torch.ones_like(a))[1]
+
+    assert _gradcheck_fn(bbar_of_a, (z.clone().requires_grad_(True),))
+
+    a = torch.complex(
+        torch.tensor([[-0.5, -0.5]], dtype=torch.float64),
+        torch.tensor([[0.0, 3.0]], dtype=torch.float64),
+    )
+    assert a.dtype == torch.complex128
+    delta = torch.tensor([2e-5], dtype=torch.float64, requires_grad=True)
+    assert ((delta.detach().unsqueeze(-1) * a).abs() < 1e-4).all()
+
+    def bbar_of_delta(delta: torch.Tensor) -> torch.Tensor:
+        return zoh_discretization(delta, a, torch.ones_like(a))[1]
+
+    assert _gradcheck_fn(bbar_of_delta, (delta,))
+
+
+@pytest.mark.parametrize("seed", [0, 1])
+def test_s4d_float32_forward_matches_float64_across_chunks(seed: int) -> None:
+    """The float32 FFT forward at T = 2100 (three kernel chunks) against the same layer
+    in float64. Bound: max error below 1e-5 of the output scale. The float32 kernel
+    loses about T * |Im z| * eps of phase at the last taps and the FFT adds about
+    log2(T) * eps; measured 2.4e-7 here (5 seeds, d_state 8 to 64), so 1e-5 leaves a
+    40x margin while a wrong discretization or chunk join fails it by orders of
+    magnitude."""
+    torch.manual_seed(seed)
+    layer = S4DLayer(d_model=16, d_state=16)
+    ref = copy.deepcopy(layer).double()
+    x = torch.randn(2, 2100, 16)
+    with torch.no_grad():
+        y32 = layer(x)
+        y64 = ref(x.double())
+    assert y32.dtype == torch.float32
+    assert ((y32.double() - y64).abs().max() / y64.abs().max()).item() < 1e-5
 
 
 # ------------------------------------------- scans in float64, Mamba-3 limits
@@ -324,6 +379,35 @@ def test_mamba3_lambda_one_is_complex_exponential_euler() -> None:
     torch.testing.assert_close(y, torch.stack(ys, dim=1), **FP64)
 
 
+def test_mamba3_lambda_zero_is_the_delayed_exponential_rule() -> None:
+    """lambda = 0 removes the gamma term: h_t = alpha_t (h_{t-1} + delta_t B_{t-1} x_{t-1}),
+    the input entering one step late (left-endpoint rule), with complex alpha_t
+    (theta != 0). float64, 1e-10."""
+    torch.manual_seed(27)
+    block = Mamba3Block(d_model=16, d_state=6, headdim=8, expand=1).double()
+    with torch.no_grad():
+        block.theta.uniform_(0.5, 3.0)
+    Bsz, T, H, P, N = 2, 17, block.n_heads, block.headdim, block.d_state
+    x_h = torch.randn(Bsz, T, H, P, dtype=torch.float64)
+    delta = torch.rand(Bsz, T, H, dtype=torch.float64) * 0.5 + 0.01
+    b_h = torch.randn(Bsz, T, H, N, dtype=torch.float64)
+    c_h = torch.randn(Bsz, T, H, N, dtype=torch.float64)
+    lam = torch.zeros(Bsz, T, H, dtype=torch.float64)
+    with torch.no_grad():
+        y = block.selective_scan(x_h, delta, b_h, c_h, lam)
+        a = torch.complex(-torch.exp(block.a_real_log), block.theta)  # (H, N)
+        state = torch.zeros(Bsz, H, N, P, dtype=torch.complex128)
+        prev_input = torch.zeros(Bsz, H, N, P, dtype=torch.float64)  # B_{t-1} x_{t-1}
+        ys = []
+        for t in range(T):
+            alpha = torch.exp(delta[:, t, :, None] * a)[..., None]  # (B, H, N, 1)
+            state = alpha * (state + delta[:, t, :, None, None] * prev_input)
+            prev_input = b_h[:, t, :, :, None] * x_h[:, t, :, None, :]
+            ys.append(torch.einsum("bhnp,bhn->bhp", state.real, c_h[:, t]))
+    assert torch.equal(y[:, 0], torch.zeros_like(y[:, 0]))  # nothing has entered yet
+    torch.testing.assert_close(y, torch.stack(ys, dim=1), **FP64)
+
+
 @pytest.mark.parametrize("theta", [0.0, 3.0], ids=["real", "rotating"])
 @pytest.mark.parametrize(
     ("lam_value", "expected_ratio"),
@@ -358,6 +442,11 @@ def test_mamba3_discretization_order(lam_value: float, expected_ratio: float, th
         return abs(y[0, -1, 0, 0].item() - exact)
 
     ratio = end_error(0.1) / end_error(0.05)
+    # Asymptotically the ratio is 2^order. At these step sizes the next error term
+    # moves it by under 1% (measured: 3.998 and 4.013 for lambda = 1/2, 1.994 for
+    # lambda = 1, with and without rotation). The +/-12% window allows for that and
+    # for platform differences, while the two orders stay apart: a first-order rule
+    # gives about 2, well outside 3.52 to 4.48.
     assert expected_ratio * 0.88 < ratio < expected_ratio * 1.12, ratio
 
 

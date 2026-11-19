@@ -373,3 +373,31 @@ def test_gpu_state_at_sweep_start_is_best_effort(monkeypatch: pytest.MonkeyPatch
     _fake_nvidia_smi(monkeypatch, None)
     assert efficiency.gpu_state(torch.device("cuda")) is None
     assert efficiency.gpu_state(torch.device("cpu")) is None
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a CUDA device")
+def test_cuda_timing_and_memory_path_smoke() -> None:
+    """On a CUDA machine, one tiny point runs through CUDA-event timing and the real
+    peak-memory, availability and spill bookkeeping (skipped without CUDA)."""
+    entry = efficiency.benchmark_single(
+        "s4d",
+        seq_len=64,
+        batch_size=2,
+        repeats=2,
+        device=torch.device("cuda"),
+        model_kwargs={"d_model": 32, "n_layers": 1, "d_state": 4},
+    )
+    for key in (
+        "train_step_ms",
+        "peak_train_mb",
+        "peak_train_reserved_mb",
+        "device_total_mb",
+        "available_at_train_start_mb",
+        "free_at_train_end_mb",
+        "spilled_train",
+        "infer_ms",
+        "decode_per_token_ms",
+    ):
+        assert key in entry, key
+    assert entry["peak_train_reserved_mb"] >= entry["peak_train_mb"] > 0
+    assert entry["train_step_ms"] > 0

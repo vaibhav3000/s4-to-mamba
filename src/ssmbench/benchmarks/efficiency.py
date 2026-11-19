@@ -24,6 +24,7 @@ or copied from papers. Every number in the report can be regenerated with:
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import time
 from collections.abc import Callable
@@ -95,6 +96,20 @@ def _record_memory(entry: dict, phase: str, stats: dict[str, float | bool] | Non
     entry[f"peak_{phase}_reserved_mb"] = stats["peak_reserved_mb"]
     entry["device_total_mb"] = stats["device_total_mb"]
     entry[f"spilled_{phase}"] = stats["spilled"]
+
+
+def _is_oom(exc: BaseException) -> bool:
+    """True only for allocator out-of-memory errors: torch.OutOfMemoryError, or an
+    accelerator/runtime error whose message says "out of memory". Anything else
+    (illegal address, launch failure, a shape bug) is not a hardware limit."""
+    return isinstance(exc, torch.OutOfMemoryError) or "out of memory" in str(exc).lower()
+
+
+def _release_cuda_memory(device: torch.device) -> None:
+    """Return cached blocks to the driver after an OOM; no-op off CUDA."""
+    if device.type == "cuda":
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 class _StepBlock(Protocol):
@@ -182,9 +197,11 @@ def benchmark_single(
         _record_memory(entry, "train", peak_memory_stats(device))
         entry["train_tokens_per_s"] = round(batch_size * seq_len / (mean_ms / 1000))
         del opt, tokens, target
-    except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
+    except Exception as exc:
+        if not _is_oom(exc):
+            raise
         entry["oom_train"] = True
-        torch.cuda.empty_cache()
+        _release_cuda_memory(device)
         return entry
 
     # Inference and decode are timed in eval mode (dropout off), as at deployment,
@@ -206,9 +223,11 @@ def benchmark_single(
         entry["infer_ms"] = round(mean_ms, 2)
         _record_memory(entry, "infer", peak_memory_stats(device))
         del tokens
-    except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
+    except Exception as exc:
+        if not _is_oom(exc):
+            raise
         entry["oom_infer"] = True
-        torch.cuda.empty_cache()
+        _release_cuda_memory(device)
         return entry
 
     # ---- decode ----
@@ -242,9 +261,11 @@ def benchmark_single(
             mean_ms, _ = _time_gpu(decode_tr, rep_d, warmup=1, device=device.type)
             # Generating ONE more token costs a full forward over the prefix.
             entry["decode_per_token_ms"] = round(mean_ms, 4)
-    except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
+    except Exception as exc:
+        if not _is_oom(exc):
+            raise
         entry["oom_decode"] = True
-        torch.cuda.empty_cache()
+        _release_cuda_memory(device)
 
     return entry
 
@@ -288,18 +309,24 @@ def run_efficiency(cfg: dict) -> dict:
                 entry = benchmark_single(
                     name, L, cfg.get("batch_size", 8), cfg.get("repeats", 5), device
                 )
-            except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
-                # On a 6GB laptop GPU a sticky CUDA OOM can kill the context;
-                # recording the limit IS the measurement for this hardware.
+            except Exception as exc:
+                if not _is_oom(exc):
+                    # Not a hardware limit: record it and stop, so a code bug or a
+                    # broken CUDA context is never plotted as an OOM.
+                    error = f"{type(exc).__name__}: {exc}"[:300]
+                    results["entries"].append({"model": name, "seq_len": L, "error": error})
+                    dump_json(results, out_path)
+                    raise RuntimeError(
+                        f"{name} at T={L} failed with a non-OOM error; sweep aborted "
+                        f"(recorded in {out_path})"
+                    ) from exc
                 entry = {"model": name, "seq_len": L, "oom": True}
-                try:
-                    torch.cuda.empty_cache()
-                except torch.AcceleratorError:
-                    pass  # sticky CUDA context; measured limit recorded
-            except Exception as exc:  # noqa: BLE001 - record and continue the sweep
-                entry = {"model": name, "seq_len": L, "error": f"{type(exc).__name__}: {exc}"[:300]}
             results["entries"].append(entry)
-            dump_json(results, cfg["out_path"])
+            dump_json(results, out_path)
+            if any(entry.get(k) for k in ("oom", "oom_train", "oom_infer", "oom_decode")):
+                # A context that cannot free memory after an OOM raises here and
+                # stops the sweep, instead of poisoning the next measurements.
+                _release_cuda_memory(device)
     return results
 
 

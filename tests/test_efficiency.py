@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 import torch
 from torch import nn
@@ -65,3 +68,64 @@ def test_train_step_uses_an_lm_head_even_when_d_model_is_below_vocab() -> None:
 def test_single_repeat_reports_no_std() -> None:
     mean_ms, std_ms = efficiency._time_gpu(lambda: None, repeats=1, warmup=0, device="cpu")
     assert mean_ms >= 0 and std_ms is None
+
+
+@pytest.mark.parametrize(
+    ("exc", "is_oom"),
+    [
+        (torch.OutOfMemoryError("CUDA out of memory. Tried to allocate 2.00 GiB"), True),
+        (RuntimeError("CUDA error: out of memory"), True),
+        (RuntimeError("CUDA error: an illegal memory access was encountered"), False),
+        (IndexError("Target 29 is out of bounds."), False),
+    ],
+)
+def test_only_out_of_memory_errors_count_as_oom(exc: BaseException, is_oom: bool) -> None:
+    assert efficiency._is_oom(exc) is is_oom
+
+
+def _sweep_cfg(tmp_path: Path, models: list[str], lengths: list[int]) -> dict:
+    return {
+        "device": "cpu",
+        "out_path": str(tmp_path / "efficiency.json"),
+        "batch_size": 2,
+        "repeats": 2,
+        "seq_lengths": lengths,
+        "models": models,
+    }
+
+
+def test_oom_is_recorded_and_the_sweep_continues(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_benchmark(name: str, seq_len: int, *args: object, **kwargs: object) -> dict:
+        if seq_len == 16:
+            raise torch.OutOfMemoryError("CUDA out of memory. Tried to allocate 2.00 GiB")
+        return {"model": name, "seq_len": seq_len, "train_step_ms": 1.0}
+
+    monkeypatch.setattr(efficiency, "benchmark_single", fake_benchmark)
+    results = efficiency.run_efficiency(_sweep_cfg(tmp_path, ["s4d"], [16, 32]))
+    assert [(e["seq_len"], bool(e.get("oom"))) for e in results["entries"]] == [
+        (16, True),
+        (32, False),
+    ]
+
+
+def test_non_oom_error_is_recorded_and_aborts_the_sweep(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A shape bug or a broken CUDA context must stop the sweep, not be plotted as a
+    hardware limit or skipped over."""
+    attempted: list[int] = []
+
+    def failing_benchmark(name: str, seq_len: int, *args: object, **kwargs: object) -> dict:
+        attempted.append(seq_len)
+        raise IndexError("Target 29 is out of bounds.")
+
+    monkeypatch.setattr(efficiency, "benchmark_single", failing_benchmark)
+    cfg = _sweep_cfg(tmp_path, ["s4d"], [16, 32])
+    with pytest.raises(RuntimeError, match="sweep aborted"):
+        efficiency.run_efficiency(cfg)
+    assert attempted == [16]
+    saved = json.loads(Path(cfg["out_path"]).read_text(encoding="utf-8"))
+    assert saved["entries"][-1]["error"].startswith("IndexError")
+    assert not any(e.get("oom") for e in saved["entries"])

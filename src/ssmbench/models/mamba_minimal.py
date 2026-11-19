@@ -93,8 +93,14 @@ class MambaBlock(nn.Module):
             dt_d = torch.exp(u_d * math.log(dt_max) + (1 - u_d) * math.log(dt_min))
             self.dt_proj.bias.copy_(dt_d + torch.log(-torch.expm1(-dt_d)))
 
+    @autocast_disabled
     def _ssm_params(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Input-dependent (delta, B, C) from the inner branch x: (B, T, d_inner)."""
+        """Input-dependent (delta, B, C) from the inner branch x: (B, T, d_inner).
+
+        Computed in scan_dtype (float32, or float64 for float64 inputs) even under
+        bf16 autocast, so the decay exp(delta * A) is not built from bf16 values.
+        """
+        x = x.to(scan_dtype(x))
         proj = self.x_proj(x)  # (B, T, dt_rank + 2N)
         delta, B, C = torch.split(proj, [self.dt_rank, self.d_state, self.d_state], dim=-1)
         delta = F.softplus(self.dt_proj(delta))  # (B, T, d_inner), > 0

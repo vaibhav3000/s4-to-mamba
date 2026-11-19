@@ -52,7 +52,10 @@ class TrainConfig:
     grad_clip: float = 1.0
     scheduler: str = "cosine"  # "cosine" | "none"
     warmup_frac: float = 0.05
-    amp: bool = False  # bfloat16 autocast on CUDA
+    # bfloat16 autocast on CUDA. The SSM projections that produce delta, B, C (and
+    # Mamba-3's lambda) and the scans themselves still run in float32; every other
+    # layer follows autocast. No committed config enables it.
+    amp: bool = False
     seed: int = 42
     optimizer: str = "adamw"
 

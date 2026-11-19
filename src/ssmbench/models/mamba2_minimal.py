@@ -105,10 +105,14 @@ class Mamba2Block(nn.Module):
             std = self.dt_rank**-0.5
             nn.init.uniform_(self.dt_proj.weight, -std, std)
 
+    @autocast_disabled
     def _scan_inputs(
         self, x: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """From convolved tokens (B, T, d_inner) derive scan inputs.
+
+        The projections run in scan_dtype (float32, or float64 for float64 inputs)
+        even under bf16 autocast, so delta, B and C are not bf16-rounded.
 
         Returns:
             x_h: (B, T, H, P)
@@ -116,6 +120,7 @@ class Mamba2Block(nn.Module):
             Bx: (B, T, H, N)  the state input delta_t * B_t; head h reads group h // (H/G)
             C_h: (B, T, H, N)
         """
+        x = x.to(scan_dtype(x))
         proj = self.x_proj(x)
         dt, B, C = torch.split(
             proj,

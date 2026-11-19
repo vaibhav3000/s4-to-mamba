@@ -752,3 +752,37 @@ def test_scans_ignore_bf16_autocast(case: str) -> None:
             got = fn(*inputs)
     assert got.dtype == torch.float32
     assert torch.equal(got, expected)
+
+
+def _projection_fns() -> dict[str, Callable[[torch.Tensor], tuple[torch.Tensor, ...]]]:
+    torch.manual_seed(25)
+    m1 = MambaBlock(d_model=8, d_state=4, expand=2)
+    m2 = Mamba2Block(d_model=8, d_state=4, headdim=4, expand=2)
+    m3 = Mamba3Block(d_model=8, d_state=4, headdim=4, expand=2)
+    return {"mamba1": m1._ssm_params, "mamba2": m2._scan_inputs, "mamba3": m3._ssm_inputs}
+
+
+@pytest.mark.parametrize("case", ["mamba1", "mamba2", "mamba3"])
+def test_ssm_projections_run_in_float32_under_bf16_autocast(case: str) -> None:
+    """Under bf16 autocast (the trainer's amp option) the projections that produce
+    delta, B, C (and Mamba-3's lambda) run in float32 from the conv output: bitwise
+    equal to the same projections on that output cast to float32 without autocast."""
+    fn = _projection_fns()[case]
+    x = torch.randn(2, 7, 16).to(torch.bfloat16)  # what conv1d emits under autocast
+    with torch.no_grad():
+        expected = fn(x.float())
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            got = fn(x)
+    for g, e in zip(got, expected, strict=True):
+        assert g.dtype == torch.float32
+        assert torch.equal(g, e)
+
+
+@pytest.mark.parametrize("name", ["mamba", "mamba2", "mamba3"])
+def test_backbone_forward_runs_under_bf16_autocast(name: str) -> None:
+    """Smoke test: a full forward under CPU bf16 autocast runs and stays finite."""
+    torch.manual_seed(26)
+    backbone = build_backbone(name, SMALL_KWARGS[name])
+    with torch.no_grad(), torch.autocast("cpu", dtype=torch.bfloat16):
+        y = backbone(torch.randn(2, 9, 32))
+    assert torch.isfinite(y.float()).all()

@@ -137,6 +137,33 @@ class Mamba3Block(nn.Module):
             nn.init.uniform_(self.dt_proj.weight, -std, std)
 
     @autocast_disabled
+    def _ssm_inputs(
+        self, x_conv: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Scan inputs (x_h, delta, B_h, C_h, lam) from convolved tokens (B, T, d_inner).
+
+        The projections run in scan_dtype (float32, or float64 for float64 inputs)
+        even under bf16 autocast, so delta, B, C and lambda are not bf16-rounded.
+        """
+        x_conv = x_conv.to(scan_dtype(x_conv))
+        proj = self.x_proj(x_conv)
+        sizes = [
+            self.dt_rank,
+            self.n_groups * self.d_state,
+            self.n_groups * self.d_state,
+            self.n_groups,
+        ]
+        dt, B, C, lam_raw = torch.split(proj, sizes, dim=-1)
+        delta = F.softplus(self.dt_proj(dt))  # (B, T, H)
+        lam = torch.sigmoid(self.lambda_proj(lam_raw))  # (B, T, H)
+        # Head h reads the full N-vectors B and C of group h // (H / G).
+        B_h = expand_groups_to_heads(B, self.n_groups, self.n_heads)  # (B, T, H, N)
+        C_h = expand_groups_to_heads(C, self.n_groups, self.n_heads)  # (B, T, H, N)
+        # lambda_proj outputs one weight per head directly (no group expansion).
+        x_h = x_conv.view(*x_conv.shape[:-1], self.n_heads, self.headdim)
+        return x_h, delta, B_h, C_h, lam
+
+    @autocast_disabled
     def selective_scan(
         self,
         x_h: torch.Tensor,  # (B, T, H, P)
@@ -189,24 +216,7 @@ class Mamba3Block(nn.Module):
         x_conv = self.conv1d(x_conv)[..., :T].transpose(1, 2)
         x_conv = F.silu(x_conv)
 
-        proj = self.x_proj(x_conv)
-        sizes = [
-            self.dt_rank,
-            self.n_groups * self.d_state,
-            self.n_groups * self.d_state,
-            self.n_groups,
-        ]
-        dt, B, C, lam_raw = torch.split(proj, sizes, dim=-1)
-        delta = F.softplus(self.dt_proj(dt))  # (B, T, H)
-        lam = torch.sigmoid(self.lambda_proj(lam_raw))  # (B, T, H)
-
-        # Head h reads the full N-vectors B and C of group h // (H / G).
-        B_h = expand_groups_to_heads(B, self.n_groups, self.n_heads)  # (B, T, H, N)
-        C_h = expand_groups_to_heads(C, self.n_groups, self.n_heads)  # (B, T, H, N)
-        # lambda_proj outputs one weight per head directly (no group expansion).
-        lam_h = lam
-        x_h = x_conv.view(*x_conv.shape[:-1], self.n_heads, self.headdim)
-
+        x_h, delta, B_h, C_h, lam_h = self._ssm_inputs(x_conv)
         y = self.selective_scan(x_h, delta, B_h, C_h, lam_h)
         y = y.reshape(*y.shape[:2], self.d_inner)
         y = y + x_conv * self.D

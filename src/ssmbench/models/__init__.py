@@ -36,7 +36,17 @@ _KWARGS: dict[str, set[str]] = {
         "chunk_size",
         "scan_mode",
     },
-    "mamba3": {"d_model", "n_layers", "d_state", "headdim", "expand", "n_groups"},
+    "mamba3": {
+        "d_model",
+        "n_layers",
+        "d_state",
+        "headdim",
+        "expand",
+        "n_groups",
+        "chunk_size",
+        "scan_mode",
+        "rotation",
+    },
 }
 
 

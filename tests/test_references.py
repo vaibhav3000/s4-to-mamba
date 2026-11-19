@@ -644,14 +644,24 @@ def _randomize_mamba3(block: Mamba3Block) -> None:
 
 
 @pytest.mark.parametrize("n_groups", [1, 2])
+@pytest.mark.parametrize("scan_mode", ["sequential", "chunked"])
 @pytest.mark.parametrize(("dtype", "Bsz", "T"), BLOCK_CASES)
 def test_mamba3_block_matches_naive_reference(
-    dtype: torch.dtype, Bsz: int, T: int, n_groups: int
+    dtype: torch.dtype, Bsz: int, T: int, scan_mode: str, n_groups: int
 ) -> None:
     """Block forward with random theta != 0 and lambda in (0, 1) against the naive
-    complex128 loop; in float64 every parameter gradient matches too. TOL[dtype]."""
+    complex128 loop, in both scan modes (chunk 8, so T = 21 pads and T = 16 does not);
+    in float64 every parameter gradient matches too. TOL[dtype]."""
     torch.manual_seed(10 + n_groups)
-    block = Mamba3Block(d_model=16, d_state=4, headdim=8, expand=2, n_groups=n_groups)
+    block = Mamba3Block(
+        d_model=16,
+        d_state=4,
+        headdim=8,
+        expand=2,
+        n_groups=n_groups,
+        chunk_size=8,
+        scan_mode=scan_mode,
+    )
     _randomize_mamba3(block)
     block = block.to(dtype)
     ref = copy.deepcopy(block).double()

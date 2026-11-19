@@ -23,6 +23,7 @@ def test_console_scripts_resolve_to_callables() -> None:
         "ssmbench-summarize",
         "ssmbench-inference",
         "ssmbench-compile",
+        "ssmbench-numerics",
     }
     for target in scripts.values():
         module_name, func_name = target.split(":")

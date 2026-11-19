@@ -26,6 +26,7 @@ ssmbench-efficiency = "ssmbench.benchmarks.efficiency:main"
 ssmbench-summarize = "ssmbench.analysis.summary:main"
 ssmbench-inference = "ssmbench.benchmarks.inference:main"
 ssmbench-compile = "ssmbench.benchmarks.compile_check:main"
+ssmbench-numerics = "ssmbench.benchmarks.numerics:main"
 
 [project.optional-dependencies]
 dev = [

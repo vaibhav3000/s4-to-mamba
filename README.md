@@ -46,6 +46,43 @@ re-run either. The figures were redrawn from the same JSON with honest labels
 (no number changed). [results/PROVENANCE.md](results/PROVENANCE.md) records
 where each result file came from and how to regenerate it on the GPU.
 
+Where the committed results came from: the parity, selective-copy and IMDb
+results were produced with the code of b327a35 (the Mamba-2 IMDb file was
+committed later, in bcc3f7d), the efficiency sweep with versions from b327a35
+to bcc3f7d (it was stitched together from eight processes, several of them
+running uncommitted code), and the exact-copy results with 246f4cb. They are stale after these fixes: P1 Mamba-2/3
+B/C head expansion (0a2461a), P2 S4D ZOH (1751001), D10 weight decay on SSM
+dynamics parameters (dcb4dd1), D17 Mamba-2 chunked log decay (52f53bf) and P16
+the LM head in the timed train step (0b58559); P6 (8d15605) makes every
+`peak_gpu_mb` after the first model of a process an inherited value. The
+Transformer task metrics are not changed by any fix but come from the same
+runs.
+
+### Re-running every result on the GPU
+
+From the repository root in PowerShell, with no other job on the GPU and
+`CUDA_VISIBLE_DEVICES` unset (results/PROVENANCE.md has the pre-flight checks
+and the Git Bash version):
+
+```powershell
+uv pip install --no-deps -e . --python .venv\Scripts\python.exe
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\ssmbench-train.exe --config configs/parity.yaml --out results --device cuda
+.\.venv\Scripts\ssmbench-train.exe --config configs/selective_copy.yaml --out results --device cuda
+.\.venv\Scripts\ssmbench-train.exe --config configs/imdb.yaml --out results --device cuda
+.\.venv\Scripts\ssmbench-train.exe --config configs/exact_copy.yaml --out results --device cuda
+Remove-Item -LiteralPath results\efficiency_gpu.json
+.\.venv\Scripts\ssmbench-efficiency.exe --config configs/efficiency.yaml
+.\.venv\Scripts\python.exe scripts/make_figures.py
+.\.venv\Scripts\python.exe demo-site/build.py
+```
+
+The stale efficiency file must be removed first: the benchmark refuses to
+resume into entries measured with other code, and `--force` would merge them.
+Then update the numbers typed into this README, the docs and
+`reports/Efficient_Sequence_Modeling_S4_to_Mamba3.tex`, and rebuild the report
+with `latexmk -pdf` in `reports/`.
+
 ## Evolution at a glance
 
 ```mermaid

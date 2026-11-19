@@ -189,6 +189,34 @@ def test_s4d_block_step_equals_forward_and_reuses_its_discretization(
     torch.testing.assert_close(y_step, y_full, rtol=1e-10, atol=1e-10)
 
 
+@pytest.mark.parametrize("change", ["in-place edit", "optimizer step", "to float64"])
+def test_s4d_step_refuses_a_cache_from_older_parameters(change: str) -> None:
+    """The cached discretization belongs to the parameters at init_state() time. After
+    any parameter update or a dtype/device move, step() must raise instead of decoding
+    with stale (a_bar, b_bar, c)."""
+    from ssmbench.models.s4_minimal import S4DBlock
+
+    torch.manual_seed(23)
+    block = S4DBlock(d_model=8, d_state=4)
+    state = block.init_state(2, torch.device("cpu"))
+    x = torch.randn(2, 1, 8)
+    block.step(x, state)  # fresh cache: fine
+    if change == "in-place edit":
+        with torch.no_grad():
+            block.layer.log_A_real.add_(0.1)
+    elif change == "optimizer step":
+        opt = torch.optim.SGD(block.parameters(), lr=0.1)
+        block(torch.randn(2, 5, 8)).sum().backward()
+        opt.step()
+    else:
+        block.double()
+        x = x.double()
+    with pytest.raises(RuntimeError, match="init_state"):
+        block.step(x, state)
+    fresh = block.init_state(2, torch.device("cpu"))
+    assert block.step(x, fresh).shape == (2, 1, 8)
+
+
 # ---------------------------------------------------------------- generic
 
 

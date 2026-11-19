@@ -31,6 +31,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .blocks import complex_dtype_for
+
 
 def _expm1(z: torch.Tensor) -> torch.Tensor:
     """e^z - 1 without cancellation for small |z|, real or complex.
@@ -220,16 +222,41 @@ class S4DBlock(nn.Module):
             dtype=cache["a_bar"].dtype,
             device=device,
         )
-        return {"h": h, **cache}
+        return {"h": h, **cache, "param_versions": self._param_versions()}
+
+    def _param_versions(self) -> torch.Tensor:
+        """Version counters of the S4D layer's parameters (CPU int64). Every in-place
+        update (an optimizer step, load_state_dict, a manual edit) increments them."""
+        return torch.tensor([p._version for p in self.layer.parameters()], dtype=torch.int64)
+
+    def _check_cache(self, state: dict[str, torch.Tensor]) -> None:
+        """Raise if the cached discretization no longer matches the parameters."""
+        param = self.layer.log_A_real
+        expected_dtype = complex_dtype_for(param.dtype)
+        a_bar = state["a_bar"]
+        versions = state.get("param_versions")
+        if (
+            versions is None
+            or not torch.equal(versions, self._param_versions())
+            or a_bar.dtype != expected_dtype
+            or a_bar.device != param.device
+        ):
+            raise RuntimeError(
+                "S4D decode state is stale: the parameters changed (an update, or a dtype "
+                "or device move) after init_state(); call init_state() again"
+            )
 
     def step(self, x_t: torch.Tensor, state: dict[str, torch.Tensor]) -> torch.Tensor:
         """One decode step. x_t: (B, 1, D) -> (B, 1, D), O(1) per token.
 
-        Uses the discretization cached by init_state(); a state dict holding only "h"
-        still works and recomputes it.
+        Uses the discretization cached by init_state() and raises if the parameters
+        changed since then; a state dict holding only "h" still works and recomputes it.
         """
         h_in = self.norm(x_t.squeeze(1))
-        cache = {k: state[k] for k in ("a_bar", "b_bar", "c")} if "a_bar" in state else None
+        cache = None
+        if "a_bar" in state:
+            self._check_cache(state)
+            cache = {k: state[k] for k in ("a_bar", "b_bar", "c")}
         y, new_h = self.layer.step(h_in, state["h"], cache)
         out = x_t + (y * F.silu(self.gate(h_in))).unsqueeze(1)
         state["h"] = new_h

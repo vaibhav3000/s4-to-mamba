@@ -72,6 +72,7 @@ from ..utils import (
 )
 from .common import (
     check_precision,
+    is_unsupported_kernel,
     precision_context,
     resolve_variant,
     summarize_ms,
@@ -184,7 +185,8 @@ def _measure_train_step(
     times = time_calls(train_step, repeats, warmup=2, device=device)
     result: dict = summarize_ms(times, "train_step_ms")
     _record_memory(result, "train", peak_memory_stats(device, available_at_start))
-    result["train_tokens_per_s"] = round(batch_size * seq_len / (result["train_step_ms"] / 1000))
+    median_ms = result["train_step_ms_median"]
+    result["train_tokens_per_s"] = round(batch_size * seq_len / (median_ms / 1000))
     return result
 
 
@@ -200,7 +202,12 @@ def benchmark_single(
 ) -> dict:
     """Measure one sweep point of architecture `name` (see the module docstring)."""
     check_precision(precision)
+    if precision == "fp16":
+        raise ValueError("fp16 training steps need a GradScaler, which this benchmark has not")
     kwargs = dict(DEFAULT_KWARGS.get(name, {}))
+    if name == "transformer":
+        # The sinusoidal table is sized to the sequence, so its memory is the point's own.
+        kwargs["max_len"] = seq_len
     if model_kwargs:
         kwargs.update(model_kwargs)
     seed_everything(0)
@@ -363,7 +370,9 @@ def _load_prior_entries(
     if not out_path.exists():
         return []
     prior = json.loads(out_path.read_text(encoding="utf-8"))
-    entries = [e for e in prior.get("entries", []) if "error" not in e]
+    # Error entries are measured again; skipped ones are derived again from the
+    # entries that caused them, so removing a spilled point re-opens its longer lengths.
+    entries = [e for e in prior.get("entries", []) if "error" not in e and "skipped" not in e]
     dropped = len(prior.get("entries", [])) - len(entries)
     if dropped:
         print(f"re-measuring {dropped} point(s) that ended in an error", flush=True)
@@ -447,6 +456,15 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
                     measure_decode=cfg.get("measure_decode", True),
                 )
             except Exception as exc:
+                if is_unsupported_kernel(exc):
+                    # The pinned attention kernel refuses these inputs: a property of the
+                    # backend, recorded once and not retried on resume.
+                    unsupported = {"unsupported": f"{type(exc).__name__}: {exc}"[:300]}
+                    entry = {"model": label, "architecture": architecture, "seq_len": L}
+                    entry.update(unsupported, **settings, provenance=provenance)
+                    results["entries"].append(entry)
+                    dump_json(results, out_path)
+                    continue
                 if not _is_oom(exc):
                     # Not a hardware limit: record it and stop, so a code bug or a
                     # broken CUDA context is never plotted as an OOM.

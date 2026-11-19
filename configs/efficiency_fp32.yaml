@@ -30,4 +30,4 @@ variants:
 model_length_limits:
   transformer_math: 4096
   transformer_naive: 4096
-  mamba: 2048
+  mamba: 1024    # its training step saves about 1.3 MB per token and layer

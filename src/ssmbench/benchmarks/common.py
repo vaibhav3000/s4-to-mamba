@@ -71,15 +71,29 @@ def percentile(values: list[float], q: float) -> float:
     return ordered[index]
 
 
+# Fewer samples than this make the nearest-rank p90 the maximum, so it is not reported.
+MIN_SAMPLES_FOR_P90 = 10
+
+
 def summarize_ms(times: list[float], key: str) -> dict[str, float | int | None]:
-    """{key}: mean, {key}_std (None for one sample), {key}_median, {key}_p90, {key}_n."""
+    """{key}: mean, {key}_std (None for one sample), {key}_median, {key}_p90 (None below
+    MIN_SAMPLES_FOR_P90 samples), {key}_n."""
     return {
         key: round(statistics.fmean(times), 4),
         f"{key}_std": round(statistics.stdev(times), 4) if len(times) > 1 else None,
         f"{key}_median": round(statistics.median(times), 4),
-        f"{key}_p90": round(percentile(times, 90.0), 4),
+        f"{key}_p90": (
+            round(percentile(times, 90.0), 4) if len(times) >= MIN_SAMPLES_FOR_P90 else None
+        ),
         f"{key}_n": len(times),
     }
+
+
+def is_unsupported_kernel(exc: BaseException) -> bool:
+    """True for SDPA's refusal of a pinned backend for these inputs ("No available
+    kernel"): a property of the backend and shape, recorded as unsupported rather than
+    treated as a bug or retried."""
+    return isinstance(exc, RuntimeError) and "no available kernel" in str(exc).lower()
 
 
 def resolve_variant(label: str, variants: dict[str, dict[str, Any]] | None) -> tuple[str, dict]:

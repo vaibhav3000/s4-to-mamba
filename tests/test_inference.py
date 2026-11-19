@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 import torch
@@ -128,3 +129,32 @@ def test_sweep_writes_labelled_entries_with_provenance_and_resumes(
     monkeypatch.setattr(inference, "measure_point", lambda *a, **k: calls.append("x") or {})
     inference.run_inference(_cfg(tmp_path))
     assert calls == []
+
+
+def test_transformer_points_size_their_tables_to_prompt_plus_new_tokens() -> None:
+    entry = inference.measure_point(
+        "transformer", 8, 3, 1, 1, 0, torch.device("cpu"), TINY["transformer"], "fp32"
+    )
+    assert entry["model_kwargs"]["max_len"] == 11
+    assert entry["gpu_state"] is None  # recorded per point on CUDA
+
+
+def test_inference_sweep_records_unsupported_kernels_and_continues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = inference.measure_point
+
+    def picky(name: str, L: int, *args: Any, **kwargs: Any) -> dict:
+        if (kwargs.get("model_kwargs") or {}).get("attn_backend") == "flash":
+            raise RuntimeError("No available kernel. Aborting execution.")
+        return real(name, L, *args, **kwargs)
+
+    monkeypatch.setattr(inference, "measure_point", picky)
+    cfg = _cfg(tmp_path)
+    cfg["models"] = ["tr_flash", "s4d"]
+    cfg["variants"] = {
+        "tr_flash": {"backbone": "transformer", "attn_backend": "flash", **TINY["transformer"]},
+        "s4d": TINY["s4d"],
+    }
+    results = inference.run_inference(cfg)
+    assert [bool(e.get("unsupported")) for e in results["entries"]] == [True, True, False, False]

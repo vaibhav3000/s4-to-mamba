@@ -9,18 +9,39 @@ argmax give the first token; then ``new_tokens`` greedy decode steps, each one
 Recorded per point, over ``repeats`` timed sessions after ``warmup`` untimed ones:
 
 - ``ttft_ms``: time to first token (prompt on device to first token id), mean, std,
-  median, p90 and n.
+  median, n, and p90 when there are at least 10 sessions.
 - ``decode_ms_per_token``: every decode step of every timed session, each timed with
   its own CUDA event pair (perf_counter on CPU): mean, std, median, p90, n. Steps run
   at contexts L to L + new_tokens; for the Transformer each step attends to all of them,
-  for the SSMs the cost does not depend on L.
-- ``tokens_per_s``: new_tokens divided by the median total decode time of a session.
-- ``peak_allocated_mb`` / ``peak_reserved_mb`` over the sessions, the memory available
-  at the start, free memory at the end and the spill flag (utils.peak_memory_stats).
+  for the SSMs the cost does not depend on L. Steps of one session are correlated, so
+  the pooled spread is narrower than the spread between sessions.
+- ``tokens_per_s``: batch_size * new_tokens divided by the median, over sessions, of the
+  summed decode-step time (the prefill and first token are excluded).
+- ``peak_allocated_mb`` / ``peak_reserved_mb``: the peak of the whole sessions, prefill
+  included (weights, prompt activations, state), with the memory available at the start,
+  free memory at the end and the spill flag (utils.peak_memory_stats). This is not decode
+  memory.
 - ``decode_state_bytes``: bytes of the decode state after the session (KV caches and
-  RoPE tables, or recurrent states, conv histories and boundary inputs).
+  RoPE tables, or recurrent states, conv histories and boundary inputs): the memory that
+  decoding holds per sequence.
+- ``decode_baseline_allocated_mb`` / ``decode_peak_above_baseline_mb`` (CUDA only): a
+  separate untimed pass prefills, then opens a fresh peak window and decodes; the
+  baseline is what is allocated when decoding starts (weights, prompt, state) and the
+  second number is the transient memory decode steps add on top of it.
 - ``attn_backend_prefill`` / ``attn_backend_step``: the SDPA kernel families a profiled
-  prefill and step ran (Transformer variants; None for SSMs).
+  prefill and step ran (Transformer variants; None for SSMs). A pinned backend that
+  refuses the inputs is recorded as ``unsupported`` and the sweep continues.
+- ``gpu_state``: SM and memory clocks, temperature, power and P-state when the point
+  started (nvidia-smi, best effort).
+
+Caveats for reading the numbers. At these model sizes (2 layers, d_model 256, batch 1)
+a decode step is bound by Python and kernel-launch overhead rather than by memory
+traffic, so per-token latency mostly counts kernels per step; the Transformer's growth
+with context shows only where reading its KV cache costs more than that floor. Under
+bf16 autocast the weight casts are cached for the whole session, so they fall inside the
+time to first token and decode steps reuse them. The Transformer's KV cache follows the
+autocast dtype (bf16) while SSM states stay float32, so decode-state sizes under bf16 are
+not like-for-like.
 
 Resume, provenance and OOM handling follow the efficiency sweep. Run with:
 
@@ -52,7 +73,14 @@ from ..utils import (
     run_provenance,
     seed_everything,
 )
-from .common import check_precision, precision_context, resolve_variant, state_bytes, summarize_ms
+from .common import (
+    check_precision,
+    is_unsupported_kernel,
+    precision_context,
+    resolve_variant,
+    state_bytes,
+    summarize_ms,
+)
 from .efficiency import (
     DEFAULT_KWARGS,
     VOCAB,
@@ -129,6 +157,40 @@ def generate_session(
     )
 
 
+def _decode_memory(
+    backbone: nn.Module,
+    embed: nn.Module,
+    head: nn.Module,
+    prompt: torch.Tensor,
+    new_tokens: int,
+    device: torch.device,
+    precision: str,
+) -> dict[str, float] | None:
+    """Untimed pass on CUDA: prefill, then a fresh peak window around the decode steps.
+
+    Returns the memory allocated when decoding starts and the peak decode adds above
+    it, in MiB; None off CUDA.
+    """
+    if device.type != "cuda" or not isinstance(backbone, Backbone):
+        return None
+    mib = 1024**2
+    with torch.no_grad(), precision_context(device, precision):
+        features, state = backbone.prefill(embed(prompt), max_len=prompt.shape[1] + new_tokens)
+        token = head(features[:, -1:]).argmax(-1)
+        del features
+        torch.cuda.synchronize(device)
+        torch.cuda.reset_peak_memory_stats(device)
+        baseline = torch.cuda.memory_allocated(device)
+        for _ in range(new_tokens):
+            token = head(backbone.step(embed(token), state)).argmax(-1)
+        torch.cuda.synchronize(device)
+        peak = torch.cuda.max_memory_allocated(device)
+    return {
+        "decode_baseline_allocated_mb": round(baseline / mib, 1),
+        "decode_peak_above_baseline_mb": round((peak - baseline) / mib, 1),
+    }
+
+
 def measure_point(
     name: str,
     prompt_len: int,
@@ -143,6 +205,10 @@ def measure_point(
     """Measure one (architecture, prompt length) point; see the module docstring."""
     check_precision(precision)
     kwargs = dict(DEFAULT_KWARGS.get(name, {}))
+    if name == "transformer":
+        # Sinusoidal table sized to the session (prompt plus new tokens), so the
+        # Transformer carries no 65536-position table that the SSMs do not have.
+        kwargs["max_len"] = prompt_len + new_tokens
     if model_kwargs:
         kwargs.update(model_kwargs)
     seed_everything(0)
@@ -159,6 +225,7 @@ def measure_point(
         "model_kwargs": kwargs,
         "attn_backend_prefill": None,
         "attn_backend_step": None,
+        "gpu_state": gpu_state(device),
     }
     if isinstance(backbone, TransformerBackbone):
         probe = torch.randint(1, VOCAB, (batch_size, min(prompt_len, 64)), device=device)
@@ -185,6 +252,9 @@ def measure_point(
         for _ in range(repeats)
     ]
     stats = peak_memory_stats(device, available_at_start)
+    decode_memory = _decode_memory(backbone, embed, head, prompt, new_tokens, device, precision)
+    if decode_memory is not None:
+        entry.update(decode_memory)
     entry.update(summarize_ms([s.ttft_ms for s in sessions], "ttft_ms"))
     entry.update(summarize_ms([t for s in sessions for t in s.step_ms], "decode_ms_per_token"))
     decode_total = statistics.median(sum(s.step_ms) for s in sessions)
@@ -240,6 +310,16 @@ def run_inference(cfg: dict, force: bool = False) -> dict:
                     precision=precision,
                 )
             except Exception as exc:
+                if is_unsupported_kernel(exc):
+                    entry = {
+                        "architecture": architecture,
+                        "seq_len": L,
+                        "unsupported": f"{type(exc).__name__}: {exc}"[:300],
+                    }
+                    entry.update(model=label, **settings, provenance=provenance)
+                    results["entries"].append(entry)
+                    dump_json(results, out_path)
+                    continue
                 if not _is_oom(exc):
                     results["entries"].append(
                         {

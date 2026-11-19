@@ -6,6 +6,7 @@ import json
 import platform
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 import torch
@@ -423,8 +424,9 @@ def test_bf16_points_run_under_autocast_and_say_so() -> None:
 
 
 def test_timings_report_median_and_p90() -> None:
+    # Ten repeats: below that the nearest-rank p90 is the maximum and is not reported.
     entry = efficiency.benchmark_single(
-        "s4d", 16, 2, 3, torch.device("cpu"), {"d_model": 16, "n_layers": 1, "d_state": 4}
+        "s4d", 16, 2, 10, torch.device("cpu"), {"d_model": 16, "n_layers": 1, "d_state": 4}
     )
     for key in ("train_step_ms_median", "train_step_ms_p90", "infer_ms_median", "infer_ms_p90"):
         assert entry[key] > 0, key
@@ -481,3 +483,77 @@ def test_decode_can_be_switched_off() -> None:
         measure_decode=False,
     )
     assert "decode_per_token_ms" not in entry and entry["decode_mode"] == "not measured"
+
+
+def test_p90_is_reported_only_from_ten_or_more_samples() -> None:
+    from ssmbench.benchmarks.common import summarize_ms
+
+    few = summarize_ms([1.0, 2.0, 3.0, 4.0, 5.0], "t")
+    assert few["t_p90"] is None and few["t_median"] == 3.0 and few["t_n"] == 5
+    many = summarize_ms([float(i) for i in range(1, 11)], "t")
+    assert many["t_p90"] == 9.0
+
+
+def test_fp16_training_steps_are_refused_without_a_grad_scaler() -> None:
+    with pytest.raises(ValueError, match="GradScaler"):
+        efficiency.benchmark_single(
+            "s4d", 16, 2, 2, torch.device("cpu"), {"d_model": 8, "n_layers": 1}, precision="fp16"
+        )
+
+
+def test_skipped_points_are_measured_again_once_the_spill_is_gone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spill = {"on": True}
+    attempted: list[int] = []
+
+    def maybe_spilling(name: str, seq_len: int, *args: object, **kwargs: Any) -> dict:
+        attempted.append(seq_len)
+        return {
+            "model": name,
+            "seq_len": seq_len,
+            "train_step_ms": 1.0,
+            "spilled_train": spill["on"],
+        }
+
+    monkeypatch.setattr(efficiency, "benchmark_single", maybe_spilling)
+    cfg: dict[str, Any] = {**_sweep_cfg(tmp_path, ["s4d"], [16, 32, 64]), "stop_after_spill": True}
+    efficiency.run_efficiency(cfg)
+    path = Path(cfg["out_path"])
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    saved["entries"] = [e for e in saved["entries"] if e["seq_len"] != 16]  # drop the spill
+    path.write_text(json.dumps(saved), encoding="utf-8")
+    spill["on"] = False
+    results = efficiency.run_efficiency(cfg)
+    assert attempted == [16, 16, 32, 64]
+    assert not any(e.get("skipped") for e in results["entries"])
+
+
+def test_a_pinned_kernel_that_cannot_run_is_recorded_and_the_sweep_continues(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    attempted: list[str] = []
+
+    def picky(name: str, seq_len: int, *args: object, **kwargs: Any) -> dict:
+        attempted.append(f"{kwargs.get('model_kwargs', {}).get('attn_backend')}@{seq_len}")
+        if kwargs.get("model_kwargs", {}).get("attn_backend") == "cudnn":
+            raise RuntimeError("No available kernel. Aborting execution.")
+        return {"model": name, "seq_len": seq_len, "train_step_ms": 1.0}
+
+    monkeypatch.setattr(efficiency, "benchmark_single", picky)
+    cfg = _sweep_cfg(tmp_path, ["transformer_cudnn", "s4d"], [16, 32])
+    cfg["variants"] = {"transformer_cudnn": {"backbone": "transformer", "attn_backend": "cudnn"}}
+    results = efficiency.run_efficiency(cfg)
+    unsupported = [e for e in results["entries"] if e.get("unsupported")]
+    assert [e["seq_len"] for e in unsupported] == [16, 32]
+    assert "No available kernel" in unsupported[0]["unsupported"]
+    assert [e["seq_len"] for e in results["entries"] if e["model"] == "s4d"] == [16, 32]
+    efficiency.run_efficiency(cfg)  # resume: unsupported points are not retried
+    assert attempted.count("cudnn@16") == 1
+
+
+def test_transformer_position_table_is_sized_to_the_point() -> None:
+    entry = efficiency.benchmark_single(
+        "transformer", 16, 2, 2, torch.device("cpu"), TINY_KWARGS["transformer"]
+    )
+    assert entry["model_kwargs"]["max_len"] == 16

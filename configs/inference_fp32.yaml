@@ -5,8 +5,8 @@ device: auto
 out_path: results/inference/decode_fp32.json
 precision: fp32
 batch_size: 1
-repeats: 5
-warmup: 1
+repeats: 10
+warmup: 2
 new_tokens: 64
 seq_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
 models:

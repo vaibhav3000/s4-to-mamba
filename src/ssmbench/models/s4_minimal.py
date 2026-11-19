@@ -247,7 +247,8 @@ class S4DBlock(nn.Module):
             dtype=cache["a_bar"].dtype,
             device=device,
         )
-        return {"h": h, **cache, "param_versions": self._param_versions()}
+        versions = torch.tensor(self._param_version_sum(), dtype=torch.int64)
+        return {"h": h, **cache, "param_versions": versions}
 
     def prefill(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """forward(x) plus the decode state after the last token of x."""
@@ -257,10 +258,13 @@ class S4DBlock(nn.Module):
         state["h"] = self.layer.final_state(h).to(state["h"].dtype)
         return out, state
 
-    def _param_versions(self) -> torch.Tensor:
-        """Version counters of the S4D layer's parameters (CPU int64). Every in-place
-        update (an optimizer step, load_state_dict, a manual edit) increments them."""
-        return torch.tensor([p._version for p in self.layer.parameters()], dtype=torch.int64)
+    def _param_version_sum(self) -> int:
+        """Sum of the version counters of the S4D layer's parameters. Every in-place
+        update (an optimizer step, load_state_dict, a manual edit) increments a counter
+        and none ever decreases, so the sum changes whenever any parameter changed. One
+        integer keeps the per-step check to about a microsecond (a version tensor cost
+        about 8 microseconds per layer and step on CPU)."""
+        return sum(p._version for p in self.layer._parameters.values() if p is not None)
 
     def _check_cache(self, state: dict[str, torch.Tensor]) -> None:
         """Raise if the cached discretization no longer matches the parameters."""
@@ -270,7 +274,7 @@ class S4DBlock(nn.Module):
         versions = state.get("param_versions")
         if (
             versions is None
-            or not torch.equal(versions, self._param_versions())
+            or int(versions) != self._param_version_sum()
             or a_bar.dtype != expected_dtype
             or a_bar.device != param.device
         ):

@@ -5,8 +5,8 @@ device: auto
 out_path: results/inference/decode_bf16.json
 precision: bf16
 batch_size: 1
-repeats: 5          # timed sessions per point (prefill + new_tokens decode steps each)
-warmup: 1
+repeats: 10         # timed sessions per point (prefill + new_tokens decode steps each)
+warmup: 2
 new_tokens: 64
 seq_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
 models:

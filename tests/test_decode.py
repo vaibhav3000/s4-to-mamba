@@ -21,6 +21,15 @@ RTOL = ATOL = 1e-10
 # case id -> (architecture, kwargs). Chunk size 4 makes T = 11 span three chunks with a
 # partial last one; two groups exercise the B/C group expansion in the step path too.
 DECODE_CASES: dict[str, tuple[str, dict]] = {
+    "transformer": ("transformer", {"d_model": 8, "n_layers": 2, "n_heads": 2}),
+    "transformer-rope": (
+        "transformer",
+        {"d_model": 8, "n_layers": 2, "n_heads": 2, "pos_encoding": "rope"},
+    ),
+    "transformer-naive": (
+        "transformer",
+        {"d_model": 8, "n_layers": 2, "n_heads": 2, "attn_backend": "naive"},
+    ),
     "s4d": ("s4d", {"d_model": 8, "n_layers": 2, "d_state": 4}),
     "mamba": ("mamba", {"d_model": 8, "n_layers": 2, "d_state": 4}),
     "mamba2-chunked": (

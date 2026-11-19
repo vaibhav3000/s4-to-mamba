@@ -15,6 +15,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -56,6 +57,41 @@ def _env_info(device: torch.device) -> dict:
         info["gpu_name"] = torch.cuda.get_device_name(0)
         info["cuda"] = torch.version.cuda
     return info
+
+
+# Parameters that set the SSM dynamics: decay rates, rotation frequencies, step
+# sizes and the S4D input matrix. As in the official S4 and Mamba code they get
+# no weight decay, which would pull A toward -1, rotations toward 0 and B toward 0.
+# (Every 1-D parameter, including each D vector and Mamba-2's per-head A_log, is
+# already exempt by the ndim rule below.)
+SSM_NO_DECAY_PARAMS = frozenset(
+    {
+        "log_A_real",  # S4D
+        "A_imag",  # S4D
+        "dt_param",  # S4D
+        "B_re",  # S4D
+        "B_im",  # S4D
+        "A_log",  # Mamba-1 (d_inner, N) and Mamba-2 (H,)
+        "a_real_log",  # Mamba-3
+        "theta",  # Mamba-3
+        "D",  # Mamba-1/2/3 and S4D skip
+    }
+)
+
+
+def build_param_groups(model: nn.Module, weight_decay: float) -> list[dict[str, Any]]:
+    """AdamW parameter groups: weight decay only on weights with ndim >= 2 that are
+    not SSM dynamics parameters (see SSM_NO_DECAY_PARAMS); biases, norms and every
+    other 1-D parameter get none. Parameters are matched by their attribute name."""
+    decay: list[nn.Parameter] = []
+    no_decay: list[nn.Parameter] = []
+    for name, p in model.named_parameters():
+        leaf = name.rsplit(".", 1)[-1]
+        (no_decay if p.ndim <= 1 or leaf in SSM_NO_DECAY_PARAMS else decay).append(p)
+    return [
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
 
 
 def build_model(cfg: dict) -> nn.Module:
@@ -171,16 +207,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
     train_loader, val_loader, extra_eval = get_loaders(cfg)
     task = cfg["task"]["type"]
 
-    decay, no_decay = [], []
-    for n, p in model.named_parameters():
-        (no_decay if p.ndim <= 1 else decay).append(p)
-    opt = torch.optim.AdamW(
-        [
-            {"params": decay, "weight_decay": tcfg.weight_decay},
-            {"params": no_decay, "weight_decay": 0.0},
-        ],
-        lr=tcfg.lr,
-    )
+    opt = torch.optim.AdamW(build_param_groups(model, tcfg.weight_decay), lr=tcfg.lr)
     steps_per_epoch = len(train_loader)
     total_steps = steps_per_epoch * tcfg.epochs
     warmup = max(1, int(tcfg.warmup_frac * total_steps))

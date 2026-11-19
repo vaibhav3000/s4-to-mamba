@@ -10,6 +10,7 @@ and gradients; gradcheck eps 1e-6, atol 1e-7, rtol 1e-5; float32 against float64
 from __future__ import annotations
 
 import copy
+import math
 
 import pytest
 import torch
@@ -39,13 +40,20 @@ def _block(n_groups: int = 1, chunk_size: int = 4, rotation: bool = True) -> Mam
 
 
 def _scan_inputs(
-    block: Mamba3Block, Bsz: int, T: int, lam_mode: str, seed: int = 0, delta_scale: float = 0.5
+    block: Mamba3Block,
+    Bsz: int,
+    T: int,
+    lam_mode: str,
+    seed: int = 0,
+    delta_scale: float = 0.5,
+    delta_floor: float = 0.01,
 ) -> tuple[torch.Tensor, ...]:
+    """Random scan inputs; delta is uniform in [delta_floor, delta_floor + delta_scale)."""
     g = torch.Generator().manual_seed(seed)
     H, P, N = block.n_heads, block.headdim, block.d_state
     f64 = torch.float64
     x_h = torch.randn(Bsz, T, H, P, generator=g, dtype=f64)
-    delta = torch.rand(Bsz, T, H, generator=g, dtype=f64) * delta_scale + 0.01
+    delta = torch.rand(Bsz, T, H, generator=g, dtype=f64) * delta_scale + delta_floor
     b_h = torch.randn(Bsz, T, H, N, generator=g, dtype=f64)
     c_h = torch.randn(Bsz, T, H, N, generator=g, dtype=f64)
     lam = {
@@ -61,17 +69,19 @@ def _scan_inputs(
 @pytest.mark.parametrize("lam_mode", ["zero", "half", "one", "random"])
 @pytest.mark.parametrize("rotation", [True, False], ids=["rotating", "real"])
 @pytest.mark.parametrize("n_groups", [1, 2])
+@pytest.mark.parametrize("Bsz", [1, 3])
 def test_chunked_scan_matches_sequential(
-    T: int, lam_mode: str, rotation: bool, n_groups: int
+    T: int, lam_mode: str, rotation: bool, n_groups: int, Bsz: int
 ) -> None:
     """Chunk 4: T = 1 and 3 fit in one padded chunk, 4 is exact, 5 and 23 carry state
     (and the boundary input) across chunks. float64, 1e-10."""
     block = _block(n_groups, chunk_size=4, rotation=rotation)
-    inputs = _scan_inputs(block, 3, T, lam_mode)
+    inputs = _scan_inputs(block, Bsz, T, lam_mode)
     with torch.no_grad():
         y_seq, h_seq, s_seq = block.selective_scan_with_state(*inputs)
         y_chk, h_chk, s_chk = block.chunked_scan_with_state(*inputs)
-    assert y_chk.shape == (3, T, block.n_heads, block.headdim) and y_chk.dtype == torch.float64
+    assert y_chk.shape == (Bsz, T, block.n_heads, block.headdim)
+    assert y_chk.dtype == torch.float64
     torch.testing.assert_close(y_chk, y_seq, rtol=RTOL, atol=ATOL)
     torch.testing.assert_close(h_chk, h_seq, rtol=RTOL, atol=ATOL)
     torch.testing.assert_close(s_chk, s_seq, rtol=RTOL, atol=ATOL)
@@ -142,29 +152,82 @@ def test_chunked_scan_is_chunk_size_invariant(chunk_size: int) -> None:
         )
 
 
-def test_chunk_groups_do_not_change_the_result() -> None:
-    """A byte budget of one byte forces one chunk per group; the output is unchanged."""
+@pytest.mark.parametrize("chunks_per_group", [1, 3])
+def test_chunk_groups_do_not_change_the_result(chunks_per_group: int) -> None:
+    """A byte budget of 1 or 3 chunks per group (3 leaves a partial last group of the 8
+    chunks) gives the same output, final state, boundary input and input gradients as
+    one group holding every chunk. float64, 1e-10."""
     block = _block(n_groups=2, chunk_size=4)
-    inputs = _scan_inputs(block, 2, 29, "random", seed=5)
-    with torch.no_grad():
-        wide = block.chunked_scan(*inputs)
-        block.chunk_group_bytes = 1
-        narrow = block.chunked_scan(*inputs)
-    torch.testing.assert_close(narrow, wide, rtol=RTOL, atol=ATOL)
+    ref = copy.deepcopy(block)
+    inputs = [t.requires_grad_(True) for t in _scan_inputs(block, 2, 29, "random", seed=5)]
+    ref_inputs = [t.detach().clone().requires_grad_(True) for t in inputs]
+    block.chunk_group_bytes = chunks_per_group * block.chunk_bytes(2, torch.float64)
+    ref.chunk_group_bytes = 10**12
+    y, h, s = block.chunked_scan_with_state(*inputs)
+    y_ref, h_ref, s_ref = ref.chunked_scan_with_state(*ref_inputs)
+    for got, want in ((y, y_ref), (h, h_ref), (s, s_ref)):
+        torch.testing.assert_close(got, want, rtol=RTOL, atol=ATOL)
+    weight = torch.randn_like(y)
+    (y * weight).sum().backward()
+    (y_ref * weight).sum().backward()
+    for got, want in zip(inputs, ref_inputs, strict=True):
+        assert got.grad is not None and want.grad is not None
+        torch.testing.assert_close(got.grad, want.grad, rtol=RTOL, atol=ATOL)
 
 
-@pytest.mark.parametrize(("delta_scale", "label"), [(1e-6, "tiny"), (60.0, "large")])
-def test_chunked_scan_handles_extreme_decays(delta_scale: float, label: str) -> None:
-    """Tiny steps (decay ~ 1, no rotation progress) and large ones (decay underflows
-    within a chunk, |delta * Re(A)| up to about 160) stay finite and match the
-    recurrence. float64, 1e-10."""
+@pytest.mark.parametrize(
+    ("delta_scale", "delta_floor", "label"), [(1e-6, 0.0, "tiny"), (60.0, 0.01, "large")]
+)
+def test_chunked_scan_handles_extreme_decays(
+    delta_scale: float, delta_floor: float, label: str
+) -> None:
+    """Tiny steps (delta below 1e-6: decay ~ 1, almost no rotation) and large ones (decay
+    underflows within a chunk, |delta * Re(A)| up to about 160) stay finite and match
+    the recurrence in value and input gradients. float64, 1e-10."""
     block = _block(n_groups=1, chunk_size=8)
-    inputs = _scan_inputs(block, 2, 19, "random", seed=7, delta_scale=delta_scale)
-    with torch.no_grad():
-        y = block.chunked_scan(*inputs)
-        y_ref = block.selective_scan(*inputs)
+    inputs = _scan_inputs(
+        block, 2, 19, "random", seed=7, delta_scale=delta_scale, delta_floor=delta_floor
+    )
+    if label == "tiny":
+        assert inputs[1].max().item() < 1e-6
+    inputs = [t.requires_grad_(True) for t in inputs]
+    ref_inputs = [t.detach().clone().requires_grad_(True) for t in inputs]
+    y = block.chunked_scan(*inputs)
+    y_ref = block.selective_scan(*ref_inputs)
     assert torch.isfinite(y).all(), label
     torch.testing.assert_close(y, y_ref, rtol=RTOL, atol=ATOL)
+    y.sum().backward()
+    y_ref.sum().backward()
+    for got, want in zip(inputs, ref_inputs, strict=True):
+        assert got.grad is not None and want.grad is not None
+        assert torch.isfinite(got.grad).all(), label
+        torch.testing.assert_close(got.grad, want.grad, rtol=RTOL, atol=ATOL)
+
+
+def test_backward_saves_no_per_chunk_decay_tensors() -> None:
+    """Autograd must not keep the (Q, Q, N) intra-chunk decays of every chunk alive until
+    backward (they are recomputed per group instead). At Q = 32, N = 16, P = 8 that would
+    be thousands of saved values per token and head; the bound allows a constant multiple
+    of the per-token inputs (P + 2N + 4)."""
+    torch.manual_seed(0)
+    block = Mamba3Block(d_model=16, d_state=16, headdim=8, expand=2, chunk_size=32)
+    Bsz, T, H, P, N = 2, 256, block.n_heads, block.headdim, block.d_state
+    x_h = torch.randn(Bsz, T, H, P, requires_grad=True)
+    delta = torch.rand(Bsz, T, H) * 0.1
+    b_h, c_h = torch.randn(Bsz, T, H, N), torch.randn(Bsz, T, H, N)
+    lam = torch.rand(Bsz, T, H)
+    saved = {"bytes": 0}
+
+    def pack(t: torch.Tensor) -> torch.Tensor:
+        saved["bytes"] += t.numel() * t.element_size()
+        return t
+
+    with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+        y = block.chunked_scan(x_h, delta, b_h, c_h, lam)
+    per_token_head = saved["bytes"] / 4 / (Bsz * T * H)
+    assert per_token_head <= 8 * (P + 2 * N + 4), per_token_head
+    y.sum().backward()
+    assert x_h.grad is not None and torch.isfinite(x_h.grad).all()
 
 
 def test_float32_chunked_scan_tracks_float64() -> None:
@@ -179,6 +242,17 @@ def test_float32_chunked_scan_tracks_float64() -> None:
     assert y32.dtype == torch.float32
     scale = y_ref.abs().max().item()
     assert (y32.double() - y_ref).abs().max().item() <= 1e-4 * scale
+
+
+def test_rotating_weights_cannot_be_loaded_into_the_ablation() -> None:
+    """The ablation's zero theta is not part of the state dict, so a strict load of a
+    rotating checkpoint fails instead of silently giving the ablation a rotation."""
+    rotating = _block(rotation=True)
+    ablated = _block(rotation=False)
+    assert "theta" not in ablated.state_dict()
+    with pytest.raises(RuntimeError, match="theta"):
+        ablated.load_state_dict(rotating.state_dict())
+    assert torch.equal(ablated.theta, torch.zeros_like(ablated.theta))
 
 
 def test_rotation_ablation_has_a_real_decay_only_transition() -> None:
@@ -253,3 +327,27 @@ def test_chunked_scan_ignores_bf16_autocast() -> None:
             under_autocast = block.chunked_scan(*inputs)
     assert under_autocast.dtype == torch.float32
     assert torch.equal(under_autocast, plain)
+
+
+def test_float32_chunked_scan_at_default_sizes() -> None:
+    """Default block (N = 32, theta = pi n up to about 97, chunk 64), delta log-uniform in
+    the init range [1e-3, 1e-1], T = 512: float32 chunked scan against the float64
+    recurrence. Measured 1.3e-6 of the output scale; bound 1e-5."""
+    torch.manual_seed(1)
+    block = Mamba3Block(128, d_state=32, headdim=64).double()
+    H, P, N, T = block.n_heads, block.headdim, block.d_state, 512
+    g = torch.Generator().manual_seed(0)
+    f64 = torch.float64
+    x_h = torch.randn(2, T, H, P, generator=g, dtype=f64)
+    delta = torch.exp(
+        torch.rand(2, T, H, generator=g, dtype=f64) * math.log(100.0) + math.log(1e-3)
+    )
+    b_h = torch.randn(2, T, H, N, generator=g, dtype=f64)
+    c_h = torch.randn(2, T, H, N, generator=g, dtype=f64)
+    lam = torch.rand(2, T, H, generator=g, dtype=f64)
+    with torch.no_grad():
+        y_ref = block.selective_scan(x_h, delta, b_h, c_h, lam)
+        block32 = copy.deepcopy(block).float()
+        y32 = block32.chunked_scan(*(t.float() for t in (x_h, delta, b_h, c_h, lam)))
+    error = (y32.double() - y_ref).abs().max().item()
+    assert error <= 1e-5 * y_ref.abs().max().item()

@@ -60,6 +60,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from .blocks import (
     Backbone,
@@ -153,7 +154,9 @@ class Mamba3Block(nn.Module):
         if rotation:
             self.theta = nn.Parameter(theta_init.repeat(self.n_heads, 1))
         else:  # rotation ablation: real, decay-only transition
-            self.register_buffer("theta", torch.zeros(self.n_heads, d_state))
+            # Not persistent: a strict load of a rotating checkpoint must fail, not
+            # silently give the ablation a rotation.
+            self.register_buffer("theta", torch.zeros(self.n_heads, d_state), persistent=False)
         self.D = nn.Parameter(torch.ones(self.d_inner))
         self.out_proj = nn.Linear(self.d_inner, d_model, bias=False)
         self._init_dt()
@@ -249,7 +252,7 @@ class Mamba3Block(nn.Module):
             )
             ys.append(torch.einsum("bhnp,bhn->bhp", h.real, cT[t]))
             prev_inject = inject_t.to(cdtype)
-        return torch.stack(ys, dim=1), h, prev_inject.real
+        return torch.stack(ys, dim=1), h, prev_inject.real.contiguous()
 
     # -------------------- chunked parallel form --------------------
 
@@ -299,7 +302,6 @@ class Mamba3Block(nn.Module):
         cdtype = complex_dtype_for(dtype)
         a_re = -torch.exp(self.a_real_log.to(dtype))  # (H, N), negative
         theta = self.theta.to(dtype)  # (H, N)
-        A = torch.complex(a_re, theta)  # (H, N)
 
         x = x_h.to(dtype)
         d = delta.to(dtype)
@@ -329,51 +331,100 @@ class Mamba3Block(nn.Module):
         gamma = gamma.view(Bsz, nc, Q, H)
         beta_prime = beta_prime.view(Bsz, nc, Q, H)
 
-        prefix = d.cumsum(dim=2)  # (B, nc, Q, H): sum_{r<=i}, the carry-in decay exponent
-        shifted = F.pad(d[:, :, 1:], (0, 0, 0, 1))
-        suffix = shifted.flip(2).cumsum(dim=2).flip(2)  # sum_{r=j+1..Q-1}, the carry-out one
-        ones = torch.ones(Q, Q, dtype=torch.bool, device=x_h.device)
-        strict = torch.tril(ones, diagonal=-1).unsqueeze(-1)  # (i, j, 1): j < i
-        causal = torch.tril(ones).unsqueeze(-1)  # (i, j, 1): j <= i
-        last = torch.zeros(Q, 1, dtype=dtype, device=x_h.device)
-        last[-1] = 1.0  # the carry-out row: W_{Q-1, j} has no beta' for j = Q - 1
-
-        itemsize = torch.finfo(dtype).bits // 8
-        per_chunk = itemsize * Bsz * H * Q * (4 * Q * N + 4 * N * P + 2 * Q)
-        group = max(1, min(nc, self.chunk_group_bytes // max(per_chunk, 1)))
-
+        group = max(1, min(nc, self.chunk_group_bytes // self.chunk_bytes(Bsz, dtype)))
+        # Under autograd each group runs inside an activation checkpoint: backward keeps
+        # only the group's inputs and recomputes its (Q, Q, N) decays, so training memory
+        # grows with T * (P + N), not T * Q * N.
+        checkpointed = torch.is_grad_enabled() and any(
+            t.requires_grad for t in (x, b, c, d, gamma, beta_prime, a_re, theta)
+        )
         ys = []
         h = torch.zeros(Bsz, H, N, P, dtype=cdtype, device=x_h.device)
         carry = h  # state entering the next chunk, including its boundary input
         for g0 in range(0, nc, group):
             g1 = min(g0 + group, nc)
-            # D_ij = sum_{r=j+1..i} delta_r as a masked cumsum over r (zero for j >= i).
-            d_rs = d[:, g0:g1].unsqueeze(3).expand(-1, -1, -1, Q, -1)  # (B, g, r, j, H)
-            seg = d_rs.masked_fill(~strict, 0.0).cumsum(dim=2).unsqueeze(-1)  # (B,g,i,j,H,1)
-            decay = torch.exp(a_re * seg) * torch.cos(theta * seg)  # (B, g, i, j, H, N)
-            G = torch.einsum("bgihn,bgjhn,bgijhn->bgijh", c[:, g0:g1], b[:, g0:g1], decay)
-            gam = gamma[:, g0:g1].unsqueeze(2)  # (B, g, 1, j, H)
-            bet = beta_prime[:, g0:g1].unsqueeze(2)
-            W = gam * causal + bet * strict  # (B, g, i, j, H): the two-band input weights
-            y_intra = torch.einsum("bgijh,bgjhp->bgihp", G * W, x[:, g0:g1])
-
-            # Carry-out partial state: sum_j exp(A suffix_j) W_{Q-1, j} B_j (x) x_j.
-            w_end = gamma[:, g0:g1] + beta_prime[:, g0:g1] * (1.0 - last)  # (B, g, Q, H)
-            end_decay = torch.exp(suffix[:, g0:g1].unsqueeze(-1) * A)  # (B, g, Q, H, N)
-            coef = end_decay * (w_end.unsqueeze(-1) * b[:, g0:g1])
-            s_partial = torch.einsum("bgjhn,bgjhp->bghnp", coef, x[:, g0:g1].to(cdtype))
-            pre_decay = torch.exp(prefix[:, g0:g1].unsqueeze(-1) * A)  # (B, g, Q, H, N)
-            c_pre = c[:, g0:g1] * pre_decay  # (B, g, Q, H, N) complex
-
-            for k in range(g1 - g0):
-                y_inter = torch.einsum("bihn,bhnp->bihp", c_pre[:, k], carry).real
-                ys.append(y_intra[:, k] + y_inter)
-                h = pre_decay[:, k, -1].unsqueeze(-1) * carry + s_partial[:, k]
-                # Boundary input: the chunk's last position still owes beta' s_last.
-                s_end = b[:, g0 + k, -1].unsqueeze(-1) * x[:, g0 + k, -1].unsqueeze(2)
-                carry = h + beta_prime[:, g0 + k, -1, :, None, None] * s_end
-        y = torch.stack(ys, dim=1).reshape(Bsz, nc * Q, H, P)[:, :T]
+            args = (
+                x[:, g0:g1],
+                b[:, g0:g1],
+                c[:, g0:g1],
+                d[:, g0:g1],
+                gamma[:, g0:g1],
+                beta_prime[:, g0:g1],
+                carry,
+                a_re,
+                theta,
+            )
+            if checkpointed:
+                y_group, h, carry = checkpoint(self._scan_chunk_group, *args, use_reentrant=False)
+            else:
+                y_group, h, carry = self._scan_chunk_group(*args)
+            ys.append(y_group)
+        y = torch.cat(ys, dim=1).reshape(Bsz, nc * Q, H, P)[:, :T]
         return y, h, s_last
+
+    def chunk_bytes(self, batch_size: int, dtype: torch.dtype) -> int:
+        """Approximate transient bytes one chunk adds to a group in chunked_scan: about six
+        (B, Q, Q, H, N) intermediates (segment sums, decays, the einsum product) in the
+        forward pass or its recomputation during backward."""
+        itemsize = torch.finfo(dtype).bits // 8
+        Q = self.chunk_size
+        return 6 * itemsize * batch_size * self.n_heads * Q * Q * self.d_state
+
+    def _scan_chunk_group(
+        self,
+        x: torch.Tensor,  # (B, g, Q, H, P)
+        b: torch.Tensor,  # (B, g, Q, H, N)
+        c: torch.Tensor,  # (B, g, Q, H, N)
+        d: torch.Tensor,  # (B, g, Q, H)
+        gamma: torch.Tensor,  # (B, g, Q, H)
+        beta_prime: torch.Tensor,  # (B, g, Q, H)
+        carry: torch.Tensor,  # (B, H, N, P) complex: state entering the group
+        a_re: torch.Tensor,  # (H, N)
+        theta: torch.Tensor,  # (H, N)
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Outputs of g consecutive chunks, given the state entering the first one.
+
+        Returns (y (B, g, Q, H, P), state after the last token of the group, state
+        entering the next group = that state plus its boundary input beta' s_last).
+        """
+        Q = x.shape[2]
+        A = torch.complex(a_re, theta)
+        ones = torch.ones(Q, Q, dtype=torch.bool, device=x.device)
+        strict = torch.tril(ones, diagonal=-1).unsqueeze(-1)  # (i, j, 1): j < i
+        causal = torch.tril(ones).unsqueeze(-1)  # (i, j, 1): j <= i
+        not_last = torch.ones(Q, 1, dtype=d.dtype, device=x.device)
+        not_last[-1] = 0.0  # the carry-out row W_{Q-1, j} has no beta' for j = Q - 1
+
+        prefix = d.cumsum(dim=2)  # (B, g, Q, H): sum_{r<=i}, the carry-in decay exponent
+        shifted = F.pad(d[:, :, 1:], (0, 0, 0, 1))
+        suffix = shifted.flip(2).cumsum(dim=2).flip(2)  # sum_{r=j+1..Q-1}, the carry-out one
+
+        # D_ij = sum_{r=j+1..i} delta_r as a masked cumsum over r (zero for j >= i).
+        d_rs = d.unsqueeze(3).expand(-1, -1, -1, Q, -1)  # (B, g, r, j, H)
+        seg = d_rs.masked_fill(~strict, 0.0).cumsum(dim=2).unsqueeze(-1)  # (B, g, i, j, H, 1)
+        decay = torch.exp(a_re * seg) * torch.cos(theta * seg)  # (B, g, i, j, H, N)
+        G = torch.einsum("bgihn,bgjhn,bgijhn->bgijh", c, b, decay)
+        W = gamma.unsqueeze(2) * causal + beta_prime.unsqueeze(2) * strict  # two-band weights
+        y_intra = torch.einsum("bgijh,bgjhp->bgihp", G * W, x)
+
+        # Carry-out partial state: sum_j exp(A suffix_j) W_{Q-1, j} B_j (x) x_j.
+        w_end = gamma + beta_prime * not_last  # (B, g, Q, H)
+        end_decay = torch.exp(suffix.unsqueeze(-1) * A)  # (B, g, Q, H, N)
+        coef = end_decay * (w_end.unsqueeze(-1) * b)
+        s_partial = torch.einsum("bgjhn,bgjhp->bghnp", coef, x.to(coef.dtype))
+        pre_decay = torch.exp(prefix.unsqueeze(-1) * A)  # (B, g, Q, H, N)
+        c_pre = c * pre_decay  # (B, g, Q, H, N) complex
+
+        ys = []
+        h = carry
+        for k in range(x.shape[1]):
+            y_inter = torch.einsum("bihn,bhnp->bihp", c_pre[:, k], carry).real
+            ys.append(y_intra[:, k] + y_inter)
+            h = pre_decay[:, k, -1].unsqueeze(-1) * carry + s_partial[:, k]
+            # Boundary input: the chunk's last position still owes beta' s_last.
+            s_end = b[:, k, -1].unsqueeze(-1) * x[:, k, -1].unsqueeze(2)
+            carry = h + beta_prime[:, k, -1, :, None, None] * s_end
+        return torch.stack(ys, dim=1), h, carry
 
     def prefill(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """forward(x) plus the decode state after the last token: (B, T, D) -> ((B, T, D), state).

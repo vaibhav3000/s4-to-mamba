@@ -254,13 +254,15 @@ def short_conv(conv: nn.Conv1d, x_in: torch.Tensor) -> tuple[torch.Tensor, torch
 
     x_in: (B, T, C). Returns (out (B, T, C), history (B, C, K - 1)), where history holds
     the last K - 1 inputs (zeros where the sequence is shorter), i.e. the decode state
-    that short_conv_step() continues from.
+    that short_conv_step() continues from. history is a copy in the conv weight's
+    dtype: it owns K - 1 columns of storage instead of viewing the padded prompt, and
+    a state made under autocast can be stepped without it.
     """
     T = x_in.shape[1]
     K = conv.kernel_size[0]
     padded = F.pad(x_in.transpose(1, 2), (K - 1, 0))  # (B, C, T + K - 1)
     out = F.silu(conv(padded)[..., :T]).transpose(1, 2)
-    history = padded[..., padded.shape[-1] - (K - 1) :]
+    history = padded[..., T:].to(dtype=conv.weight.dtype, copy=True)
     return out, history
 
 

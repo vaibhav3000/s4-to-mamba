@@ -255,8 +255,8 @@ class Mamba2Block(nn.Module):
         # Process chunks in groups so the (group, Csz, Csz, H) decay tensors
         # stay bounded; identical outputs, ~1GB less transient memory at 32K.
         group = 32
-        y_intra = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=dtype)
-        S_partial = torch.empty(Bsz, nc, H, N, P, device=x_h.device, dtype=dtype)
+        y_intra_groups: list[torch.Tensor] = []
+        s_partial_groups: list[torch.Tensor] = []
         ones = torch.ones(Csz, Csz, dtype=torch.bool, device=x_h.device)
         strict = torch.tril(ones, diagonal=-1).unsqueeze(-1)  # (t, s, 1): s < t
         causal = torch.tril(ones).unsqueeze(-1)  # (t, s, 1): s <= t
@@ -267,23 +267,30 @@ class Mamba2Block(nn.Module):
             seg = la_ts.masked_fill(~strict, 0.0).cumsum(dim=2)
             L = torch.exp(seg.masked_fill(~causal, float("-inf")))  # zero above the diagonal
             attn = torch.einsum("bgihn,bgjhn->bgijh", Cl[:, g0:g1], Bl[:, g0:g1])
-            y_intra[:, g0:g1] = torch.einsum("bgijh,bgjhp->bgihp", L * attn, xl[:, g0:g1])
+            y_intra_groups.append(torch.einsum("bgijh,bgjhp->bgihp", L * attn, xl[:, g0:g1]))
             alpha_suffix = torch.exp(suffix[:, g0:g1])
-            S_partial[:, g0:g1] = torch.einsum(
-                "bgjhn,bgjhp->bghnp",
-                Bl[:, g0:g1] * alpha_suffix.unsqueeze(-1),
-                xl[:, g0:g1],
+            s_partial_groups.append(
+                torch.einsum(
+                    "bgjhn,bgjhp->bghnp",
+                    Bl[:, g0:g1] * alpha_suffix.unsqueeze(-1),
+                    xl[:, g0:g1],
+                )
             )
+        # Lists joined once, not slice assignments: each in-place write into a full-size
+        # buffer adds a CopySlices node whose backward copies the whole gradient.
+        y_intra = torch.cat(y_intra_groups, dim=1)
+        S_partial = torch.cat(s_partial_groups, dim=1)
 
         # Loop over chunks (T/Csz iterations) for the carried state.
         C_prefix = Cl * torch.exp(cs).unsqueeze(-1)  # (B, nc, Csz, H, N)
-        y = torch.empty(Bsz, nc, Csz, H, P, device=x_h.device, dtype=dtype)
+        ys = []
         S = torch.zeros(Bsz, H, N, P, device=x_h.device, dtype=dtype)
         for c in range(nc):
             y_inter = torch.einsum("bihn,bhnp->bihp", C_prefix[:, c], S)
-            y[:, c] = y_intra[:, c] + y_inter
+            ys.append(y_intra[:, c] + y_inter)
             S = cs_end[:, c].unsqueeze(-1).unsqueeze(-1).exp() * S + S_partial[:, c]
 
+        y = torch.stack(ys, dim=1)
         return y.reshape(Bsz, Tp, H, P)[:, :T], S
 
     def prefill(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:

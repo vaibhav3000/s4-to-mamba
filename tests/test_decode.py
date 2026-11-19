@@ -164,6 +164,37 @@ def test_step_recurrence_runs_in_float32_under_bf16_autocast(case: str) -> None:
     assert y.dtype == torch.float32
 
 
+@pytest.mark.parametrize("case", ["mamba", "mamba2-chunked", "mamba3-chunked"])
+def test_prefill_state_keeps_only_the_last_conv_inputs(case: str) -> None:
+    """The short-conv history in the decode state owns K - 1 columns of storage, not a
+    view into the whole padded prompt (which would make the state grow with T)."""
+    torch.manual_seed(0)
+    name, kwargs = DECODE_CASES[case]
+    backbone = build_backbone(name, kwargs).eval()
+    x = torch.randn(2, 300, _width(case))
+    with torch.no_grad():
+        _, state = backbone.prefill(x)
+    for block_state in state.blocks:
+        history = block_state["conv"]
+        assert history.untyped_storage().nbytes() == history.numel() * history.element_size()
+
+
+@pytest.mark.parametrize("case", ["mamba", "mamba2-chunked", "mamba3-chunked"])
+def test_prefill_under_autocast_then_step_without_it(case: str) -> None:
+    """A state made under bf16 autocast continues outside autocast: the conv history is
+    kept in the parameters' dtype, so step() does not meet a bf16 window."""
+    torch.manual_seed(0)
+    name, kwargs = DECODE_CASES[case]
+    backbone = build_backbone(name, kwargs).eval()
+    x = torch.randn(2, 6, _width(case))
+    with torch.no_grad():
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            _, state = backbone.prefill(x[:, :5])
+        y = backbone.step(x[:, 5:6], state)
+    assert state.blocks[0]["conv"].dtype == torch.float32
+    assert torch.isfinite(y).all()
+
+
 def test_mamba3_step_recurrence_runs_in_scan_precision_under_bf16_autocast() -> None:
     """Mamba-3's one-token update keeps a complex64 state and a float32 readout under
     bf16 autocast."""

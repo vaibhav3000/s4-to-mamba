@@ -2,9 +2,9 @@
 
 For each task, the Transformer keeps its original width and depth, and every SSM variant gets the
 d_model on its constraint grid whose total parameter count is closest to the Transformer's.
-Depth, state size, expansion and every training setting stay fixed. The chosen widths are written
-into the configs as literal numbers by scripts/match_params.py, and a test asserts each variant is
-within 10% of the anchor.
+Depth, state size, expansion and every training setting stay fixed. scripts/match_params.py
+computes the widths (and with --check verifies the committed ones); the configs hold them as
+literal numbers, and a test asserts each variant is within 10% of the anchor.
 
 Matching by width keeps the comparison about the mixer at a fixed depth. Matching by depth would
 change the number of nonlinear stages, and matching by state size would change the very capacity

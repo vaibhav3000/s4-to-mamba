@@ -23,6 +23,7 @@ dependencies = [
 [project.scripts]
 ssmbench-train = "ssmbench.train.cli:main"
 ssmbench-efficiency = "ssmbench.benchmarks.efficiency:main"
+ssmbench-summarize = "ssmbench.analysis.summary:main"
 
 [project.optional-dependencies]
 dev = [

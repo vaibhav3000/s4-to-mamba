@@ -1,6 +1,12 @@
-# IMDb sentiment classification: architecture quality comparison at matched width and depth
-# (parameter counts differ). Every model trains with the identical protocol: same data,
-# optimizer and schedule, and a single seed (42).
+# IMDb sentiment classification on real text. Every variant trains with the identical
+# protocol: same data, optimizer and schedule. Validation: 2,500 training reviews held
+# out from the training subset; test: the full 25k test split.
+# Mamba (Mamba-1) is not trained here: its scan is a Python loop over up to 512 tokens
+# per layer, which makes the wall clock prohibitive on the 6 GB RTX 4050 (see README).
+# Mamba-3 runs with its chunked parallel form.
+#
+# Run: ssmbench-train --config configs/imdb.yaml --out results/train --seeds 0 1 2
+# Variants are parameter-matched to the Transformer by width (scripts/match_params.py).
 name_prefix: imdb
 task:
   type: classification
@@ -9,11 +15,13 @@ task:
   n_classes: 2
 data:
   name: imdb
+  seed: 42
   max_features: 20000
   max_len: 512
   batch_size: 64
-  train_subset: 12500  # half of IMDb train, fixed seed, identical across models
-  val_subset: null     # full 25k test split for validation
+  train_subset: 12500  # half of IMDb train, fixed by the data seed, identical across runs
+  val_size: 2500       # disjoint from the training subset
+  test_subset: null    # full 25k test split
 train:
   epochs: 3
   lr: 1.0e-3
@@ -22,15 +30,10 @@ train:
   scheduler: cosine
   warmup_frac: 0.05
   seed: 42
-# Backbones: matched depth (4 blocks) and width (d_model=128).
-# NOTE: mamba and mamba3 are intentionally NOT trained on IMDb: their
-# python-loop sequential scans make the wall-clock prohibitive on the
-# 6 GB RTX 4050 (see the README's IMDb section and the efficiency table).
-# Only transformer/s4d/mamba2 have committed results, and those predate the
-# fixes described in results/PROVENANCE.md.
+  deterministic: true
 models:
-  transformer: {d_model: 128, n_layers: 4, n_heads: 4}
-  s4d:         {d_model: 128, n_layers: 4, d_state: 16}
-
-  mamba2:      {d_model: 128, n_layers: 4, d_state: 32, headdim: 64}
-
+  transformer:      {d_model: 128, n_layers: 4, n_heads: 4, attn_backend: efficient}
+  transformer_rope: {backbone: transformer, pos_encoding: rope, d_model: 128, n_layers: 4, n_heads: 4, attn_backend: efficient}
+  s4d:              {d_model: 160, n_layers: 4, d_state: 16}
+  mamba2:           {d_model: 128, n_layers: 4, d_state: 32, headdim: 64}
+  mamba3:           {d_model: 128, n_layers: 4, d_state: 32, headdim: 64}

@@ -17,7 +17,7 @@ def test_console_scripts_resolve_to_callables() -> None:
     scripts = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
         "scripts"
     ]
-    assert set(scripts) == {"ssmbench-train", "ssmbench-efficiency"}
+    assert set(scripts) == {"ssmbench-train", "ssmbench-efficiency", "ssmbench-summarize"}
     for target in scripts.values():
         module_name, func_name = target.split(":")
         assert callable(getattr(importlib.import_module(module_name), func_name))
@@ -48,11 +48,11 @@ def test_train_cli_builds_one_run_config_per_requested_model(
     assert cfg["train"]["seed"] == 42  # no --seeds: the config's train.seed
     assert cfg["model"] == {
         "name": "mamba3",
-        "kwargs": {"d_model": 64, "n_layers": 2, "d_state": 32, "headdim": 32},
+        "kwargs": {"d_model": 80, "n_layers": 2, "d_state": 32, "headdim": 32},
     }
 
 
 def test_train_cli_rejects_models_missing_from_the_config() -> None:
     with pytest.raises(SystemExit) as excinfo:
-        cli.main(["--config", str(ROOT / "configs" / "imdb.yaml"), "--models", "mamba3"])
+        cli.main(["--config", str(ROOT / "configs" / "imdb.yaml"), "--models", "mamba"])
     assert excinfo.value.code == 2

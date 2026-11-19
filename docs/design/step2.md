@@ -206,9 +206,9 @@ chance level. It refuses to summarize runs whose source or config hashes differ.
 
 `scripts/match_params.py` picks, for every SSM variant, the d_model on its constraint grid
 (d_inner divisible by headdim, n_heads by n_groups) whose total parameter count is closest to
-the task's Transformer at its original width, with depth and every other setting fixed. The
-chosen widths are written into the configs as literal numbers; a test rebuilds every model and
-asserts each count is within 10% of the anchor (ADR 0005).
+the task's Transformer at its original width, with depth and every other setting fixed, and
+`--check` verifies the committed configs. The configs hold the widths as literal numbers; a
+test rebuilds every model and asserts each count is within 10% of the anchor (ADR 0005).
 
 ## 5. Benchmarks
 

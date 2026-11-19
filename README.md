@@ -144,8 +144,8 @@ includes the 1/z factor, and every Mamba-2/3 head reads its group's full B and
 C. The committed results were produced before those fixes (see
 [Status of the committed results](#status-of-the-committed-results)).
 
-Correctness is tested against independent references (`tests/`, 127
-tests). `tests/test_references.py` compares each efficient form with a slow
+Correctness is tested against independent references (`tests/`, 152
+tests, one of which needs CUDA and is skipped without it). `tests/test_references.py` compares each efficient form with a slow
 float64 or complex128 loop written from the equations: S4D's ZOH against the
 matrix exponential, its convolution kernel and conv-vs-step path at T=2100
 (three kernel chunks), Mamba-2 and Mamba-3 blocks with one and two B/C groups
@@ -419,7 +419,7 @@ rebuilt from the .tex, and its figures in `reports/figures/` are drawn by
 
 ```bash
 python -m pip install -e ".[dev]"        # torch required (CPU or CUDA)
-python -m pytest tests/ -q               # 127 tests
+python -m pytest tests/ -q               # 152 tests (1 skipped without CUDA)
 ssmbench-train --config configs/parity.yaml --out results
 ssmbench-train --config configs/selective_copy.yaml --out results
 ssmbench-train --config configs/exact_copy.yaml --out results
@@ -493,7 +493,7 @@ Every plot here comes from the pre-fix results described under
 
 ## Running the tests in Docker
 
-The image installs the package and runs the test suite (127 tests, on
+The image installs the package and runs the test suite (152 tests, one skipped without CUDA, on
 CPU). It does not reproduce any training or benchmark result. Each test states
 its own tolerance: the float32 parallel-vs-recurrent checks in
 `tests/test_models.py` use atol = rtol = 1e-3, and the reference checks in

@@ -41,3 +41,27 @@ def test_inference_and_decode_timing_run_in_eval_mode(
     # _time_gpu: 2 warmup + 2 timed train steps, then inference and decode calls.
     assert modes[:4] == [True] * 4
     assert len(modes) > 4 and not any(modes[4:])
+
+
+def test_train_step_uses_an_lm_head_even_when_d_model_is_below_vocab() -> None:
+    """The timed step maps features to VOCAB logits with a Linear head. Without it,
+    d_model = 16 < VOCAB = 32 made the d_model-way 'logits' reject targets >= 16."""
+    d_model = 16
+    assert d_model < efficiency.VOCAB
+    entry = efficiency.benchmark_single(
+        "s4d",
+        seq_len=16,
+        batch_size=2,
+        repeats=2,
+        device=torch.device("cpu"),
+        model_kwargs={"d_model": d_model, "n_layers": 1, "d_state": 4},
+    )
+    assert entry["train_step_ms"] > 0 and entry["train_step_ms_std"] is not None
+    vocab = efficiency.VOCAB
+    embed_and_head = vocab * d_model + (d_model * vocab + vocab)  # Embedding + Linear(+bias)
+    assert entry["n_parameters_with_embed_and_head"] == entry["n_parameters"] + embed_and_head
+
+
+def test_single_repeat_reports_no_std() -> None:
+    mean_ms, std_ms = efficiency._time_gpu(lambda: None, repeats=1, warmup=0, device="cpu")
+    assert mean_ms >= 0 and std_ms is None

@@ -2,9 +2,10 @@
 
 Measures, per (architecture, sequence length):
 
-- ``train_step_ms``: forward + backward + optimizer step over `batch_size`
-  sequences; peak CUDA memory recorded alongside.
-- ``infer_ms``: full forward pass, no grad, batch 1.
+- ``train_step_ms``: forward + backward + optimizer step of a small language
+  model (embedding, backbone, linear LM head over VOCAB tokens, cross-entropy)
+  over `batch_size` sequences; peak CUDA memory recorded alongside.
+- ``infer_ms``: full forward pass including the LM head, no grad, batch 1.
 - ``decode_ms``: autoregressive one-token-at-a-time generation cost.
   * mamba / s4d: true incremental decode with O(1) recurrent state via
     ``block.step()`` (state carried between calls).
@@ -25,11 +26,14 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol, cast
 
 import torch
+from torch import nn
 
-from ..models import BACKBONES, build_backbone
+from ..models import build_backbone
 from ..utils import (
     dump_json,
     peak_memory_stats,
@@ -49,8 +53,13 @@ DEFAULT_KWARGS: dict[str, dict] = {
 VOCAB = 32
 
 
-def _time_gpu(fn, repeats: int, warmup: int = 2, device: str = "cuda") -> tuple[float, float]:
-    """Return (mean_ms, std_ms) of fn(), CUDA-event timed when possible."""
+def _time_gpu(
+    fn: Callable[[], None], repeats: int, warmup: int = 2, device: str = "cuda"
+) -> tuple[float, float | None]:
+    """Return (mean_ms, std_ms) of fn(), CUDA-event timed when possible.
+
+    std_ms is None when there is a single timed repeat.
+    """
     for _ in range(warmup):
         fn()
     if device == "cuda":
@@ -70,7 +79,7 @@ def _time_gpu(fn, repeats: int, warmup: int = 2, device: str = "cuda") -> tuple[
             fn()
             times.append((time.perf_counter() - t0) * 1000)
     t = torch.tensor(times)
-    return float(t.mean()), float(t.std())
+    return float(t.mean()), (float(t.std()) if len(times) > 1 else None)
 
 
 def _record_memory(entry: dict, phase: str, stats: dict[str, float | bool] | None) -> None:
@@ -88,22 +97,39 @@ def _record_memory(entry: dict, phase: str, stats: dict[str, float | bool] | Non
     entry[f"spilled_{phase}"] = stats["spilled"]
 
 
-def _decode_stepwise(backbone, embed, seq_len: int, device: torch.device) -> None:
+class _StepBlock(Protocol):
+    """A block with an O(1)-state decode path (Mamba-1 and S4D blocks)."""
+
+    def init_state(self, batch_size: int, device: torch.device) -> dict[str, torch.Tensor]: ...
+
+    def step(self, x_t: torch.Tensor, state: dict[str, torch.Tensor]) -> torch.Tensor: ...
+
+
+def _decode_stepwise(
+    backbone: nn.Module, embed: nn.Module, head: nn.Module, seq_len: int, device: torch.device
+) -> None:
     """True incremental decode for backbones whose blocks expose step()."""
     with torch.no_grad():
-        states = [block.init_state(1, device) for block in backbone.blocks]
+        blocks = backbone.blocks
+        if not isinstance(blocks, nn.ModuleList):
+            raise TypeError(f"{type(backbone).__name__} has no ModuleList of blocks to step")
+        steppers = [cast(_StepBlock, block) for block in blocks]
+        states = [block.init_state(1, device) for block in steppers]
         for _ in range(seq_len):
             token = torch.randint(1, VOCAB, (1, 1), device=device)
             h = embed(token)
-            for block, state in zip(backbone.blocks, states):
+            for block, state in zip(steppers, states, strict=True):
                 h = block.step(h, state)
+            head(h)
 
 
-def _decode_sequential(backbone, embed, seq_len: int, device: torch.device) -> None:
+def _decode_sequential(
+    backbone: nn.Module, embed: nn.Module, head: nn.Module, seq_len: int, device: torch.device
+) -> None:
     """Run the recurrent scan over a full sequence (per-token cost = time/T)."""
     with torch.no_grad():
         tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)
-        backbone(embed(tokens))
+        head(backbone(embed(tokens)))
 
 
 def benchmark_single(
@@ -119,27 +145,32 @@ def benchmark_single(
         kwargs.update(model_kwargs)
     seed_everything(0)
     backbone = build_backbone(name, kwargs).to(device)
-    embed = torch.nn.Embedding(VOCAB, kwargs["d_model"]).to(device)
-    n_params = sum(p.numel() for p in backbone.parameters())
+    embed = nn.Embedding(VOCAB, kwargs["d_model"]).to(device)
+    head = nn.Linear(kwargs["d_model"], VOCAB).to(device)  # LM head: logits over VOCAB
+    lm_modules = (embed, backbone, head)
     entry: dict = {
         "model": name,
         "seq_len": seq_len,
         "batch_size": batch_size,
-        "n_parameters": n_params,
+        # Backbone only, so the count compares mixers; the embedding and LM head add
+        # the same 2 * VOCAB * d_model + VOCAB for every model of a given width.
+        "n_parameters": sum(p.numel() for p in backbone.parameters()),
+        "n_parameters_with_embed_and_head": sum(
+            p.numel() for m in lm_modules for p in m.parameters()
+        ),
         "model_kwargs": kwargs,
     }
 
-    # ---- training step ----
+    # ---- training step: embedding -> backbone -> LM head -> cross-entropy ----
     try:
         tokens = torch.randint(1, VOCAB, (batch_size, seq_len), device=device)
-        opt = torch.optim.AdamW(backbone.parameters(), lr=1e-4)
+        params = [p for m in lm_modules for p in m.parameters()]
+        opt = torch.optim.AdamW(params, lr=1e-4)
         target = torch.randint(1, VOCAB, (batch_size, seq_len), device=device)
 
         def train_step() -> None:
-            logits = backbone(embed(tokens))
-            loss = torch.nn.functional.cross_entropy(
-                logits.reshape(-1, logits.shape[-1]), target.reshape(-1)
-            )
+            logits = head(backbone(embed(tokens)))  # (B, T, VOCAB)
+            loss = nn.functional.cross_entropy(logits.reshape(-1, VOCAB), target.reshape(-1))
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
@@ -147,7 +178,7 @@ def benchmark_single(
         reset_peak_memory(device)
         mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
         entry["train_step_ms"] = round(mean_ms, 2)
-        entry["train_step_ms_std"] = round(std_ms, 2)
+        entry["train_step_ms_std"] = round(std_ms, 2) if std_ms is not None else None
         _record_memory(entry, "train", peak_memory_stats(device))
         entry["train_tokens_per_s"] = round(batch_size * seq_len / (mean_ms / 1000))
         del opt, tokens, target
@@ -158,10 +189,9 @@ def benchmark_single(
 
     # Inference and decode are timed in eval mode (dropout off), as at deployment,
     # and without the training gradients occupying memory.
-    backbone.eval()
-    embed.eval()
-    backbone.zero_grad(set_to_none=True)
-    embed.zero_grad(set_to_none=True)
+    for m in lm_modules:
+        m.eval()
+        m.zero_grad(set_to_none=True)
 
     # ---- full forward, no grad, batch 1 ----
     try:
@@ -169,7 +199,7 @@ def benchmark_single(
 
         def infer() -> None:
             with torch.no_grad():
-                backbone(embed(tokens))
+                head(backbone(embed(tokens)))
 
         reset_peak_memory(device)
         mean_ms, _ = _time_gpu(infer, repeats, device=device.type)
@@ -185,22 +215,28 @@ def benchmark_single(
     try:
         rep_d = max(repeats // 2, 1)
         if name in ("mamba", "s4d"):
-            fn = lambda: _decode_stepwise(backbone, embed, seq_len, device)
+
+            def decode_steps() -> None:
+                _decode_stepwise(backbone, embed, head, seq_len, device)
+
             entry["decode_mode"] = "stepwise (O(1) state)"
-            mean_ms, _ = _time_gpu(fn, rep_d, warmup=1, device=device.type)
+            mean_ms, _ = _time_gpu(decode_steps, rep_d, warmup=1, device=device.type)
             entry["decode_ms"] = round(mean_ms, 2)
             entry["decode_per_token_ms"] = round(mean_ms / seq_len, 4)
         elif name in ("mamba2", "mamba3"):
-            fn = lambda: _decode_sequential(backbone, embed, seq_len, device)
+
+            def decode_full() -> None:
+                _decode_sequential(backbone, embed, head, seq_len, device)
+
             entry["decode_mode"] = "sequential scan over full sequence (per-token = time/T)"
-            mean_ms, _ = _time_gpu(fn, rep_d, warmup=1, device=device.type)
+            mean_ms, _ = _time_gpu(decode_full, rep_d, warmup=1, device=device.type)
             entry["decode_per_token_ms"] = round(mean_ms / seq_len, 4)
-        else:  # transformer: no KV cache — each new token re-runs the full prefix
+        else:  # transformer: no KV cache, so each new token re-runs the full prefix
             tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)
 
             def decode_tr() -> None:
                 with torch.no_grad():
-                    backbone(embed(tokens))
+                    head(backbone(embed(tokens)))
 
             entry["decode_mode"] = "full-prefix recompute per new token (no KV cache)"
             mean_ms, _ = _time_gpu(decode_tr, rep_d, warmup=1, device=device.type)

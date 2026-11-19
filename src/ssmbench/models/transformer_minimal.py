@@ -1,15 +1,19 @@
 """Educational causal Transformer baseline.
 
 Purpose in this study: a *quality and scaling baseline* with softmax attention,
-implemented in the modern way — pre-norm blocks and fused
-`F.scaled_dot_product_attention` (memory-efficient/flash style kernels) — so the
-comparison against sub-quadratic SSMs is fair in wall-clock terms.
+built from pre-norm blocks and `F.scaled_dot_product_attention` with
+is_causal=True. On CUDA in float32, the trainer's default (amp off) and the only
+mode of the efficiency benchmark, PyTorch can dispatch SDPA to its
+memory-efficient kernel but not to FlashAttention, which needs fp16 or bf16.
+There is no KV cache. Wall-clock comparisons against the SSMs are therefore
+against this fp32 baseline, not against a best-case attention implementation.
 
 What it exposes for the study:
 - O(T^2) compute in the attention score matrix: visible as latency growth with T
   even though the memory-efficient kernel keeps activation memory closer to linear.
-- The need for explicit positional information (sinusoidal table), which LTI/SSM
-  layers do not require (their recurrence already encodes time).
+- The need for explicit positional information: an absolute sinusoidal table is
+  added once to the token embeddings (no RoPE, ALiBi or NoPE variant). LTI/SSM
+  layers need no such table because their recurrence already encodes time.
 """
 
 from __future__ import annotations

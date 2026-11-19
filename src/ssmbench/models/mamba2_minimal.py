@@ -8,7 +8,7 @@ identity per head (A_h < 0), which turns the selective SSM into the **State
 Space Duality (SSD)** form: within a chunk of tokens the output is a masked,
 decay-weighted attention-like matmul, and only a small (N, P) state crosses
 chunk boundaries. The layer becomes a sequence of tensor-core matmuls instead
-of a long scan — this is exactly *why* Mamba-2 exists.
+of a long scan; this is exactly *why* Mamba-2 exists.
 
 This module implements BOTH forms:
 
@@ -18,7 +18,10 @@ This module implements BOTH forms:
   T/chunk_size chunks, each doing small matmuls; the official repository fuses
   this into Triton kernels, which are NOT used here.
 
-tests/test_models.py verifies the two forms agree.
+tests/test_models.py checks that the two scans agree on the same inputs, and
+tests/test_references.py runs both through forward() against a naive per-head
+float64 loop and checks that every head reads its group's full B and C. There
+is no step() decode path.
 """
 
 from __future__ import annotations

@@ -188,7 +188,10 @@ class S4DLayer(nn.Module):
 
 
 class S4DBlock(nn.Module):
-    """Pre-norm residual block: x + S4D(LN(x)) (x) silu(LN(x)) — gated, as in S4 blocks."""
+    """Pre-norm residual block: x + S4D(LN(x)) * silu(gate(LN(x))), as in gated S4 blocks.
+
+    gate is a learned Linear(d_model, d_model).
+    """
 
     def __init__(
         self, d_model: int, d_state: int = 16, dropout: float = 0.0, init: str = "lin"

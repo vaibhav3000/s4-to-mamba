@@ -4,8 +4,13 @@ Measures, per (architecture, sequence length):
 
 - ``train_step_ms``: forward + backward + optimizer step of a small language
   model (embedding, backbone, linear LM head over VOCAB tokens, cross-entropy)
-  over `batch_size` sequences; peak CUDA memory recorded alongside.
-- ``infer_ms``: full forward pass including the LM head, no grad, batch 1.
+  over `batch_size` sequences, in fp32. Peak allocated and peak reserved CUDA
+  memory, the memory available when the phase started and the device total are
+  recorded, and ``spilled_train`` flags a reserved peak above what was available
+  (on Windows the driver then pages to system memory, so the timing is not a VRAM
+  number).
+- ``infer_ms``: full forward pass including the LM head, no grad, batch 1, in
+  eval mode with the training gradients dropped; memory as above.
 - decode cost per generated token, labeled by ``decode_mode``:
   * mamba / s4d: true incremental decode with an O(1) recurrent state via
     ``block.step()``; ``decode_per_token_ms`` = time for T steps / T.
@@ -14,12 +19,21 @@ Measures, per (architecture, sequence length):
   * mamba2 / mamba3: no step() path, so no decode cost is measured.
     ``prefill_per_token_ms`` = one full forward over T tokens / T is recorded
     instead; it is a prefill throughput number, not a decode latency.
-- ``n_parameters`` and throughput in tokens/s.
+- ``n_parameters`` (backbone only), ``n_parameters_with_embed_and_head`` and
+  throughput in tokens/s.
 
-All timings use CUDA events around synchronized regions; nothing is estimated
-or copied from papers. Every number in the report can be regenerated with:
+Timings use CUDA events around synchronized regions after warm-up (perf_counter
+on CPU); nothing is estimated or copied from papers. Only out-of-memory errors
+are recorded as OOM; any other error is recorded and stops the sweep. Every
+entry stores its provenance (git commit, dirty flag, source hash, torch, CUDA,
+Python, platform, GPU, timestamp), and a resumed sweep reuses an entry only if
+it was measured with the same source, torch build, GPU, batch size and repeat
+count (--force overrides). Run with:
 
     ssmbench-efficiency --config configs/efficiency.yaml
+
+The committed results/efficiency_gpu.json predates these rules and the model
+fixes; see results/PROVENANCE.md.
 """
 
 from __future__ import annotations

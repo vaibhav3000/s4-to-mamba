@@ -5,14 +5,14 @@ Scope and honesty notes
 Written from first principles following the Mamba paper (Gu & Dao 2023,
 arXiv:2312.00752). This is an *educational* implementation:
 
-- The selective scan runs as an explicit python loop over time — it exposes the
+- The selective scan runs as an explicit python loop over time. It exposes the
   recurrence but has high constant overhead. That is the point: it makes
   "O(T) operations but poor wall-clock" tangible and motivates Mamba-2's
   chunked matrix form (see mamba2_minimal.py) and the official fused kernels,
   which are NOT used here.
 - Discretization follows the official implementation: the state transition uses
   the exact exponential exp(delta * A) (ZOH on the diagonal), while the input
-  uses the delta * B approximation — later formalized as "exponential-Euler"
+  uses the delta * B approximation, later formalized as "exponential-Euler"
   by the Mamba-3 paper (its Table 1).
 
 Shapes: B batch, T time, D model dim (d_model), E expansion (d_inner = E*D),
@@ -31,7 +31,7 @@ from .blocks import autocast_disabled, scan_dtype
 
 
 class MambaBlock(nn.Module):
-    """Pre-norm residual block: x + Mambaixer(LN(x)).
+    """Pre-norm residual block: x + mixer(LN(x)).
 
     Mixer: in_proj -> causal conv1d -> silu -> selective SSM -> silu-gate -> out_proj.
     """

@@ -3,7 +3,13 @@
 All five backbones (Transformer, S4D, Mamba, Mamba-2, Mamba-3) share the same
 outer skeleton so that comparisons isolate the mixer, not the plumbing:
 
-    token embedding -> [block x n_layers] -> final norm -> masked mean pool -> linear head
+    sequence tasks (SequenceClassifier, IMDb):
+        token embedding -> [block x n_layers] -> final norm -> masked mean pool -> linear head
+    token tasks (TokenLevelClassifier, parity and the copy tasks):
+        token embedding -> [block x n_layers] -> final norm -> per-token linear head
+
+The blocks themselves differ in size (the Transformer block has an MLP, the SSM
+blocks do not), so equal width and depth do not mean equal parameter counts.
 """
 
 from __future__ import annotations
@@ -27,8 +33,8 @@ class SequenceClassifier(nn.Module):
     Parameters
     ----------
     backbone:
-        Module with signature (x: (B, T) int64 tokens, mask: (B, T) bool)
-        -> (B, T, d_model) features.
+        Module with signature (emb: (B, T, d_model) float embeddings,
+        mask: (B, T) bool or None) -> (B, T, d_model) features.
     vocab_size:
         Number of input tokens.
     d_model:
@@ -64,7 +70,7 @@ class SequenceClassifier(nn.Module):
 
 
 class TokenLevelClassifier(nn.Module):
-    """Wraps a backbone for per-token classification (used by the parity task).
+    """Wraps a backbone for per-token classification (parity, selective copy, exact copy).
 
     backbone: (embeddings (B, T, D), mask) -> features (B, T, D)
     logits: (B, T, n_classes)

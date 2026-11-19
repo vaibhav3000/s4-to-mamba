@@ -26,13 +26,26 @@ arXiv:2603.15569). Mamba-3 changes three things relative to Mamba-2:
    Mamba-1/2 provably lack (their transitions only decay/forget).
 
 3. **MIMO formulation.** Multiple input/output channels per state slot improve
-   quality without increasing decode latency. This educational implementation
-   keeps the SISO-per-head structure of Mamba-2's SSD and does not implement
-   the MIMO dual form; the recurrence above is implemented exactly.
+   quality without increasing decode latency. Not implemented here (see below).
 
-Only the sequential (recurrent) form is implemented — the paper's parallel dual
-is a 1-semiseparable matrix composed with a 2-band matrix (Section 3.1.3 of the
-paper), i.e. a generalization of Mamba-2's SSD. See docs/evolution.md.
+The exponential-trapezoidal recurrence in point 1 is implemented as written.
+
+Implementation details and omissions
+------------------------------------
+- theta is a static learned parameter of shape (H, N), not computed from the
+  input. The rotation applied at each step, delta_t * theta, depends on the
+  token only through delta_t.
+- The real part of A is a vector per (head, state slot): a_real_log has shape
+  (H, N), where Mamba-2 uses one scalar per head.
+- B and C are real and the readout is y = C^T Re(h), so the imaginary part of
+  the state is never read directly.
+- No MIMO: the SISO-per-head structure of Mamba-2's SSD is kept.
+- No parallel or dual form: only the sequential (recurrent) scan exists. The
+  paper's parallel dual is a 1-semiseparable matrix composed with a 2-band
+  matrix (Section 3.1.3 of the paper), a generalization of Mamba-2's SSD.
+- No step() decode path.
+
+See docs/evolution.md.
 """
 
 from __future__ import annotations
@@ -49,11 +62,14 @@ from .blocks import autocast_disabled, complex_dtype_for, expand_groups_to_heads
 class Mamba3Block(nn.Module):
     """Pre-norm residual block with the Mamba-3 complex selective recurrence.
 
-    Per head h (headdim P, state size N), B/C shared per group:
+    Per head h (headdim P, state size N), with B/C shared per group g(h), and
+    elementwise over the N state slots:
         h_t = alpha_t h_{t-1} + beta_t * s_{t-1} + gamma_t * s_t
-        s_t = B_{g(h),t} (x) delta-scalared x_{h,t}   (state input, see below)
+        s_t = B_{g(h),t} (x) x_{h,t}   (real outer product; delta enters via beta_t, gamma_t)
         y_{h,t} = C_{g(h),t}^T Re(h_{h,t})
-    alpha_t = exp(delta_t A_h) complex, |alpha_t| < 1 (stability);
+    alpha_t = exp(delta_{h,t} A_h) complex, |alpha_t| < 1 (stability), where
+    A_h = -exp(a_real_log[h]) + i * theta[h] is an N-vector (one complex entry per
+    state slot), not a scalar, and theta is a static learned parameter;
     beta_t = (1 - lambda_t) delta_t alpha_t;  gamma_t = lambda_t delta_t.
     """
 

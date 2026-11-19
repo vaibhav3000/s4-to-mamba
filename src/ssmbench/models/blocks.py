@@ -18,10 +18,12 @@ import contextlib
 import functools
 import math
 from collections.abc import Callable
-from typing import ParamSpec, TypeVar
+from dataclasses import dataclass
+from typing import ParamSpec, Protocol, TypeVar, cast
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -168,3 +170,107 @@ def sinusoidal_positions(d_model: int, max_len: int, device: torch.device) -> to
     pe[:, 0::2] = torch.sin(pos * div)
     pe[:, 1::2] = torch.cos(pos * div[: d_model // 2])
     return pe
+
+
+# -------------------- decode interface (docs/design/step2.md, section 3.1) --------------------
+
+
+@dataclass
+class DecodeState:
+    """Everything a backbone carries between decode steps.
+
+    blocks: one state dict per block (KV cache for attention, recurrent state, short-conv
+    history and boundary input for the SSMs). position: tokens consumed so far.
+    max_len: the longest sequence the state was sized for (only the KV cache uses it).
+    Callers treat it as opaque and pass it back to step().
+    """
+
+    blocks: list[dict[str, torch.Tensor]]
+    position: int = 0
+    max_len: int = 0
+
+
+class DecodeBlock(Protocol):
+    """A residual block with a parallel prefill and an O(1)-state recurrent step."""
+
+    def init_state(
+        self, batch_size: int, device: torch.device, dtype: torch.dtype | None = None
+    ) -> dict[str, torch.Tensor]: ...
+
+    def prefill(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]: ...
+
+    def step(self, x_t: torch.Tensor, state: dict[str, torch.Tensor]) -> torch.Tensor: ...
+
+
+class Backbone(nn.Module):
+    """Base class of every backbone: forward(emb, mask) plus the decode interface.
+
+    forward(emb (B, T, D), mask) -> (B, T, D) runs the parallel form.
+    init_state(batch_size, device, max_len, dtype) -> an empty DecodeState.
+    prefill(emb (B, T, D), max_len) -> (features (B, T, D), DecodeState after T tokens).
+    step(emb_t (B, 1, D), state) -> features (B, 1, D); advances state by one token.
+
+    prefill followed by step over the remaining tokens reproduces forward() position by
+    position (tests/test_decode.py). This default composes the blocks' own prefill and
+    step; the Transformer overrides it to handle positions and its KV cache.
+    """
+
+    blocks: nn.ModuleList
+
+    def _decode_blocks(self) -> list[DecodeBlock]:
+        return [cast(DecodeBlock, block) for block in self.blocks]
+
+    def init_state(
+        self,
+        batch_size: int,
+        device: torch.device,
+        max_len: int = 0,
+        dtype: torch.dtype | None = None,
+    ) -> DecodeState:
+        blocks = [b.init_state(batch_size, device, dtype=dtype) for b in self._decode_blocks()]
+        return DecodeState(blocks=blocks, position=0, max_len=max_len)
+
+    def prefill(self, emb: torch.Tensor, max_len: int = 0) -> tuple[torch.Tensor, DecodeState]:
+        x = emb
+        states = []
+        for block in self._decode_blocks():
+            x, block_state = block.prefill(x)
+            states.append(block_state)
+        T = emb.shape[1]
+        return x, DecodeState(blocks=states, position=T, max_len=max(max_len, T))
+
+    def step(self, emb_t: torch.Tensor, state: DecodeState) -> torch.Tensor:
+        if emb_t.ndim != 3 or emb_t.shape[1] != 1:
+            raise ValueError(f"step() takes one token of shape (B, 1, D), got {tuple(emb_t.shape)}")
+        x = emb_t
+        for block, block_state in zip(self._decode_blocks(), state.blocks, strict=True):
+            x = block.step(x, block_state)
+        state.position += 1
+        return x
+
+
+def short_conv(conv: nn.Conv1d, x_in: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Causal depthwise convolution followed by SiLU, as in the Mamba blocks.
+
+    x_in: (B, T, C). Returns (out (B, T, C), history (B, C, K - 1)), where history holds
+    the last K - 1 inputs (zeros where the sequence is shorter), i.e. the decode state
+    that short_conv_step() continues from.
+    """
+    T = x_in.shape[1]
+    K = conv.kernel_size[0]
+    padded = F.pad(x_in.transpose(1, 2), (K - 1, 0))  # (B, C, T + K - 1)
+    out = F.silu(conv(padded)[..., :T]).transpose(1, 2)
+    history = padded[..., padded.shape[-1] - (K - 1) :]
+    return out, history
+
+
+def short_conv_step(
+    conv: nn.Conv1d, history: torch.Tensor, x_t: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """One step of short_conv. history: (B, C, K - 1), x_t: (B, C).
+
+    Returns (out (B, C), new history (B, C, K - 1)).
+    """
+    window = torch.cat([history, x_t.unsqueeze(-1)], dim=-1)  # (B, C, K)
+    out = F.silu(conv(window)[..., -1])
+    return out, window[..., 1:]

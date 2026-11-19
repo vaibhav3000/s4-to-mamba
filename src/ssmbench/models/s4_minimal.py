@@ -31,7 +31,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blocks import complex_dtype_for
+from .blocks import Backbone, complex_dtype_for
 
 
 def _expm1(z: torch.Tensor) -> torch.Tensor:
@@ -158,6 +158,28 @@ class S4DLayer(nn.Module):
         y = y.transpose(1, 2)
         return y + x * self.D  # skip
 
+    def final_state(self, x: torch.Tensor, chunk: int = 1024) -> torch.Tensor:
+        """Recurrent state after the last of x's T steps, from the parallel form.
+
+        x: (B, T, D) real. Returns h_T = sum_k Abar^(T-1-k) Bbar x_k, (B, D, N) complex:
+        the state step() would hold after consuming x, computed in T-chunks so the
+        (chunk, D, N) power tensor stays small.
+        """
+        p = self._params()
+        _, b_bar = zoh_discretization(p["delta"], p["a"], p["b"])  # (D, N)
+        T = x.shape[1]
+        h = torch.zeros(x.shape[0], self.d_model, self.d_state, dtype=b_bar.dtype, device=x.device)
+        for start in range(0, T, chunk):
+            stop = min(start + chunk, T)
+            lags = torch.arange(
+                T - 1 - start, T - 1 - stop, -1, device=x.device, dtype=torch.float32
+            )
+            powers = torch.exp(
+                lags.view(-1, 1, 1) * p["delta"].view(1, -1, 1) * p["a"].view(1, -1, self.d_state)
+            )  # (chunk, D, N) = Abar^(T-1-k)
+            h = h + torch.einsum("bld,ldn->bdn", x[:, start:stop].to(b_bar.dtype), powers)
+        return h * b_bar
+
     @torch.no_grad()
     def discretized(self) -> dict[str, torch.Tensor]:
         """(a_bar, b_bar, c), each (D, N) complex, for the recurrent form.
@@ -210,10 +232,13 @@ class S4DBlock(nn.Module):
 
     # -------------------- incremental decode --------------------
 
-    def init_state(self, batch_size: int, device: torch.device) -> dict[str, torch.Tensor]:
+    def init_state(
+        self, batch_size: int, device: torch.device, dtype: torch.dtype | None = None
+    ) -> dict[str, torch.Tensor]:
         """Decode state: the complex SSM state "h" plus the discretized (a_bar, b_bar, c),
         computed once here so step() does not redo the ZOH for every token. Call it
-        again after any parameter update."""
+        again after any parameter update. The state is complex in the parameters'
+        precision whatever `dtype` the inputs have, so dtype is accepted and unused."""
         cache = {k: v.to(device) for k, v in self.layer.discretized().items()}
         h = torch.zeros(
             batch_size,
@@ -223,6 +248,14 @@ class S4DBlock(nn.Module):
             device=device,
         )
         return {"h": h, **cache, "param_versions": self._param_versions()}
+
+    def prefill(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """forward(x) plus the decode state after the last token of x."""
+        h = self.norm(x)
+        out = x + self.dropout(self.layer(h) * F.silu(self.gate(h)))
+        state = self.init_state(x.shape[0], x.device)
+        state["h"] = self.layer.final_state(h).to(state["h"].dtype)
+        return out, state
 
     def _param_versions(self) -> torch.Tensor:
         """Version counters of the S4D layer's parameters (CPU int64). Every in-place
@@ -263,7 +296,7 @@ class S4DBlock(nn.Module):
         return out
 
 
-class S4DBackbone(nn.Module):
+class S4DBackbone(Backbone):
     """Stack of S4D blocks. No positional encoding needed: the recurrence encodes time."""
 
     def __init__(

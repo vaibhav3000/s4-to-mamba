@@ -20,8 +20,10 @@ This module implements BOTH forms:
 
 tests/test_models.py checks that the two scans agree on the same inputs, and
 tests/test_references.py runs both through forward() against a naive per-head
-float64 loop and checks that every head reads its group's full B and C. There
-is no step() decode path.
+float64 loop and checks that every head reads its group's full B and C.
+prefill() returns the final chunk state and step() continues the recurrence one
+token at a time; tests/test_decode.py checks that together they reproduce
+forward().
 """
 
 from __future__ import annotations
@@ -32,7 +34,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blocks import autocast_disabled, expand_groups_to_heads, scan_dtype
+from .blocks import (
+    Backbone,
+    autocast_disabled,
+    expand_groups_to_heads,
+    scan_dtype,
+    short_conv,
+    short_conv_step,
+)
 
 
 class Mamba2Block(nn.Module):
@@ -138,11 +147,17 @@ class Mamba2Block(nn.Module):
 
     # -------------------- sequential reference --------------------
 
-    @autocast_disabled
     def sequential_scan(
         self, x_h: torch.Tensor, alpha: torch.Tensor, Bx: torch.Tensor, C_h: torch.Tensor
     ) -> torch.Tensor:
-        """Reference recurrence. Inputs (B, T, H, ...) -> y (B, T, H, P).
+        """Reference recurrence. Inputs (B, T, H, ...) -> y (B, T, H, P)."""
+        return self.sequential_scan_with_state(x_h, alpha, Bx, C_h)[0]
+
+    @autocast_disabled
+    def sequential_scan_with_state(
+        self, x_h: torch.Tensor, alpha: torch.Tensor, Bx: torch.Tensor, C_h: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Reference recurrence returning (y (B, T, H, P), final state h_T (B, H, N, P)).
 
         Computes in scan_dtype(...): float32, or float64 for float64 inputs.
         """
@@ -158,11 +173,10 @@ class Mamba2Block(nn.Module):
         for t in range(T):
             h = aT[t][:, :, None, None] * h + bT[t].unsqueeze(-1) * xT[t].unsqueeze(2)
             ys.append(torch.einsum("bhnp,bhn->bhp", h, cT[t]))
-        return torch.stack(ys, dim=1)
+        return torch.stack(ys, dim=1), h
 
     # -------------------- chunked SSD --------------------
 
-    @autocast_disabled
     def chunked_scan(
         self,
         x_h: torch.Tensor,
@@ -171,6 +185,18 @@ class Mamba2Block(nn.Module):
         C_h: torch.Tensor,
         log_alpha: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        """chunked_scan_with_state without the final state: y (B, T, H, P)."""
+        return self.chunked_scan_with_state(x_h, alpha, Bx, C_h, log_alpha)[0]
+
+    @autocast_disabled
+    def chunked_scan_with_state(
+        self,
+        x_h: torch.Tensor,
+        alpha: torch.Tensor | None,
+        Bx: torch.Tensor,
+        C_h: torch.Tensor,
+        log_alpha: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Chunked SSD algorithm, computed in scan_dtype(...) (float32, or float64).
 
         For each chunk of length Csz with carried state S (N, P):
@@ -189,6 +215,9 @@ class Mamba2Block(nn.Module):
         Pass log_alpha = delta * A (what forward() does) so tiny decays keep their
         exact value and gradient. Passing alpha instead takes its log, floored at
         the dtype's smallest normal number only to avoid log(0).
+
+        Returns (y (B, T, H, P), state after the last token (B, H, N, P)); padded
+        positions have decay 1 and no input, so they leave the carried state unchanged.
         """
         Bsz, T, H, P = x_h.shape
         N, Csz = self.d_state, self.chunk_size
@@ -255,28 +284,76 @@ class Mamba2Block(nn.Module):
             y[:, c] = y_intra[:, c] + y_inter
             S = cs_end[:, c].unsqueeze(-1).unsqueeze(-1).exp() * S + S_partial[:, c]
 
-        return y.reshape(Bsz, Tp, H, P)[:, :T]
+        return y.reshape(Bsz, Tp, H, P)[:, :T], S
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
-        T = x.shape[1]
+    def prefill(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """forward(x) plus the decode state after the last token: (B, T, D) -> ((B, T, D), state)."""
         xz = self.in_proj(self.norm(x))
         x_in, z = xz.chunk(2, dim=-1)
-        x_conv = x_in.transpose(1, 2)
-        x_conv = F.pad(x_conv, (self.d_conv - 1, 0))
-        x_conv = self.conv1d(x_conv)[..., :T].transpose(1, 2)
-        x_conv = F.silu(x_conv)
+        x_conv, history = short_conv(self.conv1d, x_in)
 
         x_h, log_alpha, Bx, C_h = self._scan_inputs(x_conv)
         if self.scan_mode == "chunked":
-            y = self.chunked_scan(x_h, None, Bx, C_h, log_alpha=log_alpha)
+            y, h = self.chunked_scan_with_state(x_h, None, Bx, C_h, log_alpha=log_alpha)
         else:
-            y = self.sequential_scan(x_h, torch.exp(log_alpha), Bx, C_h)
+            y, h = self.sequential_scan_with_state(x_h, torch.exp(log_alpha), Bx, C_h)
         y = y.reshape(*y.shape[:2], self.d_inner)
         y = y + x_conv * self.D
-        return x + self.out_proj(y * F.silu(z))
+        return x + self.out_proj(y * F.silu(z)), {"h": h, "conv": history}
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        return self.prefill(x)[0]
+
+    # -------------------- incremental decode (O(1) state per block) --------------------
+
+    def init_state(
+        self, batch_size: int, device: torch.device, dtype: torch.dtype | None = None
+    ) -> dict[str, torch.Tensor]:
+        """Empty decode state: SSM state h (B, H, N, P) in scan dtype, short-conv history."""
+        param_dtype = self.in_proj.weight.dtype
+        h = torch.zeros(
+            batch_size,
+            self.n_heads,
+            self.d_state,
+            self.headdim,
+            device=device,
+            dtype=torch.promote_types(param_dtype, torch.float32),
+        )
+        conv = torch.zeros(
+            batch_size, self.d_inner, self.d_conv - 1, device=device, dtype=dtype or param_dtype
+        )
+        return {"h": h, "conv": conv}
+
+    @autocast_disabled
+    def _recurrent_update(
+        self,
+        h: torch.Tensor,
+        x_h: torch.Tensor,
+        log_alpha: torch.Tensor,
+        Bx: torch.Tensor,
+        C_h: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """One recurrence step in scan dtype: (h (B, H, N, P), x_h (B, H, P),
+        log_alpha (B, H), Bx and C_h (B, H, N)) -> (y (B, H, P), new h)."""
+        dtype = scan_dtype(h, x_h, log_alpha, Bx, C_h)
+        decay = log_alpha.to(dtype).exp()[:, :, None, None]
+        inject = Bx.to(dtype).unsqueeze(-1) * x_h.to(dtype).unsqueeze(2)  # (B, H, N, P)
+        h = decay * h.to(dtype) + inject
+        return torch.einsum("bhnp,bhn->bhp", h, C_h.to(dtype)), h
+
+    def step(self, x_t: torch.Tensor, state: dict[str, torch.Tensor]) -> torch.Tensor:
+        """One decode step. x_t: (B, 1, D) -> (B, 1, D), O(1) time and state per token."""
+        xz = self.in_proj(self.norm(x_t))  # (B, 1, 2*d_inner)
+        x_in, z = xz.chunk(2, dim=-1)
+        conv_out, state["conv"] = short_conv_step(self.conv1d, state["conv"], x_in.squeeze(1))
+        x_h, log_alpha, Bx, C_h = self._scan_inputs(conv_out)  # (B, H, P), (B, H), (B, H, N)
+        y, state["h"] = self._recurrent_update(state["h"], x_h, log_alpha, Bx, C_h)
+        y = y.reshape(y.shape[0], self.d_inner) + conv_out * self.D
+        out = self.out_proj(y * F.silu(z.squeeze(1)))
+        return out.unsqueeze(1) + x_t
 
 
-class Mamba2Backbone(nn.Module):
+class Mamba2Backbone(Backbone):
     def __init__(
         self,
         d_model: int = 128,

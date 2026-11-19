@@ -54,9 +54,9 @@ data-dependent θ, hyperparameter tuning, torch 2.15 (ADR 0007).
 Every backbone gains the same three methods. The **decode state** is opaque to callers.
 
 ```python
-state = backbone.init_state(batch_size, device, max_len)      # empty prompt
-features, state = backbone.prefill(emb, max_len)               # parallel form over a prompt
-features_t = backbone.step(emb_t, state)                       # one token, mutates state
+state = backbone.init_state(batch_size, device, max_len)  # empty prompt
+features, state = backbone.prefill(emb, max_len)  # parallel form over a prompt
+features_t = backbone.step(emb_t, state)  # one token, mutates state
 ```
 
 - `prefill` runs the **parallel form** (FFT convolution, chunked SSD, causal SDPA) and returns

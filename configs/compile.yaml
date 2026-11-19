@@ -1,0 +1,14 @@
+# torch.compile readiness: graph breaks of forward and decode step, aot_eager against
+# eager, and inductor timings where Triton exists (src/ssmbench/benchmarks/compile_check.py).
+# Run: ssmbench-compile --config configs/compile.yaml
+device: auto
+out_path: results/compile/compile.json
+seq_len: 128        # Dynamo unrolls the Python loops of Mamba-1 and the chunk loops
+models: [transformer, transformer_rope, s4d, mamba, mamba2, mamba3]
+variants:
+  transformer:      {d_model: 256, n_layers: 2, n_heads: 4}
+  transformer_rope: {backbone: transformer, pos_encoding: rope, d_model: 256, n_layers: 2, n_heads: 4}
+  s4d:              {d_model: 256, n_layers: 2, d_state: 16}
+  mamba:            {d_model: 256, n_layers: 2, d_state: 16}
+  mamba2:           {d_model: 256, n_layers: 2, d_state: 32, headdim: 64}
+  mamba3:           {d_model: 256, n_layers: 2, d_state: 32, headdim: 64}

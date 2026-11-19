@@ -121,17 +121,18 @@ class MambaBlock(nn.Module):
         """
         dtype = scan_dtype(x, delta, B, C)
         A = -torch.exp(self.A_log.to(dtype))  # (d_inner, N), negative
-        xT = x.transpose(0, 1).to(dtype)
-        deltaT = delta.transpose(0, 1).to(dtype)
-        BT = B.transpose(0, 1).to(dtype)
-        CT = C.transpose(0, 1).to(dtype)
+        x, delta, B, C = x.to(dtype), delta.to(dtype), B.to(dtype), C.to(dtype)
 
         h = torch.zeros(x.shape[0], self.d_inner, self.d_state, device=x.device, dtype=dtype)
         ys = []
+        # Index the time dimension directly (no transpose to time-major): the gradients
+        # then keep the inputs' layout, which AOTAutograd's linear backward needs under
+        # torch.compile (a transposed delta gradient fails its view).
         for t in range(x.shape[1]):
-            alpha = torch.exp(deltaT[t].unsqueeze(-1) * A)  # (B, d_inner, N) in (0, 1)
-            h = alpha * h + deltaT[t].unsqueeze(-1) * BT[t].unsqueeze(1) * xT[t].unsqueeze(-1)
-            ys.append(torch.einsum("bdn,bn->bd", h, CT[t]))
+            d_t = delta[:, t]  # (B, d_inner)
+            alpha = torch.exp(d_t.unsqueeze(-1) * A)  # (B, d_inner, N) in (0, 1)
+            h = alpha * h + d_t.unsqueeze(-1) * B[:, t].unsqueeze(1) * x[:, t].unsqueeze(-1)
+            ys.append(torch.einsum("bdn,bn->bd", h, C[:, t]))
         y = torch.stack(ys, dim=1)  # (B, T, d_inner)
         return y + x * self.D, h
 

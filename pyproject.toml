@@ -25,6 +25,7 @@ ssmbench-train = "ssmbench.train.cli:main"
 ssmbench-efficiency = "ssmbench.benchmarks.efficiency:main"
 ssmbench-summarize = "ssmbench.analysis.summary:main"
 ssmbench-inference = "ssmbench.benchmarks.inference:main"
+ssmbench-compile = "ssmbench.benchmarks.compile_check:main"
 
 [project.optional-dependencies]
 dev = [

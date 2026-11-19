@@ -113,13 +113,22 @@ def autocast_disabled(fn: Callable[P, R]) -> Callable[P, R]:
     Under bf16 autocast the einsums inside a scan would otherwise run as bf16
     matmuls even though their inputs were cast to float32; with this decorator the
     whole scan runs in scan_dtype(...).
+
+    The usual case, every tensor on one device type, enters torch.autocast with a
+    plain `with`, which torch.compile traces without a graph break (autocast entered
+    through an ExitStack is not traceable).
     """
 
     @functools.wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         tensors = [a for a in (*args, *kwargs.values()) if isinstance(a, torch.Tensor)]
+        device_types = sorted({t.device.type for t in tensors})
+        if len(device_types) <= 1:
+            device_type = device_types[0] if device_types else "cpu"
+            with torch.autocast(device_type=device_type, enabled=False):
+                return fn(*args, **kwargs)
         with contextlib.ExitStack() as stack:
-            for device_type in sorted({t.device.type for t in tensors}):
+            for device_type in device_types:
                 stack.enter_context(torch.autocast(device_type=device_type, enabled=False))
             return fn(*args, **kwargs)
 

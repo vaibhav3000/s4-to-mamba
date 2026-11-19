@@ -7,6 +7,14 @@
 \usepackage{xurl}
 \usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue]{hyperref}
 \usepackage{balance}
+\usepackage{etoolbox}
+
+% IEEEtran sets an em dash after the Abstract and Index Terms headings; use a
+% period instead. A failed patch stops the build rather than passing silently.
+\patchcmd{\abstract}{\textit{\abstractname}---}{\textit{\abstractname}.\ }{}%
+  {\PackageError{report}{Could not patch the abstract heading}{}}
+\patchcmd{\IEEEkeywords}{\textit{\IEEEkeywordsname}---}{\textit{\IEEEkeywordsname}.\ }{}%
+  {\PackageError{report}{Could not patch the index terms heading}{}}
 
 \graphicspath{{figures/}}
 
@@ -18,9 +26,7 @@
 \large An Experimental Study of Five Sequence Architectures in Pure PyTorch}
 
 \author{\IEEEauthorblockN{Vaibhav Mahore}
-\IEEEauthorblockA{\textit{Department: UG (Branch: Mathematics and Computing), Indian Institute of Science (IISc), Bengaluru}\\
-\textit{Indian Institute of Science, Bangalore, India}\\
-mvaibhav@iisc.ac.in}}
+\IEEEauthorblockA{\textit{Undergraduate Programme, Mathematics and Computing}\\ \textit{Indian Institute of Science (IISc), Bengaluru, India}\\ mvaibhav@iisc.ac.in}}
 
 \maketitle
 
@@ -32,31 +38,58 @@ experimental study in which five sequence backbones: a causal Transformer,
 S4D, \mamba{}-1, \mamba{}-2 (chunked State Space Duality), and
 \mamba{}-3 (complex-valued transitions with exponential-trapezoidal
 discretization) are implemented from first principles in pure PyTorch,
-share one training skeleton, and are verified by equivalence tests that check
+share one training skeleton, and are checked by equivalence tests that compare
 independent computational forms of the same mathematics against each other.
 All architectures are evaluated on three tasks probing different
 capabilities (parity state tracking, selective copying, IMDb sentiment
 classification) and benchmarked for latency, peak memory, and throughput at
-sequence lengths from 1K to 32K on a single 6\,GB consumer GPU. The study
-reproduces capability claims of the \mamba{}-3 literature at small scale:
-complex-valued transitions solve a cumulative-parity tracking task at
-98.3\% token accuracy where real-transition SSMs and the Transformer remain
-at chance, and LTI S4D collapses to 6\% token accuracy on selective copying
-while selective SSMs reach 67\%. Efficiency measurements show the quadratic
-training cost of attention in wall-clock terms (30\,ms per step at 1K tokens
-versus 186\,s at 32K), that the FFT-convolution form of S4D is the most
-wall-clock-efficient implementation in this codebase across the measured
-range, and that educational sequential scans are $O(T)$ in operations but
-10--100$\times$ slower in wall-clock, quantifying the gap between asymptotic
-complexity and hardware behavior. All results are produced by committed
-scripts from committed result files, and all scope restrictions (S4D rather
-than full S4, no \mamba{}-3 MIMO path, no fused kernels) are stated.
+sequence lengths from 1K to 32K on a single 6\,GB consumer GPU; only the
+Transformer and S4D cover the whole range, and their 32K points exceeded device
+memory and ran under Windows system-memory fallback. At small scale and with a
+single seed, the results are consistent with capability claims of the
+\mamba{}-3 literature without isolating their cause: \mamba{}-3, whose complex
+transition rotates the state by an input-dependent angle, reaches 98.3\% token
+accuracy on a cumulative-parity task where the real-transition \mamba{}-1/2,
+the complex but LTI S4D, and the Transformer stay near chance. On selective
+copying, LTI S4D scores 6\% token accuracy and the best selective SSM
+(\mamba{}-2) 67\%, which is almost exactly what a model that copies only the
+first five answers would score: the test asks for up to ten values, while
+training never asks for more than five. In the efficiency sweep, the
+Transformer's training step grows from 30\,ms at 1K tokens to 4.5\,s at 16K
+(186\,s at 32K, a point that ran under system-memory fallback); the
+FFT-convolution form of S4D, a much smaller model (182{,}784 parameters against
+1{,}579{,}520 for the fp32 Transformer), is the fastest implementation in this
+codebase at every measured length; and educational sequential scans are
+$O(T)$ in operations but far slower in wall clock (2.6\,s versus 30\,ms per
+step at 1K for \mamba{}-1 versus the Transformer), illustrating the gap between
+asymptotic complexity and hardware behavior. All reported numbers come from
+committed result files, but they were produced by an earlier revision of the
+code with defects that have since been fixed (see the note before the
+introduction); they have not been re-run and are stale. Scope restrictions
+(S4D rather than full S4, a simplified \mamba{}-3 without MIMO or a parallel
+form, no fused kernels) are stated.
 \end{abstract}
 
 \begin{IEEEkeywords}
 state space models, S4D, Mamba, selective scan, state space duality, length
 generalization, sequence modeling, efficiency benchmarking
 \end{IEEEkeywords}
+
+\noindent\textbf{Status of the reported numbers.} Every number, table and
+figure in this paper was produced by an earlier revision of the code that
+contained defects since fixed in the repository. In that revision the S4D
+input matrix was computed as $\Delta B\,(e^{z}-1)$, without the division by
+$z=\Delta A$ that zero-order hold requires; \mamba{}-2 and \mamba{}-3
+expanded the shared $B$ and $C$ so that each head received only $N/H$ of their
+$N$ entries, each repeated $H$ times; weight decay was applied to the
+two-dimensional state-matrix parameters of S4D, \mamba{}-1 and \mamba{}-3
+(for \mamba{}-3 including the rotation frequencies $\theta$) and to the S4D
+input matrix $B$; the \mamba{}-2 chunked scan took the logarithm of a clamped
+$e^{\Delta A}$ instead of using $\Delta A$ directly; and the timed training
+step of the efficiency sweep had no output projection. The experiments have
+not been re-run with the fixed code, so all reported results are stale and
+describe the pre-fix models. The provenance of each result file is documented
+in \texttt{results/PROVENANCE.md} in the accompanying repository.
 
 \section{Introduction}
 Modeling dependencies over long sequences is a central requirement in
@@ -93,23 +126,33 @@ contributions are:
 a chunked SSD scan, \mamba{}-3 with complex transitions and
 exponential-trapezoidal discretization) implemented in pure PyTorch behind a
 single shared interface, with no dependency on fused SSM kernels.
-\item Equivalence tests that verify independent computational forms of the
+\item Equivalence tests that compare independent computational forms of the
 same mathematics (FFT-convolution versus recurrent stepping; chunked SSD
 versus a sequential reference; \mamba{}-3 versus the \mamba{}-1/2 update in
-its limiting configuration), which caught four real implementation bugs
-during development.
+its limiting configuration). They caught three implementation bugs during
+development; a fourth surfaced only as a crash in the efficiency sweep, and two
+defects that affect the reported numbers went undetected
+(Section~\ref{sec:impl}).
 \item A three-task capability study (cumulative-parity state tracking,
-selective copying, IMDb sentiment) at matched training budgets, reproducing
-the capability claims of the \mamba{}-3 and \mamba{} literature at small
-scale.
-\item A sequence-length efficiency sweep (1K--32K) measuring training-step
-latency, peak memory, throughput, and decode cost on a 6\,GB RTX 4050
-Laptop GPU, with measured hardware limits recorded rather than omitted.
+selective copying, IMDb sentiment) with shared data, optimizer and schedule
+per task and one seed per configuration (parameter counts differ across
+models), whose results are consistent with the capability claims of the
+\mamba{}-3 and \mamba{} literature at small scale but do not isolate their
+cause.
+\item A sequence-length efficiency sweep (1K to 32K tokens; only the
+Transformer and S4D cover the full range) measuring training-step latency,
+peak memory, throughput, and decode cost on a 6\,GB RTX 4050 Laptop GPU, with
+measured hardware limits recorded rather than omitted. Several points exceeded
+device memory and ran under Windows system-memory fallback
+(Table~\ref{tab:eff}).
 \end{itemize}
 
 Scope: the S4 implementation is the diagonal S4D restriction
 \cite{gu2022s4d}, not full Normal-Plus-Low-Rank S4; \mamba{}-3 covers the
-recurrence but not its MIMO formulation or chunked dual; scans are
+recurrence as implemented here (static rotation frequencies that the input
+modulates only through $\Delta_t$, a real decay per head and state slot, real
+$B$ and $C$ with a real-part readout), not its MIMO formulation or chunked
+dual; scans are
 educational, not kernel-fused. These restrictions are reflected throughout.
 
 \section{Background: State Space Models}
@@ -138,6 +181,12 @@ $\Delta$. Under zero-order-hold (ZOH) discretization with diagonal $A$,
 The factor $\phi(z)$ tends to $1$ as $z\to 0$; evaluating it naively produces
 a $0/0$ condition, so the implementation uses a Taylor fallback
 $\phi(z)\approx 1+z/2+z^2/6$ for $|z|<10^{-4}$ and the closed form elsewhere.
+The code that produced every S4D result in this paper omitted the division by
+$z$ outside the Taylor branch, so it used $\bar{B}_n=\Delta B_n\,(e^{z}-1)$,
+which differs from \eqref{eq:zoh} by the factor $z=\Delta A_n$. The current
+code implements \eqref{eq:zoh} exactly and tests it against a
+matrix-exponential reference, but the S4D numbers reported below were not
+regenerated.
 The discretized system is the linear recurrence
 \begin{equation}
 x_t = \bar{A}\,x_{t-1} + \bar{B}\,u_t .
@@ -160,8 +209,9 @@ property our test suite exploits (Section~\ref{sec:impl}).
 
 \section{Architectures}
 All five backbones share one skeleton: token embedding, a stack of
-pre-norm residual blocks, a final normalization, masked mean pooling, and a
-linear classification head. Table~\ref{tab:arch} summarizes the mixer inside
+pre-norm residual blocks, a final normalization, and a linear head, applied
+per token for parity and selective copying and after masked mean pooling for
+IMDb. Table~\ref{tab:arch} summarizes the mixer inside
 each block.
 
 \begin{table}[t]
@@ -175,11 +225,11 @@ later formalized by the \mamba{}-3 paper.}
 \toprule
 Model & Transition $A$ & Training form & Decode \\
 \midrule
-Transformer & -- & causal SDPA attention & full-prefix recompute \\
+Transformer & none (attention) & causal SDPA attention, fp32 & full-prefix recompute (no KV cache) \\
 S4D & complex diagonal, HiPPO-style init & FFT convolution, $O(T\log T)$ & $O(1)$-state complex step \\
 \mamba{}-1 & real negative diagonal, input-dependent $\Delta,B,C$ & selective scan (loop) & incremental step, $O(1)$ state \\
-\mamba{}-2 & scalar-per-head $\times I$ & chunked SSD matmuls & sequential scan \\
-\mamba{}-3 & complex diagonal, input-dependent & selective scan & sequential scan \\
+\mamba{}-2 & scalar-per-head $\times I$ & chunked SSD matmuls & no step path; benchmark uses prefill time$/T$ \\
+\mamba{}-3 & complex diagonal per head and slot, static $\theta$, input-dependent $\Delta$ & selective scan (loop) & no step path; benchmark uses prefill time$/T$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -187,7 +237,9 @@ S4D & complex diagonal, HiPPO-style init & FFT convolution, $O(T\log T)$ & $O(1)
 \subsection{S4D}
 The S4D restriction \cite{gu2022s4d} keeps a complex diagonal transition
 $A_n=-\exp(a_n) + i\pi n$ (S4D-Lin initialization), a per-channel step size
-$\Delta$ mapped through a softplus into $[10^{-3},10^{-1}]$, and complex
+$\Delta$, the softplus of a learned parameter, initialized log-spaced across
+channels in $[10^{-3},10^{-1}]$ and only constrained to stay positive during
+training, and complex
 input/output vectors $B,C$ initialized at scale $1/\sqrt{N}$. Training uses
 the FFT convolution of \eqref{eq:kernel} with a chunked kernel computation
 (chunks of 1024 positions); decode uses a complex state of shape
@@ -206,8 +258,9 @@ x_t = \alpha_t\, x_{t-1} + \Delta_t B_t\, u_t .
 The block is: input projection to two branches, a causal short convolution
 (kernel 4), SiLU activation, the selective scan, a SiLU gate, and an output
 projection under a pre-norm residual. The $\Delta$ projection bias is
-initialized log-uniformly in $[10^{-3},10^{-1}]$ so that different state
-slots operate at different timescales. Decode maintains both the SSM state
+initialized so that $\Delta$ starts log-spaced across channels in
+$[10^{-3},10^{-1}]$, so that different channels operate at different
+timescales. Decode maintains both the SSM state
 and the convolution history, one token at a time.
 
 \subsection{\mamba{}-2: State Space Duality}
@@ -225,9 +278,20 @@ chunk, outputs are computed as decayed, masked matmuls; across chunks, a
 state $S\in\mathbb{R}^{N\times P}$ is carried with
 $S \leftarrow \alpha^{\mathrm{tot}} S + \sum_t \alpha^{\mathrm{suf}}_t\,
 B_t\otimes x_t$. This reduces the sequential loop length by a factor of $C$
-and turns the inner computation into tensor-core matmuls, which is the
-practical reason \mamba{}-2 exists. Our implementation processes chunks in
-groups to bound transient memory.
+and turns the inner computation into matrix multiplications that can run on
+tensor cores, which is the practical reason \mamba{}-2 exists. Here they run
+in fp32 without autocast or fused kernels, and the efficiency sweep
+(Section~VI-D) finds this form slower than the Transformer at every length it
+completed. Our implementation processes chunks in
+groups to bound transient memory. $B_t$ and $C_t$ are shared by all heads of a
+group (one group in every configuration here). In the code behind the reported
+results this expansion was wrong: each head read only $N/H$ of the $N$ entries
+of $B_t$ and $C_t$, each repeated $H$ times, which for \mamba{}-2, whose decay
+is a scalar per head, reduces the effective state per head to $N/H$. The same
+code computed $\log\alpha_t$ as the logarithm of a clamped $e^{\Delta_t a_h}$,
+which loses the gradient where the decay underflows. Both are fixed (every
+head now reads its group's full vectors, and $\log\alpha_t=\Delta_t a_h$ is used
+directly), but the \mamba{}-2 and \mamba{}-3 numbers below predate the fixes.
 
 \subsection{\mamba{}-3: Complex Transitions and a Better Rule}
 \mamba{}-3 \cite{lahoti2026mamba3} addresses a capability gap: transitions
@@ -244,77 +308,125 @@ with $\lambda_t=\sigma(\cdot)\in(0,1)$; setting $\lambda_t=1$ recovers the
 exponential-Euler rule of \mamba{}-1/2, and the rule is second-order
 accurate. Second, the transition becomes complex, $A=-\exp(a)+i\theta$: the
 magnitude $|\alpha_t| = e^{-\Delta_t \exp(a)}<1$ guarantees stability
-independent of phase, while the phase $\Delta_t\theta$ rotates the state by
-an input-dependent angle. The paper's MIMO formulation is described but not
-implemented here.
+independent of phase, while the phase $\Delta_t\theta$ rotates the state. Here
+$\theta$ is a learned but static parameter per head and state slot, so the
+rotation angle depends on the input only through $\Delta_t$. Other details of
+this implementation: $a$ is a separate parameter per head and state slot
+(\mamba{}-2 uses one scalar per head), $B$ and $C$ are real and the readout
+uses only $\mathrm{Re}(x_t)$, and neither the paper's MIMO formulation nor its
+parallel (dual) form is implemented, so training runs as a sequential loop
+over time.
 
 \subsection{Transformer Baseline}
 The baseline is a pre-norm causal Transformer using
-\texttt{scaled\_dot\_product\_attention} (memory-efficient kernels) with
-sinusoidal positions. No KV cache is implemented; decode cost is therefore
-reported as honest full-prefix recomputation.
+\texttt{scaled\_dot\_product\_attention} in fp32, so PyTorch can use its
+memory-efficient attention kernel but not the flash-attention kernel, with
+absolute sinusoidal positions added once to the embeddings. Positions seen
+only up to the training length may not carry over to longer sequences, which
+matters for selective copying, where test sequences are twice as long as
+training sequences. No KV cache is implemented. The current benchmark times a
+full-prefix recomputation per new token, but the committed Transformer decode
+values were recorded with an earlier definition (forward time divided by $T$),
+so they understate the per-token cost of recomputation.
 
 \section{Implementation and Verification}
 \label{sec:impl}
-The package (2{,}900 lines of Python, no SSM-kernel dependencies) exposes all
-backbones behind one registry. Correctness is enforced by equivalence tests
+The package (pure PyTorch, no SSM-kernel dependencies) exposes all
+backbones behind one registry. Correctness is checked by equivalence tests
 that compare independent implementations of the same mathematics:
 the S4D FFT-convolution path against its recurrent step path; the
 \mamba{}-2 chunked SSD against a sequential reference scan (chunk sizes 32
 and 64, including a padded sequence); \mamba{}-3 against the
 \mamba{}-1/2 recurrence at $\lambda_t=1$, $\theta=0$; and \mamba{}-1's
-incremental decode against its parallel forward. Agreement is at
-$10^{-3}$ absolute tolerance, appropriate for fp32 reassociation. Four
-development bugs were caught by these tests (a conjugation-convention
-mismatch in S4D, a kernel-chunk concatenation along the wrong axis, a
+incremental decode against its full-sequence forward, which is itself a
+sequential scan. Agreement is checked at absolute and relative tolerance
+$10^{-3}$, appropriate for fp32 reassociation. Three development bugs were
+caught by these tests (a conjugation-convention mismatch in S4D, a
 triangular-mask construction that silently masked nothing, and a conv-state
-slice on the wrong axis), supporting the practice of testing independent
-derivations. The suite contains 16 tests covering the equivalence checks,
-masking, determinism, and dataset contracts.
+slice on the wrong axis). A fourth, a kernel-chunk concatenation along the
+wrong axis, was not: the S4D test ran at $T{=}64$, below the 1024-position
+kernel chunk, and the bug surfaced as a crash in the efficiency sweep at
+$T{=}2048$ (recorded in \texttt{experiments.log}). The tests also missed two
+defects present when the reported results were produced, because the compared
+forms either shared or bypassed the faulty code: the S4D convolution and step
+paths call the same discretization function, and the \mamba{}-2 test fed
+per-head $B$ and $C$ directly to the scans, bypassing the head expansion. Both
+defects are now fixed, and the suite now also checks the ZOH factor against a
+matrix-exponential reference, the S4D kernel across several chunks
+($T{=}2100$), and the \mamba{}-2 and \mamba{}-3 blocks against naive per-head
+references (for \mamba{}-3 with $\theta\neq 0$ and $\lambda_t\in(0,1)$). The
+suite contains 127 tests covering the equivalence and reference
+checks, masking, determinism, and dataset contracts.
 
 \section{Experimental Setup}
 Three tasks probe different capabilities; all models train under identical
-protocols per task (shared data, optimizer, schedule, and seeds; one seed per
-configuration).
+protocols per task (shared data, AdamW optimizer, cosine schedule, and seed
+42; one seed per configuration). Width and depth are matched per task, but
+parameter counts are not (Tables~\ref{tab:parity} and~\ref{tab:imdb}).
 
 \textbf{Parity (state tracking).} The target at position $t$ is the XOR of
-inputs $1..t$, $L=128$, 20 epochs; the task requires input-dependent rotation
-of state.
+inputs $1..t$; 2{,}000 training and 1{,}000 test sequences, $L=128$ for both
+(so no length extrapolation is tested), 20 epochs. Following
+\cite{lahoti2026mamba3}, a diagonal linear recurrence can track parity only if
+its transition can flip or rotate the state depending on the input.
 
-\textbf{Selective copying.} Marker--value pairs are embedded in a noise
+\textbf{Selective copying.} Marker-value pairs are embedded in a noise
 stream; a separator then requests the $k$ remembered values in order. Train
-$L=64$ (3--5 pairs), test $L=128$ (5--10 pairs), 12 epochs. Only $k$ values
-must be retained (constant in $L$) while noise must be gated out.
+$L=64$ (3 to 5 pairs), test $L=128$ (5 to 10 pairs), 12 epochs. Only $k$
+values must be retained (constant in $L$) while noise must be gated out. The
+test changes both the length and the number of values to recall (up to 10,
+against at most 5 in training), so test scores mix recall with extrapolation
+in $k$; no in-distribution score is reported.
 
 \textbf{IMDb sentiment.} Standard binary classification, 12.5k training
 subset (fixed seed), maximum length 512, 3 epochs, $d_{\text{model}}=128$,
 4 blocks. Sequential-loop models (\mamba{}-1/3) are excluded from IMDb on
 wall-clock grounds (Section~VI-D); the selective-SSM family is represented
-by \mamba{}-2, which shares their recurrence.
+by \mamba{}-2, which shares their input-dependent (selective) parameterization
+but uses a real scalar decay per head. Scores are on the full 25k IMDb test
+split, which also served as the per-epoch validation set; the reported values
+are from the final epoch, not the best one.
 
 \textbf{Efficiency sweep.} Training-step latency (forward, backward, update;
-CUDA events, 5 repeats), peak memory, throughput, and decode cost at
-$T\in\{1\mathrm{K},\dots,32\mathrm{K}\}$, batch 8, $d_{\text{model}}=256$,
-2 blocks, fp32, on an RTX 4050 Laptop GPU (6\,GB, Windows/WDDM).
+CUDA events, 5 repeats after 2 warm-up steps), peak memory, throughput, and
+decode cost at $T\in\{1\mathrm{K},\dots,32\mathrm{K}\}$, batch 8,
+$d_{\text{model}}=256$, 2 blocks, fp32 without autocast, on an RTX 4050 Laptop
+GPU (6{,}140.5\,MB of device memory, Windows/WDDM). Memory is the peak
+allocated by PyTorch, in MiB written as MB; reserved memory was not recorded.
+Points whose peak allocation exceeds device memory could run only through the
+WDDM system-memory fallback, so their times include paging over PCIe. In the
+code that produced these numbers the timed training step had no output
+projection: the backbone's 256-dimensional features were used directly as
+256-way logits against targets drawn from a 32-token vocabulary. \mamba{}-1 and
+\mamba{}-3 were capped at 4K by configuration, and the result file was
+assembled from several restarted runs across code revisions.
 
 \section{Results}
 
-\subsection{Parity: Complex Transitions Enable State Tracking}
+\subsection{Parity: Only \mamba{}-3 Tracks the State}
 Table~\ref{tab:parity} and Fig.~\ref{fig:parity} show the study's headline
 capability result. \mamba{}-3 reaches 98.3\% token accuracy (42\% of test
 sequences fully correct) while \mamba{}-1, \mamba{}-2, S4D, and the
-Transformer remain at 50.6--56.3\% token accuracy with zero fully-correct
-sequences. The mechanism is the rotation argument of
-\cite{lahoti2026mamba3}: parity requires $x_t = R(\pi u_t)\,x_{t-1}$, a
-rotation by an input-dependent angle. Real non-negative transitions cannot
-rotate; S4D is complex but LTI, so its rotation angle cannot depend on the
-input; only \mamba{}-3's input-dependent complex transition provides both
-stability ($|\alpha_t|<1$) and input-dependent phase. The experiment
-reproduces the paper's motivating capability claim at small scale.
+Transformer remain at 50.6\% to 56.3\% token accuracy with zero fully-correct
+sequences. The likely mechanism is the rotation argument of
+\cite{lahoti2026mamba3}: parity can be tracked with
+$x_t = R(\pi u_t)\,x_{t-1}$, a rotation by an input-dependent angle. Real
+non-negative transitions cannot rotate; S4D is complex but LTI, so its
+rotation angle cannot depend on the input; \mamba{}-3's complex transition
+combines stability ($|\alpha_t|<1$) with a phase $\Delta_t\theta$ that depends
+on the input through $\Delta_t$. The result is consistent with the paper's
+motivating claim but does not isolate the complex transition: \mamba{}-3 here
+also differs from \mamba{}-2 in its per-slot decay, the trapezoidal $\beta_t$
+term and the $\lambda_t$ gate, and no variant with $\theta=0$ or
+$\lambda_t=1$ was trained. It is a single run (seed 42) with train and test
+length 128; the \mamba{}-3 test accuracy dipped to 0.4802 at epoch 10 of 20
+before recovering, and \mamba{}-1/2 end with test loss 0.620 and 0.607, below
+$\ln 2$, so they are near chance rather than exactly at it.
 
 \begin{table}[t]
 \centering
-\caption{Cumulative-parity tracking at $L=128$ (20 epochs, matched budgets).}
+\caption{Cumulative-parity tracking at $L=128$ (20 epochs, same data and
+schedule, seed 42; parameter counts differ).}
 \label{tab:parity}
 \small
 \begin{tabular}{@{}lrrr@{}}
@@ -322,7 +434,7 @@ reproduces the paper's motivating capability claim at small scale.
 Model & Params & Token acc. & Seq. success \\
 \midrule
 Transformer & 100{,}354 & 0.533 & 0.000 \\
-S4D & 33{,}794 & 0.507 & 0.000 \\
+S4D & 33{,}794 & 0.506 & 0.000 \\
 \mamba{}-1 & 78{,}210 & 0.559 & 0.000 \\
 \mamba{}-2 & 68{,}786 & 0.563 & 0.000 \\
 \mamba{}-3 & 69{,}562 & \textbf{0.983} & \textbf{0.420} \\
@@ -333,38 +445,50 @@ S4D & 33{,}794 & 0.507 & 0.000 \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{parity.pdf}
-\caption{Cumulative-parity tracking. Only the complex-transition model
-(\mamba{}-3) exceeds the chance line; real-transition SSMs cannot represent
-the required input-dependent rotation.}
+\caption{Cumulative-parity tracking (one seed). Only \mamba{}-3, whose
+complex transition rotates by an input-dependent angle, clearly exceeds the
+chance line; \mamba{}-1/2 (real transitions), S4D (complex but LTI) and the
+Transformer stay near it.}
 \label{fig:parity}
 \end{figure}
 
-\subsection{Selective Copying: Selectivity Separates Gated from LTI Models}
-On selective copying (Fig.~\ref{fig:selcopy}), the selective SSMs lead:
-\mamba{}-2 0.670 and \mamba{}-1 0.649 token accuracy (18.3\% and 14.9\%
-full-sequence success at test length 128), against Transformer 0.205 and
-S4D 0.064. The result illustrates selectivity as designed in
-\cite{gu2023mamba}: the task rewards gating noise out of state, which LTI
-kernels cannot express. \mamba{}-3 underperforms its real-transition
-siblings here (0.215 token accuracy); at this small budget its rotational
-dynamics appear to trade recall sharpness for state-tracking power, and we
-report this as measured rather than tuning it away.
+\subsection{Selective Copying: \mamba{}-1/2 Lead, LTI S4D Near Chance}
+On selective copying (Fig.~\ref{fig:selcopy}), \mamba{}-2 and \mamba{}-1 lead
+with 0.670 and 0.649 token accuracy (18.3\% and 14.9\% full-sequence success
+at test length 128), against Transformer 0.205 and S4D 0.064. These are
+out-of-distribution scores, since test sequences hold 5 to 10 pairs and
+training sequences 3 to 5. On this test set, a model that returns the first
+five values correctly and fails on the rest would reach almost exactly
+\mamba{}-2's token accuracy and a similar full-sequence success, so the result
+is consistent with the selective SSMs having learned recall up to the training
+pair count without extrapolating beyond it (an inference: per-$k$ accuracy was
+not recorded). Training loss below $5\times10^{-4}$ against test loss of 1.20
+(\mamba{}-2) and 2.41 (\mamba{}-1) points the same way. S4D stays near
+chance, consistent with the argument of \cite{gu2023mamba} that an LTI kernel
+cannot gate noise out of its state. The Transformer's absolute sinusoidal
+positions were seen only up to length 64 in training, which may contribute to
+its low score at length 128 (not tested). \mamba{}-3, also a selective model,
+reaches only 0.215 token accuracy; no ablation explains this gap, and the run
+predates the $B/C$ expansion fix.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{selcopy.pdf}
-\caption{Selective copying, train $L=64$, test $L=128$. Selective SSMs
-retain the $k$ marker--value pairs and gate out noise; LTI S4D cannot and
-collapses.}
+\caption{Selective copying, train $L=64$ (3 to 5 pairs), test $L=128$ (5 to
+10 pairs), one seed. \mamba{}-1/2 lead but fully copy at most 18.3\% of test
+sequences; \mamba{}-3 has a much lower token accuracy; LTI S4D stays near
+chance.}
 \label{fig:selcopy}
 \end{figure}
 
 \subsection{IMDb Sentiment}
-At matched budget on real text (Table~\ref{tab:imdb},
-Fig.~\ref{fig:imdb}), \mamba{}-2 attains the best accuracy (0.836) and AUC
-(0.917), S4D follows (0.827/0.907), and the Transformer trails
-(0.813/0.894). These are single-seed results on a half-data protocol and
-should be read as directional evidence, not as a leaderboard.
+With the same width, depth and schedule on real text (Table~\ref{tab:imdb},
+Fig.~\ref{fig:imdb}; parameter counts differ), \mamba{}-2 attains the best
+accuracy (0.836) and AUC (0.917), S4D follows (0.827/0.907), and the
+Transformer trails (0.813/0.894). These are single-seed results on a
+half-data protocol and should be read as directional evidence, not as a
+leaderboard; the S4D and \mamba{}-2 runs also predate the ZOH and $B/C$
+fixes, and the S4D run the weight-decay change.
 
 \begin{table}[t]
 \centering
@@ -385,104 +509,146 @@ S4D & 2{,}677{,}762 & 0.827 & 0.907 \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{imdb.pdf}
-\caption{IMDb sentiment at matched budget.}
+\caption{IMDb sentiment (same width, depth and schedule; one seed).}
 \label{fig:imdb}
 \end{figure}
 
 \subsection{Efficiency: Theory Versus Wall Clock}
 Fig.~\ref{fig:eff} and Table~\ref{tab:eff} summarize the sweep. Three
-observations, all measured on the same hardware and protocol:
+observations, all measured on the same hardware with the same timing protocol,
+although the result file combines several restarted runs across code
+revisions (Section~V):
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{efficiency.pdf}
-\caption{Training-step latency (left) and peak GPU memory (right) versus
-sequence length on an RTX 4050 Laptop (6\,GB), batch 8, fp32, CUDA-event
-timed over 5 repeats. The Transformer's $O(T^2)$ compute dominates
-wall-clock despite memory-efficient attention kernels; S4D's FFT-convolution
-form is the most wall-clock-efficient implementation across the measured
-range; sequential-scan models are capped by launch overhead and, past 6\,GB,
-by shared-memory spill (Mamba-1/3 measured only to their limits; Mamba-2
-exceeds memory at 32K).}
+\caption{Training-step latency (left) and peak allocated GPU memory (right)
+versus sequence length on an RTX 4050 Laptop (6{,}140.5\,MB device memory),
+batch 8, fp32, CUDA-event timed over 5 repeats. Points whose peak allocation
+exceeds device memory (Transformer and S4D at 32K, \mamba{}-2 at 16K,
+\mamba{}-1 at 4K, \mamba{}-3 at 1K) ran under Windows system-memory fallback,
+so their times include paging. \mamba{}-1 was capped at 4K by configuration,
+\mamba{}-3 ran out of memory at 2K and \mamba{}-2 at 32K. Models are not
+size-matched: S4D has 182{,}784 parameters, the Transformer 1{,}579{,}520, the
+\mamba{} models 875{,}808 to 877{,}872.}
 \label{fig:eff}
 \end{figure*}
 
 \begin{table}[t]
 \centering
-\caption{Efficiency summary (train step, batch 8; fp32). Dashes: not
-measured (loop cost); OOM: measured memory limit.}
+\caption{Efficiency summary (train step, batch 8, fp32; time / peak allocated
+memory). $^\dagger$: peak allocation above the 6{,}140.5\,MB of device memory,
+run under Windows system-memory fallback. OOM: out-of-memory error.
+\mamba{}-2 at 16K (11{,}678\,MB) and \mamba{}-1 at 4K (7{,}913\,MB) also
+exceeded device memory.}
 \label{tab:eff}
-\small
+\footnotesize
 \begin{tabular}{@{}lrr@{}}
 \toprule
 Model & $T{=}1$K & $T{=}32$K \\
 \midrule
-Transformer & 30 ms / 419 MB & 186{,}025 ms / 9{,}879 MB \\
-S4D (FFT) & 20 ms / 294 MB & 13{,}456 ms / 9{,}820 MB \\
+Transformer & 30 ms / 419 MB & 186{,}025 ms / 9{,}879 MB$^\dagger$ \\
+S4D (FFT) & 20 ms / 294 MB & 13{,}456 ms / 9{,}820 MB$^\dagger$ \\
 \mamba{}-2 (chunked) & 79 ms / 754 MB & OOM \\
-\mamba{}-1 (loop) & 2{,}632 ms / 2{,}000 MB & -- (capped at 4K) \\
+\mamba{}-1 (loop) & 2{,}632 ms / 2{,}000 MB & cap 4K \\
+\mamba{}-3 (loop) & 10{,}880 ms / 6{,}647 MB$^\dagger$ & OOM at 2K \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{(a) The quadratic bill is real.} The Transformer's step time grows
-from 30\,ms at $T{=}1$K to 186\,s at $T{=}32$K, roughly three orders of
-magnitude for a $32\times$ length increase, with the last interval
-amplified by WDDM shared-memory spill past the 6\,GB buffer. Attention
-kernels improved the constant, not the asymptotics.
+\textbf{(a) The Transformer's step time grows superlinearly.} Up to 16K,
+where its peak allocation (4{,}989\,MB) stays below device memory, the
+Transformer's step time grows from 30\,ms at $T{=}1$K to 4{,}482\,ms. The 32K
+point (186\,s, peak 9{,}879\,MB) exceeded device memory and ran under WDDM
+system-memory fallback; its jump from 16K is far larger than the fourfold
+increase a quadratic term alone predicts, so it mostly reflects paging and
+should not be read as the cost of attention (a hypothesis; the two effects
+were not separated). Reserved memory was not recorded, so it is not known
+whether the 16K point stayed entirely in device memory. Only fp32 SDPA was
+measured; no other attention kernel was compared.
 
-\textbf{(b) FFT convolution is hard to beat in wall clock.} S4D is the
-fastest implementation at every measured length (13.5\,s per step at 32K),
-consistent with a single well-optimized FFT pair per layer versus scans or
-matmul chains.
+\textbf{(b) FFT convolution is the fastest form measured here.} S4D has the
+lowest step time at every measured length (13.5\,s per step at 32K, a point
+that also exceeded device memory), consistent with a single FFT pair per layer
+versus scans or matmul chains. The comparison is not size-matched: S4D has
+182{,}784 parameters and no MLP, against 1{,}579{,}520 for the Transformer,
+whose fp32 attention cannot use the flash kernel; a parameter-matched or bf16
+comparison was not run. The chunked SSD form of \mamba{}-2 is far faster than
+the sequential \mamba{}-1 scan (78.5\,ms versus 2.6\,s at 1K) but slower than
+the Transformer at every length it completed (78.5 versus 30.1\,ms at 1K,
+8{,}954 versus 847\,ms at 8K), so this sweep does not show an advantage of SSD
+over attention at these lengths.
 
 \textbf{(c) $O(T)$ operations can still lose.} The educational sequential
-scans perform $O(T)$ work but are 10--100$\times$ slower than vectorized
-forms at equal length (2.6\,s versus 30\,ms at $T{=}1$K for \mamba{}-1
-versus the Transformer). Each of the $T\times$ layers steps launches small
-kernels and extends a $T$-node autograd graph. This is precisely why fused
+scans perform $O(T)$ work but are far slower than the vectorized forms at
+equal length: 2.6\,s versus 30\,ms per step at $T{=}1$K for \mamba{}-1 versus
+the Transformer, and 10.9\,s for \mamba{}-3, whose 1K point already exceeded
+device memory. Each of the $T$ steps in every layer launches small kernels and
+adds nodes to the autograd graph. This is precisely why fused
 selective-scan kernels and the chunked SSD matmul form exist, and it is the
 study's central complexity-versus-hardware lesson: asymptotics describe how
 work grows, packaging determines how fast it runs.
 
 \section{Discussion}
-The tasks form a coherent capability picture. Parity shows that the
-transition parameterization (complex, input-dependent phase) is a
-first-order architectural capability, not an implementation detail;
-selective copying shows the LTI family failing for a mechanistic reason;
-IMDb shows modest, real differences on natural language, with the SSD-family
-model competitive end to end. The efficiency sweep separates these
-capability questions from the deployment question, where the S4D
-convolution form and, at scale, kernel-fused implementations dominate.
+The tasks give a consistent, if preliminary, capability picture. Parity
+suggests that the transition parameterization (complex, with input-dependent
+phase) is a first-order architectural capability rather than an
+implementation detail, although no ablation isolates it; selective copying
+shows LTI S4D near chance, as expected for a model that cannot gate its
+input, while the selective models' scores are consistent with recall only up
+to the training pair count; IMDb shows small differences on natural language,
+with the SSD-family model competitive end to end. All of these rest on
+single-seed runs of the pre-fix code. The efficiency sweep separates these
+capability questions from the deployment question; among the implementations
+measured here the S4D convolution form was fastest, and fused kernels were not
+measured.
 
 \section{Limitations}
-(1) The implementations are educational: python-loop scans are 10--100$\times$
-slower in wall-clock than fused kernels, and no comparison against the
-official \mamba{} kernels (Linux-only) was run on this machine. (2) Full S4
+(1) The implementations are educational: python-loop scans are much slower in
+wall clock than the vectorized forms in this codebase (Section~VI-D), and no
+comparison against the official fused \mamba{} kernels (Linux-only) was run on
+this machine, so their speed-up over these scans is not measured here. (2) Full S4
 (NPLR parameterization with Woodbury-corrected Cauchy kernels) is not
 implemented; S4D retains the ideas this study needs. (3) \mamba{}-3's MIMO
-formulation and chunked dual are not implemented; its recurrence is.
-(4) Task results use a single seed; IMDb uses a half-data subset and 512-token
-truncation. (5) The efficiency sweep is fp32; bf16 autocast would change
-absolute numbers. (6) \mamba{}-1/3 sequential training exceeds the 6\,GB
-buffer at $T\ge 2$K, so their long-length training cost is reported as a
-measured limit, not extrapolated.
+formulation and chunked dual are not implemented; its recurrence is, with
+static rotation frequencies, a real decay per head and state slot, and real
+$B$ and $C$ (Section~III-D).
+(4) Task results use a single seed (42) and models of different parameter
+counts; parity is tested only at its training length, and the selective-copy
+test asks for more values than training does; IMDb uses a half-data subset and
+512-token truncation. (5) The efficiency sweep is fp32, so attention cannot use
+the flash kernel, and bf16 autocast would change absolute numbers; the timed
+step had no output projection; and the result file was assembled from several
+restarted runs across code revisions. (6) \mamba{}-3's sequential training
+already exceeded device memory at $T{=}1$K (peak 6{,}646.7\,MB, run under
+system-memory fallback) and ran out of memory at 2K; \mamba{}-1 stays below
+device memory at 2K (peak 3{,}970.9\,MB), exceeded it at 4K (7{,}912.6\,MB,
+again under fallback), and was capped at 4K by configuration. Their training
+cost at longer lengths is therefore not reported and not extrapolated. (7)
+Every number in this paper comes from code that predates the fixes described
+before the introduction and is stale.
 
 \section{Conclusion}
 Five sequence architectures were implemented from first principles behind
-one interface, verified by equivalence tests that caught real bugs, and
-evaluated across three capability tasks and a 1K--32K efficiency sweep. The
-study reproduces, at small scale and with committed evidence, the central
-capability claims of the modern SSM literature: input-dependent complex
-transitions restore state tracking (98.3\% on parity where all
-real-transition baselines remain at chance), input-dependent gating solves
-noise-laden retention tasks that defeat LTI models (67\% versus 6\% on
-selective copying), and the SSD matmul form is competitive on natural
-language. The efficiency measurements ground the asymptotic story in
-hardware reality: quadratic attention is visibly quadratic, FFT convolution
-is extremely strong in wall clock, and $O(T)$ recursion is only as fast as
-its packaging. All code, configs, committed result files, and regeneration
-scripts are available in the accompanying repository.\footnote{\url{https://github.com/vaibhav3000/s4-to-mamba}}
+one interface, checked by equivalence tests, and evaluated on three capability
+tasks and an efficiency sweep from 1K to 32K tokens. The results come from one
+seed and from code that predates the fixes described before the introduction,
+so they are stale. Within those limits they are consistent with the main
+capability claims of the recent SSM literature without isolating their causes:
+\mamba{}-3, whose complex transition rotates by an input-dependent angle,
+reached 98.3\% token accuracy on parity where \mamba{}-1/2, S4D and the
+Transformer stayed near chance; the selective \mamba{}-1/2 beat LTI S4D on
+selective copying (67\% versus 6\% token accuracy for the best selective
+model), although 67\% is almost exactly what copying only the first five
+answers would give; and the SSD model was competitive on IMDb. In the
+efficiency sweep, the Transformer's step time grew superlinearly with length,
+the FFT convolution of a much smaller S4D was the fastest implementation
+measured, and the $O(T)$ loops were the slowest, a reminder that $O(T)$
+recursion is only as fast as its packaging; the longest point of every model
+exceeded device memory and includes paging. Code, configs, committed result
+files, and the script that draws every figure, including those in this paper,
+from the committed results are available in the accompanying
+repository.\footnote{\url{https://github.com/vaibhav3000/s4-to-mamba}}
 
 \begin{thebibliography}{9}
 

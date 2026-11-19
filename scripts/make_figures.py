@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -22,8 +21,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 MODELS = ["transformer", "s4d", "mamba", "mamba2", "mamba3"]
 LABELS = {

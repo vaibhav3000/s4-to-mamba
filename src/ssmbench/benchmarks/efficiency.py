@@ -19,7 +19,7 @@ Measures, per (architecture, sequence length):
 All timings use CUDA events around synchronized regions; nothing is estimated
 or copied from papers. Every number in the report can be regenerated with:
 
-    python scripts/run_efficiency.py --config configs/efficiency.yaml
+    ssmbench-efficiency --config configs/efficiency.yaml
 """
 
 from __future__ import annotations
@@ -367,7 +367,11 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(
+        prog="ssmbench-efficiency",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument("--config", required=True, help="YAML config for the efficiency benchmark")
     ap.add_argument(
         "--force",

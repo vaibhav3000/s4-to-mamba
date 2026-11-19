@@ -10,18 +10,15 @@ mathematics, not just shapes:
 - Every backbone must be deterministic under a fixed seed and preserve shapes.
 """
 
-import sys
 from pathlib import Path
 
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from ssmbench.models import build_backbone  # noqa: E402
-from ssmbench.models.blocks import SequenceClassifier, masked_mean  # noqa: E402
-from ssmbench.models.mamba2_minimal import Mamba2Block  # noqa: E402
-from ssmbench.models.mamba3_minimal import Mamba3Block  # noqa: E402
+from ssmbench.models import build_backbone
+from ssmbench.models.blocks import SequenceClassifier, masked_mean
+from ssmbench.models.mamba2_minimal import Mamba2Block
+from ssmbench.models.mamba3_minimal import Mamba3Block
 
 torch.manual_seed(0)
 

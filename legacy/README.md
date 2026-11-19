@@ -4,6 +4,11 @@ These are the two scripts committed to the original repository
 (github.com/vaibhav3000/projects/tree/main/SSM, `Code/` folder), preserved
 verbatim for provenance. They are kept for the record, not for use.
 
+They are not runnable: they reference names that are never defined, so they
+fail before doing any work. For that reason `legacy/` is excluded from ruff,
+pyright and the Docker build context, and nothing in the package or the tests
+imports it.
+
 Why they were replaced:
 
 - Both scripts reference a `Mamba` / `S4Block` class that is never imported or

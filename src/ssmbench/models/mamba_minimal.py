@@ -27,7 +27,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blocks import scan_dtype
+from .blocks import autocast_disabled, scan_dtype
 
 
 class MambaBlock(nn.Module):
@@ -100,6 +100,7 @@ class MambaBlock(nn.Module):
         delta = F.softplus(self.dt_proj(delta))  # (B, T, d_inner), > 0
         return delta, B, C
 
+    @autocast_disabled
     def selective_scan(
         self, x: torch.Tensor, delta: torch.Tensor, B: torch.Tensor, C: torch.Tensor
     ) -> torch.Tensor:

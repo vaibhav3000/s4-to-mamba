@@ -714,3 +714,41 @@ def test_seeded_rebuild_is_bitwise_deterministic(name: str) -> None:
             return backbone(x)
 
     assert torch.equal(run(), run())
+
+
+# ------------------------------------------------------------------ autocast
+
+
+def _scan_cases() -> dict[str, tuple[Callable[..., torch.Tensor], tuple[torch.Tensor, ...]]]:
+    torch.manual_seed(24)
+    Bsz, T = 2, 11
+    m1 = MambaBlock(d_model=8, d_state=4, expand=1)
+    m2 = Mamba2Block(d_model=16, d_state=4, headdim=8, expand=1, chunk_size=4)
+    m3 = Mamba3Block(d_model=16, d_state=4, headdim=8, expand=1)
+    H, P, N = m2.n_heads, m2.headdim, m2.d_state
+    x_h = torch.randn(Bsz, T, H, P)
+    bx, c_h = torch.randn(Bsz, T, H, N), torch.randn(Bsz, T, H, N)
+    alpha = torch.rand(Bsz, T, H) * 0.9 + 0.05
+    delta = torch.rand(Bsz, T, H) * 0.3 + 0.01
+    lam = torch.rand(Bsz, T, H)
+    m1_inputs = (torch.randn(Bsz, T, 8), torch.rand(Bsz, T, 8) * 0.3 + 0.01)
+    return {
+        "mamba1": (m1.selective_scan, (*m1_inputs, torch.randn(Bsz, T, 4), torch.randn(Bsz, T, 4))),
+        "mamba2-sequential": (m2.sequential_scan, (x_h, alpha, bx, c_h)),
+        "mamba2-chunked": (m2.chunked_scan, (x_h, alpha, bx, c_h)),
+        "mamba3": (m3.selective_scan, (x_h, delta, bx, c_h, lam)),
+    }
+
+
+@pytest.mark.parametrize("case", ["mamba1", "mamba2-sequential", "mamba2-chunked", "mamba3"])
+def test_scans_ignore_bf16_autocast(case: str) -> None:
+    """Under bf16 autocast (CPU autocast casts einsum/bmm like CUDA does) every scan
+    still runs in float32: the output is float32 and bitwise equal to the result
+    without autocast."""
+    fn, inputs = _scan_cases()[case]
+    with torch.no_grad():
+        expected = fn(*inputs)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            got = fn(*inputs)
+    assert got.dtype == torch.float32
+    assert torch.equal(got, expected)

@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blocks import expand_groups_to_heads, scan_dtype
+from .blocks import autocast_disabled, expand_groups_to_heads, scan_dtype
 
 
 class Mamba2Block(nn.Module):
@@ -130,6 +130,7 @@ class Mamba2Block(nn.Module):
 
     # -------------------- sequential reference --------------------
 
+    @autocast_disabled
     def sequential_scan(
         self, x_h: torch.Tensor, alpha: torch.Tensor, Bx: torch.Tensor, C_h: torch.Tensor
     ) -> torch.Tensor:
@@ -153,6 +154,7 @@ class Mamba2Block(nn.Module):
 
     # -------------------- chunked SSD --------------------
 
+    @autocast_disabled
     def chunked_scan(
         self,
         x_h: torch.Tensor,

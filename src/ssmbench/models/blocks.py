@@ -8,10 +8,17 @@ outer skeleton so that comparisons isolate the mixer, not the plumbing:
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import math
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar
 
 import torch
 import torch.nn as nn
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class SequenceClassifier(nn.Module):
@@ -92,12 +99,32 @@ def masked_mean(h: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
     return (h * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1.0)
 
 
+def autocast_disabled(fn: Callable[P, R]) -> Callable[P, R]:
+    """Run an SSM scan with autocast off on the devices of its tensor arguments.
+
+    Under bf16 autocast the einsums inside a scan would otherwise run as bf16
+    matmuls even though their inputs were cast to float32; with this decorator the
+    whole scan runs in scan_dtype(...).
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        tensors = [a for a in (*args, *kwargs.values()) if isinstance(a, torch.Tensor)]
+        with contextlib.ExitStack() as stack:
+            for device_type in sorted({t.device.type for t in tensors}):
+                stack.enter_context(torch.autocast(device_type=device_type, enabled=False))
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def scan_dtype(*tensors: torch.Tensor) -> torch.dtype:
     """Real dtype for an SSM scan: the promoted input dtype, never below float32.
 
-    float32 and lower-precision inputs (bf16/fp16 under autocast) scan in float32,
+    float32 and lower-precision inputs (bf16/fp16 from autocast) scan in float32,
     float64 inputs scan in float64, so float64 reference and gradcheck tests see
-    float64 arithmetic end to end.
+    float64 arithmetic end to end. The scans are wrapped in autocast_disabled, so
+    autocast cannot move their einsums back to bf16.
     """
     dtype = torch.float32
     for t in tensors:

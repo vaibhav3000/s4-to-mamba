@@ -43,7 +43,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blocks import complex_dtype_for, expand_groups_to_heads, scan_dtype
+from .blocks import autocast_disabled, complex_dtype_for, expand_groups_to_heads, scan_dtype
 
 
 class Mamba3Block(nn.Module):
@@ -120,6 +120,7 @@ class Mamba3Block(nn.Module):
             std = self.dt_rank**-0.5
             nn.init.uniform_(self.dt_proj.weight, -std, std)
 
+    @autocast_disabled
     def selective_scan(
         self,
         x_h: torch.Tensor,  # (B, T, H, P)

@@ -275,7 +275,7 @@ def test_right_padding_does_not_change_short_sequence_logits(name: str) -> None:
 
 
 def test_make_figures_smoke(tmp_path) -> None:
-    """Figure generation runs against the committed results and writes PNGs."""
+    """Figure generation runs against the committed results and draws every family present."""
     import importlib.util
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -287,10 +287,16 @@ def test_make_figures_smoke(tmp_path) -> None:
     spec.loader.exec_module(mod)
 
     results = repo_root / "results"
-    mod.efficiency_figures(results, tmp_path)
-    mod.training_figures(results, tmp_path)
-    written = list(tmp_path.glob("*.png"))
-    assert {p.name for p in written} >= {"fig_efficiency_latency.png", "fig_parity.png"}
+    written = {p.name for p in mod.make_all(results, tmp_path)}
+    # Every committed results family yields its figure (none before the GPU re-run).
+    expected = {
+        "fig_parity.png": results / "train" / "parity" / "summary.json",
+        "fig_imdb.png": results / "train" / "imdb" / "summary.json",
+        "fig_efficiency.png": results / "efficiency" / "sweep_fp32.json",
+        "fig_inference.png": results / "inference" / "decode_bf16.json",
+    }
+    for name, source in expected.items():
+        assert (name in written) == source.exists(), name
 
 
 def test_selective_copy_dataset_contract() -> None:

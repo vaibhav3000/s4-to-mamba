@@ -47,11 +47,11 @@ from ..utils import (
 )
 
 DEFAULT_KWARGS: dict[str, dict] = {
-    "transformer": dict(d_model=256, n_layers=2, n_heads=4),
-    "s4d": dict(d_model=256, n_layers=2, d_state=16),
-    "mamba": dict(d_model=256, n_layers=2, d_state=16),
-    "mamba2": dict(d_model=256, n_layers=2, d_state=32, headdim=64, scan_mode="chunked"),
-    "mamba3": dict(d_model=256, n_layers=2, d_state=32, headdim=64),
+    "transformer": {"d_model": 256, "n_layers": 2, "n_heads": 4},
+    "s4d": {"d_model": 256, "n_layers": 2, "d_state": 16},
+    "mamba": {"d_model": 256, "n_layers": 2, "d_state": 16},
+    "mamba2": {"d_model": 256, "n_layers": 2, "d_state": 32, "headdim": 64, "scan_mode": "chunked"},
+    "mamba3": {"d_model": 256, "n_layers": 2, "d_state": 32, "headdim": 64},
 }
 
 VOCAB = 32
@@ -150,6 +150,43 @@ def _prefill(
         head(backbone(embed(tokens)))
 
 
+def _measure_train_step(
+    embed: nn.Module,
+    backbone: nn.Module,
+    head: nn.Module,
+    batch_size: int,
+    seq_len: int,
+    repeats: int,
+    device: torch.device,
+) -> dict:
+    """Time AdamW steps of embed -> backbone -> head with cross-entropy.
+
+    The tokens, targets and optimizer state live only inside this call, so they are
+    freed before inference is timed.
+    """
+    tokens = torch.randint(1, VOCAB, (batch_size, seq_len), device=device)
+    target = torch.randint(1, VOCAB, (batch_size, seq_len), device=device)
+    params = [p for m in (embed, backbone, head) for p in m.parameters()]
+    opt = torch.optim.AdamW(params, lr=1e-4)
+
+    def train_step() -> None:
+        logits = head(backbone(embed(tokens)))  # (B, T, VOCAB)
+        loss = nn.functional.cross_entropy(logits.reshape(-1, VOCAB), target.reshape(-1))
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        opt.step()
+
+    reset_peak_memory(device)
+    mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
+    result = {
+        "train_step_ms": round(mean_ms, 2),
+        "train_step_ms_std": round(std_ms, 2) if std_ms is not None else None,
+    }
+    _record_memory(result, "train", peak_memory_stats(device))
+    result["train_tokens_per_s"] = round(batch_size * seq_len / (mean_ms / 1000))
+    return result
+
+
 def benchmark_single(
     name: str,
     seq_len: int,
@@ -181,25 +218,9 @@ def benchmark_single(
 
     # ---- training step: embedding -> backbone -> LM head -> cross-entropy ----
     try:
-        tokens = torch.randint(1, VOCAB, (batch_size, seq_len), device=device)
-        params = [p for m in lm_modules for p in m.parameters()]
-        opt = torch.optim.AdamW(params, lr=1e-4)
-        target = torch.randint(1, VOCAB, (batch_size, seq_len), device=device)
-
-        def train_step() -> None:
-            logits = head(backbone(embed(tokens)))  # (B, T, VOCAB)
-            loss = nn.functional.cross_entropy(logits.reshape(-1, VOCAB), target.reshape(-1))
-            opt.zero_grad(set_to_none=True)
-            loss.backward()
-            opt.step()
-
-        reset_peak_memory(device)
-        mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
-        entry["train_step_ms"] = round(mean_ms, 2)
-        entry["train_step_ms_std"] = round(std_ms, 2) if std_ms is not None else None
-        _record_memory(entry, "train", peak_memory_stats(device))
-        entry["train_tokens_per_s"] = round(batch_size * seq_len / (mean_ms / 1000))
-        del opt, tokens, target
+        entry.update(
+            _measure_train_step(embed, backbone, head, batch_size, seq_len, repeats, device)
+        )
     except Exception as exc:
         if not _is_oom(exc):
             raise
@@ -225,7 +246,6 @@ def benchmark_single(
         mean_ms, _ = _time_gpu(infer, repeats, device=device.type)
         entry["infer_ms"] = round(mean_ms, 2)
         _record_memory(entry, "infer", peak_memory_stats(device))
-        del tokens
     except Exception as exc:
         if not _is_oom(exc):
             raise
@@ -332,7 +352,7 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
         # (mamba, mamba3) have python-loop step counts proportional to T, so
         # very long sequences are measured only for the vectorized forms.
         limit = cfg.get("model_length_limits", {}).get(name)
-        lengths = [L for L in cfg["seq_lengths"] if limit is None or L <= limit]
+        lengths = [L for L in cfg["seq_lengths"] if limit is None or limit >= L]
         for L in lengths:
             if (name, L) in done:
                 print(f"skipping {name} @ T={L} (already measured)", flush=True)

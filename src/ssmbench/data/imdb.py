@@ -30,7 +30,7 @@ class IMDBDataset(Dataset):
     ) -> None:
         self.encoded = [
             torch.tensor(
-                [_UNK if w not in vocab else vocab[w] for w in _tokenize(t)][:max_len] or [_UNK],
+                [vocab.get(w, _UNK) for w in _tokenize(t)][:max_len] or [_UNK],
                 dtype=torch.long,
             )
             for t in texts
@@ -49,7 +49,7 @@ def collate(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
     lengths = [b["input_ids"].numel() for b in batch]
     max_len = max(lengths)
     tokens = torch.full((len(batch), max_len), _PAD, dtype=torch.long)
-    for i, (b, L) in enumerate(zip(batch, lengths)):
+    for i, (b, L) in enumerate(zip(batch, lengths, strict=True)):
         tokens[i, :L] = b["input_ids"]
     labels = torch.stack([b["label"] for b in batch])
     return {"input_ids": tokens, "label": labels}

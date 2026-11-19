@@ -102,17 +102,15 @@ class S4DLayer(nn.Module):
         # Diagonal A = -exp(log_A_real) + i * A_imag  (HiPPO-flavoured init)
         self.log_A_real = nn.Parameter(torch.log(0.5 * torch.ones(d_model, d_state)))
         n = torch.arange(d_state, dtype=torch.float32)
-        if init == "lin":  # S4D-Lin: A_n = -1/2 + i * pi * n
-            a_imag = math.pi * n
-        else:  # S4D-Inv: A_n = -1/2 + i * N(N+1) / (2(2n+1))
-            a_imag = d_state * (d_state + 1) / (2 * (2 * n + 1))
+        # S4D-Lin: A_n = -1/2 + i * pi * n;  S4D-Inv: A_n = -1/2 + i * N(N+1) / (2(2n+1))
+        a_imag = math.pi * n if init == "lin" else d_state * (d_state + 1) / (2 * (2 * n + 1))
         self.A_imag = nn.Parameter(a_imag.repeat(d_model, 1))
 
         # Per-channel step size, kept in (dt_min, dt_max) by a softplus.
         u = torch.linspace(0.0, 1.0, d_model)
         dt_init = torch.exp(u * math.log(dt_max) + (1 - u) * math.log(dt_min))
-        inv_softplus = lambda y: y + torch.log(-torch.expm1(-y))  # inverse of softplus
-        self.dt_param = nn.Parameter(inv_softplus(dt_init))
+        inv_softplus_dt = dt_init + torch.log(-torch.expm1(-dt_init))  # softplus^-1(dt_init)
+        self.dt_param = nn.Parameter(inv_softplus_dt)
 
         # Complex input/output matrices B, C
         scale = 1.0 / math.sqrt(d_state)
@@ -136,23 +134,21 @@ class S4DLayer(nn.Module):
         Computed in L-chunks so the (chunk, D, N) power tensor stays small.
         """
         p = self._params()
-        a_bar, b_bar = zoh_discretization(p["delta"], p["a"], p["b"])  # (D, N) complex
+        _, b_bar = zoh_discretization(p["delta"], p["a"], p["b"])  # (D, N) complex
         cb = b_bar * p["c"]  # (D, N)
         ks = []
         device = cb.device
         for start in range(0, L, chunk):
             k_idx = torch.arange(start, min(start + chunk, L), device=device, dtype=torch.float32)
             powers = torch.exp(
-                k_idx.view(-1, 1, 1)
-                * p["delta"].view(1, -1, 1)
-                * p["a"].view(1, -1, N := self.d_state)
+                k_idx.view(-1, 1, 1) * p["delta"].view(1, -1, 1) * p["a"].view(1, -1, self.d_state)
             )
             ks.append(torch.einsum("ldn,dn->dl", powers, cb))
         return torch.cat(ks, dim=1).real  # y = x conv Re(K)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         """x: (B, T, D) -> (B, T, D) via causal FFT convolution."""
-        B, T, D = x.shape
+        T = x.shape[1]
         k = self.kernel(T)  # (D, L) real
         k_f = torch.fft.rfft(k, n=2 * T)  # (D, T+1)
         x_f = torch.fft.rfft(x.transpose(1, 2), n=2 * T)  # (B, D, T+1)

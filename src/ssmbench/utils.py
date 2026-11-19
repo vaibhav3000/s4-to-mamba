@@ -133,7 +133,7 @@ def count_parameters(model: torch.nn.Module) -> int:
 def load_config(path: str | Path) -> dict[str, Any]:
     """Load a YAML experiment config. Relative paths inside the config are
     resolved by the caller; this function only parses."""
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     if not isinstance(cfg, dict):
         raise ValueError(f"Config at {path} must parse to a mapping, got {type(cfg)}")

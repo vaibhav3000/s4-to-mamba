@@ -85,7 +85,7 @@ class TransformerBackbone(nn.Module):
 
     def forward(self, emb: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         T = emb.shape[1]
-        if T > self.max_len:
+        if self.max_len < T:
             raise ValueError(f"Sequence length {T} exceeds max_len {self.max_len}")
         x = emb + self.pe[:T].to(dtype=emb.dtype)
         for block in self.blocks:

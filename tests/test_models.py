@@ -196,11 +196,11 @@ def test_s4d_block_step_equals_forward_and_reuses_its_discretization(
 def test_classifier_shapes_and_determinism(name: str) -> None:
     torch.manual_seed(5)
     kwargs = {
-        "transformer": dict(d_model=32, n_layers=2, n_heads=4, max_len=128),
-        "s4d": dict(d_model=32, n_layers=2, d_state=8),
-        "mamba": dict(d_model=32, n_layers=2, d_state=8),
-        "mamba2": dict(d_model=32, n_layers=2, d_state=8, headdim=16, chunk_size=16),
-        "mamba3": dict(d_model=32, n_layers=2, d_state=8, headdim=16),
+        "transformer": {"d_model": 32, "n_layers": 2, "n_heads": 4, "max_len": 128},
+        "s4d": {"d_model": 32, "n_layers": 2, "d_state": 8},
+        "mamba": {"d_model": 32, "n_layers": 2, "d_state": 8},
+        "mamba2": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16, "chunk_size": 16},
+        "mamba3": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16},
     }[name]
     backbone = build_backbone(name, kwargs)
     model = SequenceClassifier(backbone, vocab_size=20, d_model=32, padding_idx=0)
@@ -225,11 +225,11 @@ def test_right_padding_does_not_change_short_sequence_logits(name: str) -> None:
     right-padded inside a longer batch."""
     torch.manual_seed(7)
     kwargs = {
-        "transformer": dict(d_model=32, n_layers=2, n_heads=4, max_len=128),
-        "s4d": dict(d_model=32, n_layers=2, d_state=8),
-        "mamba": dict(d_model=32, n_layers=2, d_state=8),
-        "mamba2": dict(d_model=32, n_layers=2, d_state=8, headdim=16, chunk_size=16),
-        "mamba3": dict(d_model=32, n_layers=2, d_state=8, headdim=16),
+        "transformer": {"d_model": 32, "n_layers": 2, "n_heads": 4, "max_len": 128},
+        "s4d": {"d_model": 32, "n_layers": 2, "d_state": 8},
+        "mamba": {"d_model": 32, "n_layers": 2, "d_state": 8},
+        "mamba2": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16, "chunk_size": 16},
+        "mamba3": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16},
     }[name]
     backbone = build_backbone(name, kwargs)
     model = SequenceClassifier(backbone, vocab_size=20, d_model=32, padding_idx=0)

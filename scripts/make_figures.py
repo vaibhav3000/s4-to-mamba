@@ -19,8 +19,8 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
+import matplotlib.pyplot as plt
+import numpy as np
 
 MODELS = ["transformer", "s4d", "mamba", "mamba2", "mamba3"]
 LABELS = {
@@ -143,7 +143,7 @@ def efficiency_figures(results: Path, out: Path) -> None:
         for model in MODELS:
             pts = sorted(series[key].get(model, []))
             if pts:
-                xs, ys = zip(*pts)
+                xs, ys = zip(*pts, strict=True)
                 ax.plot(xs, ys, marker="o", ms=4, color=COLORS[model], label=LABELS[model])
             # measured hardware limits get their own marker + annotation
             for L in sorted(set(ooms[key].get(model, []))):
@@ -241,7 +241,7 @@ def training_figures(results: Path, out: Path) -> None:
         ("parity", "token_accuracy", "Parity: token accuracy"),
         ("imdb", "train_loss", "IMDb train loss"),
     ]
-    for ax, (prefix, key, title) in zip(axes.flat, panels):
+    for ax, (prefix, key, title) in zip(axes.flat, panels, strict=True):
         for run_name, run in sorted(runs.items()):
             if not run_name.startswith(prefix):
                 continue
@@ -305,7 +305,7 @@ def exact_copy_figures(results: Path, out: Path) -> None:
             fb = run.get("final_by_length") or {}
             pts = sorted((int(L), v[key]) for L, v in fb.items() if v.get(key) is not None)
             if pts:
-                xs, ys = zip(*pts)
+                xs, ys = zip(*pts, strict=True)
                 ax.plot(xs, ys, marker="o", ms=5, color=COLORS[model], label=LABELS[model])
         ax.axhline(chance, ls="--", lw=1, color="gray")
         ax.text(
@@ -334,7 +334,6 @@ def task_formulation_figure(results: Path, out: Path) -> None:
     sel, exact = {}, {}
     for model in MODELS:
         p1 = results / f"selective_copy_{model}.json"
-        p2 = results / f"exact_copy_{model}.json"
         if p1.exists():
             r = json.loads(p1.read_text(encoding="utf-8"))
             v = _final(r, "sequence_success")
@@ -368,7 +367,7 @@ def task_formulation_figure(results: Path, out: Path) -> None:
         color="#0a5aa0",
     )
     # mark genuinely-not-measured cells so a missing bar is not read as 0.0
-    for xi, m in zip(x, models_present):
+    for xi, m in zip(x, models_present, strict=True):
         if m not in sel:
             ax.text(
                 xi - w / 2,

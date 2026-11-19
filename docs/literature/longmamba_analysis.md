@@ -39,8 +39,10 @@ but applied to the SSM state dynamics instead of positional embeddings.
 ## Why it matters to this repository
 
 Our exact-copy extrapolation results (results/exact_copy_*.json) show every
-model collapsing outside the training length distribution, and our
-efficiency suite shows what happens near hardware limits. LongMamba's thesis
+model collapsing beyond the single training length (32), and our
+efficiency suite shows what happens near hardware limits (the committed sweep predates
+later benchmark fixes, and some of its points only ran through Windows system-memory
+fallback; see results/PROVENANCE.md). LongMamba's thesis
 is that length extrapolation failures have *mechanical* causes inside the
 state dynamics (specific channels, specific decays), not just "not enough
 training". That complements our Jelassi-et-al. reproduction: the paper shows

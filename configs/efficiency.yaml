@@ -1,5 +1,7 @@
 # Efficiency benchmark: latency / memory / throughput vs sequence length.
-# Run: python scripts/run_efficiency.py --config configs/efficiency.yaml
+# Run: ssmbench-efficiency --config configs/efficiency.yaml
+# (python scripts/run_efficiency.py is a thin wrapper with the same flags). The committed
+# results/efficiency_gpu.json predates the current benchmark code; see results/PROVENANCE.md.
 device: auto
 out_path: results/efficiency_gpu.json
 batch_size: 8

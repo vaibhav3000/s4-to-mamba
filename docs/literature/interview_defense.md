@@ -2,20 +2,24 @@
 
 Answers are tied to the actual experiments in this repository
 (results/selective_copy_*.json, results/exact_copy_*.json, and the papers in
-REFERENCES.md).
+REFERENCES.md). Those runs are single-seed and predate later fixes to the models (see
+results/PROVENANCE.md), so the numbers are stale until re-run.
 
 **Why does one benchmark favor Mamba and another favor Transformers?**
 Because "copying" is not one task. Selective copying asks the model to keep k
-marker->value pairs (constant information, ~5 values) and filter a long noise
+marker->value pairs (constant information: 3-5 values in training, 5-10 at test) and filter a long noise
 stream: the skill is selective forgetting, which is exactly what input-dependent
 gates give Mamba, and LTI models are provably bad at it (our s4d: 6% token
 accuracy). Exact copying asks the model to reproduce every token: the
 information grows linearly with length, there is no noise to reject, and the
 binding constraint becomes state capacity. Attention re-reads the prompt, so
 its memory grows with context; a fixed state cannot. Same word, different
-bottleneck, opposite ranking. Our measured flip: on selective copy mamba2
-0.183 vs transformer 0.0 sequence success; on exact copy transformer 1.0
-(in-dist) vs mamba2 0.0.
+bottleneck, different ranking. Our measured difference: on selective copy mamba2
+0.183 vs transformer 0.0 sequence success, measured out of distribution (L=128 and 5-10
+pairs after training on L=64 and 3-5 pairs); on exact copy transformer 1.0 vs mamba2 0.0 at
+the single training length 32, where the LTI s4d also scored 1.0. So the exact-copy gap in
+our runs is not evidence of a state-capacity limit: Mamba-1/2 were still improving when
+training stopped.
 
 **What exactly is copying?**
 Reproducing a substring of the input at specified output positions. The
@@ -43,25 +47,32 @@ markers, ignore noise". On exact copying there is no ignore option, so slots
 are overloaded and older tokens decay.
 
 **Why can state size become a bottleneck?**
-State size N and model width D fix the state dimension. Our exact-copy result
-makes the bottleneck visible: in-distribution the Mambas plateau around 0.11-0.15
-token accuracy at the same budget where the Transformer is perfect, and past
-the training range every SSM decays toward chance as length grows.
+State size N and model width D fix the state dimension, which caps what can be copied in
+principle. Our exact-copy runs do not show that cap. At L=32 the Mambas reached only
+0.11-0.15 token accuracy where the Transformer was perfect, but their validation loss was
+still falling every epoch when the 6-epoch schedule ended, their states hold far more
+numbers than a 32-letter string needs, and the LTI s4d, with fewer parameters (95,902
+against 358,174 for Mamba-1), copied perfectly. Past the training length every model, the
+Transformer included, falls to or near chance, and with a single training length that says
+little about capacity.
 
 **What is a fair model comparison?**
 Match the things that could otherwise explain the gap: parameter scale,
-training data, steps, schedule, evaluation protocol (ours: identical configs,
-one shared budget, seeds fixed). Then vary exactly one thing: the task
-formulation. Also state what is NOT matched: our educational Mamba lacks fused
-kernels (wall-clock), and our Transformer uses sinusoidal positions (paper's
-best copier used ALiBi).
+training data, steps, schedule, evaluation protocol (ours: identical data, steps, schedule
+and evaluation, and matched width and depth, all with one seed, 42). Then vary exactly one
+thing: the task formulation. Also state what is NOT matched or is limited: parameter counts
+(on exact copy, from 95,902 for s4d to 602,782 for the Transformer), a single training
+string length (32), our educational Mamba lacks fused kernels (wall-clock), and our
+Transformer uses absolute sinusoidal positions (paper's best copier used ALiBi).
 
 **What is length generalization?**
 Performance on inputs longer than anything seen in training. It is a different
 skill from in-distribution accuracy: it requires the solution to be expressed
 in a length-independent way. Our exact-copy extrapolation shows every model
-collapsing at our scale, and the paper shows it is PE-dependent for
-Transformers (ALiBi extrapolates, NoPE does not) and capacity-bound for SSMs.
+collapsing at our scale after training on a single string length (32), which gives no model
+a reason to learn a length-independent solution. The paper reports that it is PE-dependent
+for Transformers (ALiBi extrapolates, NoPE does not) and capacity-bound for SSMs; our runs do
+not test either point directly.
 
 **Why can different benchmarks give opposite conclusions?**
 Because each benchmark samples a different region of the skill space: memory
@@ -71,30 +82,35 @@ one point in that space, not the space. Our repo now measures four points
 them.
 
 **What did your reproduction actually prove?**
-A qualitative reproduction at ~1/8 scale: the paper's in-distribution ranking
-(transformers >> selective SSMs on exact copying) reproduces at matched
-budget, its PE-dependence finding reproduces as a failure mode (our
-sinusoidal-PE transformer collapses exactly where they say absolute PEs do),
-and combined with our selective-copy results it establishes the
-task-dependence claim. It does not reproduce their ALiBi extrapolation
-success, and it is single-seed.
+Less than the original write-up claimed. At ~1/8 scale and matched width and depth (not
+parameter count), the Transformer beat Mamba-1/2 on in-distribution exact copying, which is
+consistent with the paper's ranking. But training used one string length, Mamba-1/2 were
+still improving when training stopped, and the LTI s4d also copied perfectly, so the run does
+not show the paper's state-capacity mechanism. Our sinusoidal-PE Transformer collapsed past
+the training length, consistent with the paper's finding about absolute PEs. Combined with
+our selective-copy results this suggests rankings depend on the task, though the two scores
+compare an out-of-distribution test with an in-distribution one. It does not reproduce
+their ALiBi extrapolation success, it is single-seed, and it predates later code fixes.
 
 **If Mamba's state is the bottleneck, why did s4d copy perfectly in-distribution?**
-Because its block is gated (input-dependent SiLU gate) even though the
-convolution kernel is LTI. Within trained lengths the kernel acts as a bank of
-learned echo responses and the gate selects the right one. Past the trained
-range it collapses to chance: the echo bank has no response for unseen delays.
-In-distribution copying does not require selectivity over content; it requires
-a delay line plus length detection, which an LTI + gate system can implement.
+Because every training string has the same length (32), the answer is always the prompt
+delayed by the same fixed offset. A fixed LTI convolution can implement that delay
+directly, with the SiLU gate passing it through; no content selection and no length detection
+are needed. Past the trained length the required delay changes and s4d falls to chance.
+The premise is also doubtful: these runs do not show that Mamba's state is the bottleneck
+(see the state-size answer above).
 
 **Rapid-fire**
-- "Did Mamba fail at copying?" -> In-dist it lagged badly at our budget; the
-  capacity failure at extrapolation is the structural result.
-- "Is the paper wrong then?" -> No; both rankings are real; the tasks differ.
+- "Did Mamba fail at copying?" -> In-dist it lagged badly within 6 epochs and was
+  still improving when training stopped. Every model, the Transformer included, failed past
+  the single training length, so the extrapolation results do not isolate a capacity limit.
+- "Is the paper wrong then?" -> No. Our exact-copy runs are consistent with its ranking, the
+  tasks differ, and neither of our copy results is clean evidence on its own (see above).
 - "Which copy task is more realistic?" -> Different: selective copy is
   retrieval-from-noise; exact copy is duplication. LLM copying behavior
   (Jelassi et al. pretrained-model experiments) is closer to exact copying.
 - "How would you fix the Transformer extrapolation?" -> ALiBi or RoPE, per the
   paper; documented future work.
-- "What would you run next?" -> prefix/suffix n-gram lookup (their other
-  tasks), multiple seeds, ALiBi arm.
+- "What would you run next?" -> training on variable string lengths (5 to 32
+  and beyond), training the SSMs to convergence, multiple seeds, an ALiBi arm, and
+  prefix/suffix n-gram lookup (their other tasks).

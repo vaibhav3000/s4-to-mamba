@@ -1,5 +1,6 @@
-# IMDb sentiment classification: architecture quality comparison at matched budget.
-# Every model trains with the identical protocol (same data, optimizer schedule, seeds).
+# IMDb sentiment classification: architecture quality comparison at matched width and depth
+# (parameter counts differ). Every model trains with the identical protocol: same data,
+# optimizer and schedule, and a single seed (42).
 name_prefix: imdb
 task:
   type: classification
@@ -22,10 +23,11 @@ train:
   warmup_frac: 0.05
   seed: 42
 # Backbones: matched depth (4 blocks) and width (d_model=128).
-# NOTE: mamba and mamba3 are intentionally NOT trained on IMDb — their
+# NOTE: mamba and mamba3 are intentionally NOT trained on IMDb: their
 # python-loop sequential scans make the wall-clock prohibitive on the
-# 6 GB RTX 4050 (see README section 4 and the efficiency table). Only
-# transformer/s4d/mamba2 have committed results.
+# 6 GB RTX 4050 (see the README's IMDb section and the efficiency table).
+# Only transformer/s4d/mamba2 have committed results, and those predate the
+# fixes described in results/PROVENANCE.md.
 models:
   transformer: {d_model: 128, n_layers: 4, n_heads: 4}
   s4d:         {d_model: 128, n_layers: 4, d_state: 16}

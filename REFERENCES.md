@@ -47,8 +47,11 @@ entry, and the originality statement at the end applies to all of them.
   [arXiv:2603.15569](https://arxiv.org/abs/2603.15569)
   The three changes implemented or described in `src/ssmbench/models/mamba3_minimal.py`:
   exponential-trapezoidal discretization (its Table 1 also names the exponential-Euler rule
-  used retroactively for Mamba-1/2), complex-valued transitions, and the MIMO formulation
-  (described only; this repository keeps SISO per head). Its expressivity discussion, drawing
+  used retroactively for Mamba-1/2), complex-valued transitions (here with a static learned
+  rotation parameter `theta`, so the per-step rotation depends on the input only through the
+  step size `delta`, and with real `B` and `C` and a real readout; the module docstring lists
+  these details), and the MIMO formulation (described only; this repository keeps SISO per
+  head). Its expressivity discussion, drawing
   on Grazzi et al. and Merrill et al., is the background for the parity result in
   `results/parity_*.json`.
 
@@ -73,7 +76,12 @@ No code was copied from the official repositories or from any other source. Idea
 and initialization conventions are cited to the papers above, and the official repositories
 were used as reading material for conventions, not as code to transplant. Every file in
 `src/ssmbench/models/` is an original educational implementation written from first
-principles; correctness is established by the equivalence tests in `tests/test_models.py`
-(parallel versus recurrent forms, chunked versus sequential scans, and reduction of Mamba-3
-to the Mamba-1/2 rule), not by comparison against reference kernels. Benchmark numbers quoted
-in the documentation come exclusively from committed JSON files in `results/`.
+principles. Correctness is checked by the tests in `tests/test_models.py` (parallel versus
+recurrent forms, chunked versus sequential scans, and reduction of Mamba-3 to the Mamba-1/2
+rule) and in `tests/test_references.py` (independent float64 and complex128 references
+written from the equations, ZOH through the matrix exponential, and float64 gradchecks), not
+by comparison against the official kernels. The first group alone passed while two real bugs
+were present (the S4D ZOH input matrix and the way Mamba-2/3 heads read `B` and `C`), which is
+why the second group exists. Benchmark numbers quoted in the documentation come exclusively
+from committed JSON files in `results/`; those runs predate the fixes and are stale until
+re-run (see `results/PROVENANCE.md`).

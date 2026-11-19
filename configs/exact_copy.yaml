@@ -17,7 +17,7 @@ data:
   train_samples: 8000
   eval_samples: 256
   train:
-    max_len: 32      # strings up to length 32 during training (min 5 by construction)
+    max_len: 32      # every training string has exactly this length; lengths are not varied
   eval_lengths: [32, 64, 128]   # in-distribution, then extrapolation
 train:
   epochs: 6
@@ -27,7 +27,8 @@ train:
   scheduler: cosine
   warmup_frac: 0.05
   seed: 42
-# Matched budgets: d_model=128, 3 blocks for every model.
+# Matched width and depth (d_model=128, 3 blocks for every model), not matched parameter
+# counts (see n_parameters in results/exact_copy_*.json). Single seed (42).
 models:
   transformer: {d_model: 128, n_layers: 3, n_heads: 4}
   s4d:         {d_model: 128, n_layers: 3, d_state: 16}

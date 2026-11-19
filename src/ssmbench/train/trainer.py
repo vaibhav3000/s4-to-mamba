@@ -5,14 +5,23 @@ Supports two task types:
 - "token_classification": per-token targets with -100 ignore (copy, parity).
   Metrics: token accuracy and, for selective copy, full-sequence success rate.
 
-Every run writes <out_dir>/<config name>.json containing the config
-snapshot, per-epoch history, final metrics, parameter count and environment
-information. These files are the single source of truth for the result tables.
+Every run (one model variant, one run seed) writes <out_dir>/seed<k>.json with
+the resolved config, the per-epoch validation history, final metrics on every test
+evaluation set, the parameter count, the attention backend that ran (Transformers),
+memory and provenance. These files are the single source of truth for the result
+tables. See docs/design/step2.md section 4 and docs/adr/0001, 0008.
 """
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import json
+import math
+import os
+import random
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -25,13 +34,16 @@ from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 
 from ..data.imdb import get_imdb_loaders
+from ..data.loaders import TaskLoaders
 from ..data.synthetic import (
     get_exact_copy_loaders,
     get_parity_loaders,
     get_selective_copy_loaders,
 )
 from ..models import build_backbone
+from ..models.attention import detect_attention_backend
 from ..models.blocks import SequenceClassifier, TokenLevelClassifier
+from ..models.transformer_minimal import TransformerBackbone
 from ..utils import (
     config_to_jsonable,
     count_parameters,
@@ -41,6 +53,7 @@ from ..utils import (
     resolve_device,
     run_provenance,
     seed_everything,
+    source_sha256,
 )
 
 
@@ -58,6 +71,8 @@ class TrainConfig:
     amp: bool = False
     seed: int = 42
     optimizer: str = "adamw"
+    # torch.use_deterministic_algorithms for the run (docs/adr/0008).
+    deterministic: bool = False
 
 
 def _env_info(device: torch.device) -> dict:
@@ -131,34 +146,31 @@ def build_model(cfg: dict) -> nn.Module:
     raise ValueError(f"Unknown task type {task!r}")
 
 
-def get_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, dict[int, DataLoader] | None]:
-    """Build (train, in-distribution eval, optional extra eval loaders by length).
+def get_loaders(cfg: dict) -> TaskLoaders:
+    """Training, validation and named test loaders of the task in cfg["data"].
 
-    ``extra_eval`` is non-None only for datasets that evaluate the same trained
-    model at several string lengths (exact copy: in-distribution and
-    extrapolation lengths). Keys are the lengths, values are DataLoaders.
+    Every dataset is fixed by the data seed cfg["data"]["seed"]; the run seed in
+    cfg["train"] never changes which examples a run sees (docs/adr/0001).
     """
     dcfg = cfg["data"]
     name = dcfg["name"]
     if name == "imdb":
-        train, val, _vocab, _ = get_imdb_loaders(
+        loaders, _vocab = get_imdb_loaders(
             max_features=dcfg.get("max_features", 20000),
             max_len=dcfg.get("max_len", 1024),
             batch_size=dcfg.get("batch_size", 32),
             train_subset=dcfg.get("train_subset"),
-            val_subset=dcfg.get("val_subset"),
-            seed=cfg["train"].get("seed", 42),
+            val_size=dcfg.get("val_size", 2500),
+            test_subset=dcfg.get("test_subset"),
+            seed=dcfg.get("seed", 42),
         )
-        return train, val, None
+        return loaders
     if name == "selective_copy":
-        train, val, _ = get_selective_copy_loaders(dcfg)
-        return train, val, None
+        return get_selective_copy_loaders(dcfg)
     if name == "parity":
-        train, val, _ = get_parity_loaders(dcfg)
-        return train, val, None
+        return get_parity_loaders(dcfg)
     if name == "exact_copy":
-        train, val, eval_loaders, _ = get_exact_copy_loaders(dcfg)
-        return train, val, eval_loaders
+        return get_exact_copy_loaders(dcfg)
     raise ValueError(f"Unknown dataset {name!r}")
 
 
@@ -209,22 +221,116 @@ def evaluate(model: nn.Module, loader: DataLoader, task: str, device: torch.devi
     return metrics
 
 
+# Run-config keys that say where a run executes or writes, not what it computes.
+RUN_LOCATION_KEYS = frozenset({"device", "checkpoint_dir"})
+
+
+def run_config_sha256(cfg: dict) -> str:
+    """SHA-256 of everything in a run config that determines its result."""
+    measured = {k: v for k, v in cfg.items() if k not in RUN_LOCATION_KEYS}
+    payload = json.dumps(config_to_jsonable(measured), sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+@contextlib.contextmanager
+def deterministic_algorithms(enabled: bool) -> Iterator[None]:
+    """Turn on torch's deterministic algorithms for the block, then restore the previous
+    setting. CUBLAS_WORKSPACE_CONFIG must reach cuBLAS before its first handle is made;
+    ssmbench-train sets it at start-up, and this sets it too for library callers."""
+    previous = torch.are_deterministic_algorithms_enabled()
+    previous_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    if enabled:
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        torch.use_deterministic_algorithms(True)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(previous, warn_only=previous_warn_only)
+
+
+def _rng_state(device: torch.device) -> dict[str, Any]:
+    """Every RNG a training epoch draws from, in a torch.load(weights_only=True) form."""
+    _, keys, pos, has_gauss, cached = np.random.get_state()
+    return {
+        "torch": torch.get_rng_state(),
+        "cuda": torch.cuda.get_rng_state_all() if device.type == "cuda" else [],
+        "numpy": {
+            "keys": torch.from_numpy(np.asarray(keys).astype(np.int64)),
+            "pos": int(pos),
+            "has_gauss": int(has_gauss),
+            "cached": float(cached),
+        },
+        "python": random.getstate(),
+    }
+
+
+def _set_rng_state(state: dict[str, Any], device: torch.device) -> None:
+    torch.set_rng_state(state["torch"])
+    if device.type == "cuda" and state["cuda"]:
+        torch.cuda.set_rng_state_all(state["cuda"])
+    n = state["numpy"]
+    keys = n["keys"].numpy().astype(np.uint32)
+    np.random.set_state(("MT19937", keys, n["pos"], n["has_gauss"], n["cached"]))
+    random.setstate(state["python"])
+
+
+def _save_checkpoint(path: Path, payload: dict[str, Any]) -> None:
+    """torch.save into a temporary file in the same directory, then os.replace, so an
+    interrupted save never leaves a truncated checkpoint."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    torch.save(payload, tmp)
+    os.replace(tmp, path)
+
+
+def _detect_backend(model: nn.Module, loader: DataLoader, device: torch.device) -> list[str] | None:
+    """SDPA kernel families one training-mode forward runs, for Transformer backbones
+    (None for SSMs). Uses the first validation batch (a sequential loader, so no RNG is
+    drawn) and runs no backward."""
+    backbone = getattr(model, "backbone", None)
+    if not isinstance(backbone, TransformerBackbone):
+        return None
+    tokens = next(iter(loader))["input_ids"].to(device)
+    model.train()
+    return detect_attention_backend(lambda: model(tokens))
+
+
 def run_training(cfg: dict, out_dir: str | Path) -> dict:
-    """Train one model on one task; write results.json; return the results dict."""
+    """Train one model variant with one run seed; write <out_dir>/seed<k>.json.
+
+    cfg: task, data, train (TrainConfig fields; train.seed is the run seed), model
+    {name, kwargs}, device, and optionally name, config (the experiment config's name),
+    label (the model variant) and checkpoint_dir. With checkpoint_dir, every epoch ends
+    with a checkpoint (model, optimizer, scheduler, history and every RNG state); a run
+    that finds a checkpoint written with the same run config and source resumes from it
+    and ends bitwise identical to an uninterrupted run. The checkpoint is deleted once
+    the result file is written.
+    """
     out_dir = Path(out_dir)
     tcfg = TrainConfig(**cfg["train"])
+    cfg_hash = run_config_sha256(cfg)
+    with deterministic_algorithms(tcfg.deterministic):
+        results = _train(cfg, tcfg, cfg_hash)
+    dump_json(results, out_dir / f"seed{tcfg.seed}.json")
+    if cfg.get("checkpoint_dir"):
+        (Path(cfg["checkpoint_dir"]) / "last.pt").unlink(missing_ok=True)
+    return results
+
+
+def _train(cfg: dict, tcfg: TrainConfig, cfg_hash: str) -> dict:
     seed_everything(tcfg.seed)
     device = resolve_device(cfg.get("device", "auto"))
-    # One process may train several models in a row (scripts and ssmbench-train
-    # loop over a config's models), so the peak-memory window starts here.
+    # One process may train several runs in a row (ssmbench-train loops over variants
+    # and seeds), so the peak-memory window starts here.
     available_at_start = reset_peak_memory(device)
 
     model = build_model(cfg).to(device)
-    train_loader, val_loader, extra_eval = get_loaders(cfg)
+    loaders = get_loaders(cfg)
     task = cfg["task"]["type"]
+    attention_backend = _detect_backend(model, loaders.val, device)
 
     opt = torch.optim.AdamW(build_param_groups(model, tcfg.weight_decay), lr=tcfg.lr)
-    steps_per_epoch = len(train_loader)
+    steps_per_epoch = len(loaders.train)
     total_steps = steps_per_epoch * tcfg.epochs
     warmup = max(1, int(tcfg.warmup_frac * total_steps))
 
@@ -234,17 +340,37 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         if step < warmup:
             return step / warmup
         prog = (step - warmup) / max(total_steps - warmup, 1)
-        return 0.5 * (1 + np.cos(np.pi * prog))
+        return 0.5 * (1.0 + math.cos(math.pi * prog))
 
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
 
     history: list[dict] = []
+    start_epoch, resumed_from, elapsed_before = 0, None, 0.0
+    ckpt_path = Path(cfg["checkpoint_dir"]) / "last.pt" if cfg.get("checkpoint_dir") else None
+    source = source_sha256()
+    if ckpt_path is not None and ckpt_path.exists():
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
+        if ckpt.get("config_sha256") == cfg_hash and ckpt.get("source_sha256") == source:
+            model.load_state_dict(ckpt["model"])
+            opt.load_state_dict(ckpt["optimizer"])
+            sched.load_state_dict(ckpt["scheduler"])
+            history = list(ckpt["history"])
+            start_epoch = resumed_from = int(ckpt["epoch"])
+            elapsed_before = float(ckpt["elapsed_seconds"])
+            _set_rng_state(ckpt["rng"], device)
+            print(f"[{cfg.get('name')}] resuming after epoch {start_epoch}", flush=True)
+        else:
+            print(
+                f"[{cfg.get('name')}] ignoring {ckpt_path}: written with other settings or code",
+                flush=True,
+            )
+
     t0 = time.time()
-    for epoch in range(tcfg.epochs):
+    for epoch in range(start_epoch, tcfg.epochs):
         model.train()
         ep_loss, ep_batches = 0.0, 0
         ep_start = time.time()
-        for batch in train_loader:
+        for batch in loaders.train:
             tokens = batch["input_ids"].to(device)
             with torch.autocast(
                 device_type=device.type,
@@ -268,42 +394,60 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
             sched.step()
             ep_loss += float(loss.detach())
             ep_batches += 1
-        val_metrics = evaluate(model, val_loader, task, device)
+        val_metrics = evaluate(model, loaders.val, task, device)
         entry = {
             "epoch": epoch + 1,
             "train_loss": ep_loss / max(ep_batches, 1),
             "epoch_seconds": round(time.time() - ep_start, 2),
-            **val_metrics,
+            **{f"val_{k}": v for k, v in val_metrics.items()},
         }
         history.append(entry)
+        shown = {k: round(v, 4) if isinstance(v, float) else v for k, v in val_metrics.items()}
         print(
-            f"[{cfg['name']}] epoch {epoch + 1}/{tcfg.epochs} "
-            f"loss={entry['train_loss']:.4f} val={ {k: round(v, 4) if isinstance(v, float) else v for k, v in val_metrics.items()} }",
+            f"[{cfg.get('name')} seed {tcfg.seed}] epoch {epoch + 1}/{tcfg.epochs} "
+            f"loss={entry['train_loss']:.4f} val={shown}",
             flush=True,
         )
+        if ckpt_path is not None:
+            _save_checkpoint(
+                ckpt_path,
+                {
+                    "epoch": epoch + 1,
+                    "config_sha256": cfg_hash,
+                    "source_sha256": source,
+                    "model": model.state_dict(),
+                    "optimizer": opt.state_dict(),
+                    "scheduler": sched.state_dict(),
+                    "history": history,
+                    "elapsed_seconds": elapsed_before + time.time() - t0,
+                    "rng": _rng_state(device),
+                },
+            )
 
-    # Exact-copy extension: evaluate the SAME trained model at every string
-    # length (in-distribution and extrapolation), stored per length.
-    final_by_length: dict | None = None
-    if extra_eval:
-        final_by_length = {}
-        for length, loader in sorted(extra_eval.items()):
-            final_by_length[str(length)] = evaluate(model, loader, task, device)
-    # Peak over this run only: model build, training, every evaluation.
+    # Test evaluation sets: scored once, after the last epoch (no selection on them).
+    final_evals = {
+        name: evaluate(model, loader, task, device) for name, loader in loaders.tests.items()
+    }
+    # Peak over this process's part of the run: build, training, every evaluation.
     memory = peak_memory_stats(device, available_at_start)
-
-    results = {
-        "name": cfg["name"],
+    jsonable = config_to_jsonable(cfg)
+    return {
+        "name": cfg.get("name"),
+        "config": cfg.get("config"),
+        "label": cfg.get("label", cfg["model"]["name"]),
+        "seed": tcfg.seed,
         "task": task,
         "model": cfg["model"],
-        "train_config": config_to_jsonable(cfg)["train"],
-        "data_config": config_to_jsonable(cfg)["data"],
+        "train_config": jsonable["train"],
+        "data_config": jsonable["data"],
         "n_parameters": count_parameters(model),
         "history": history,
-        "final_by_length": final_by_length,
-        "wall_time_seconds": round(time.time() - t0, 1),
+        "final_evals": final_evals,
+        "attention_backend": attention_backend,
+        "resumed_from_epoch": resumed_from,
+        "wall_time_seconds": round(elapsed_before + time.time() - t0, 1),
         "environment": _env_info(device),
-        "provenance": run_provenance(device),
+        "provenance": {**run_provenance(device), "config_sha256": cfg_hash},
         "peak_gpu_mb": memory["peak_allocated_mb"] if memory else None,
         "peak_gpu_reserved_mb": memory["peak_reserved_mb"] if memory else None,
         "device_total_mb": memory["device_total_mb"] if memory else None,
@@ -311,5 +455,3 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         "gpu_free_at_end_mb": memory["free_at_end_mb"] if memory else None,
         "gpu_memory_spilled": memory["spilled"] if memory else None,
     }
-    dump_json(results, out_dir / f"{cfg['name']}.json")
-    return results

@@ -42,8 +42,10 @@ def test_train_cli_builds_one_run_config_per_requested_model(
     )
     assert len(runs) == 1
     cfg, out = runs[0]
-    assert out == str(tmp_path)
+    # One directory per variant under <out>/<name_prefix>/; the run writes seed<k>.json.
+    assert out == str(tmp_path / "parity" / "mamba3")
     assert cfg["name"] == "parity_mamba3" and cfg["device"] == "cpu"
+    assert cfg["train"]["seed"] == 42  # no --seeds: the config's train.seed
     assert cfg["model"] == {
         "name": "mamba3",
         "kwargs": {"d_model": 64, "n_layers": 2, "d_state": 32, "headdim": 32},

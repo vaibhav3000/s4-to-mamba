@@ -16,6 +16,8 @@ import torch
 from datasets import load_dataset
 from torch.utils.data import DataLoader, Dataset
 
+from .loaders import TaskLoaders
+
 _PAD, _UNK = 0, 1
 _TOKEN_RE = re.compile(r"[a-z0-9']+")
 
@@ -62,53 +64,58 @@ def build_vocab(texts: list[str], max_features: int) -> dict[str, int]:
     return {w: i + 2 for i, w in enumerate(most_common)}
 
 
+def split_train_indices(
+    n: int, train_size: int, val_size: int, seed: int
+) -> tuple[list[int], list[int]]:
+    """Disjoint training and validation indices into a split of n examples, from one seeded
+    permutation: the first train_size go to training, the next val_size to validation."""
+    if train_size + val_size > n:
+        raise ValueError(f"train_size {train_size} + val_size {val_size} exceeds {n} examples")
+    perm = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
+    return perm[:train_size], perm[train_size : train_size + val_size]
+
+
 def get_imdb_loaders(
     max_features: int = 20000,
     max_len: int = 1024,
     batch_size: int = 32,
     train_subset: int | None = None,
-    val_subset: int | None = None,
+    val_size: int = 2500,
+    test_subset: int | None = None,
     num_workers: int = 0,
     seed: int = 42,
     cache_dir: str | Path | None = None,
-) -> tuple[DataLoader, DataLoader, dict[str, int], int]:
-    """Build train/val DataLoaders over the standard IMDb split.
+) -> tuple[TaskLoaders, dict[str, int]]:
+    """Loaders over the standard IMDb splits, and the vocabulary.
 
-    Returns (train_loader, val_loader, vocab, n_classes).
-    `train_subset`/`val_subset` cap the number of samples (smoke tests / CPU runs).
+    Training and validation are disjoint draws from the training split (validation holds
+    val_size reviews; training takes train_subset, or the rest); the vocabulary is built
+    from the training reviews only. The single test set, "test", is the test split (its
+    first test_subset reviews when given). seed is the data seed.
     """
     ds = load_dataset("imdb", cache_dir=str(cache_dir) if cache_dir else None)
-    train_texts = ds["train"]["text"]
-    train_labels = ds["train"]["label"]
-    val_texts = ds["test"]["text"]
-    val_labels = ds["test"]["label"]
+    texts, labels = ds["train"]["text"], ds["train"]["label"]
+    test_texts, test_labels = ds["test"]["text"], ds["test"]["label"]
+    train_size = train_subset if train_subset else len(texts) - val_size
+    train_idx, val_idx = split_train_indices(len(texts), train_size, val_size, seed)
+    if test_subset:
+        test_texts, test_labels = test_texts[:test_subset], test_labels[:test_subset]
 
-    if train_subset:
-        g = torch.Generator().manual_seed(seed)
-        idx = torch.randperm(len(train_texts), generator=g)[:train_subset].tolist()
-        train_texts = [train_texts[i] for i in idx]
-        train_labels = [train_labels[i] for i in idx]
-    if val_subset:
-        val_texts = val_texts[:val_subset]
-        val_labels = val_labels[:val_subset]
-
+    train_texts = [texts[i] for i in train_idx]
     vocab = build_vocab(train_texts, max_features)
-    train_ds = IMDBDataset(train_texts, train_labels, vocab, max_len)
-    val_ds = IMDBDataset(val_texts, val_labels, vocab, max_len)
 
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=collate,
-        num_workers=num_workers,
-        drop_last=False,
+    def loader(subset_texts: list[str], subset_labels: list[int], shuffle: bool) -> DataLoader:
+        return DataLoader(
+            IMDBDataset(subset_texts, subset_labels, vocab, max_len),
+            batch_size=batch_size,
+            shuffle=shuffle,
+            collate_fn=collate,
+            num_workers=num_workers,
+        )
+
+    loaders = TaskLoaders(
+        train=loader(train_texts, [labels[i] for i in train_idx], shuffle=True),
+        val=loader([texts[i] for i in val_idx], [labels[i] for i in val_idx], shuffle=False),
+        tests={"test": loader(list(test_texts), list(test_labels), shuffle=False)},
     )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=batch_size,
-        shuffle=False,
-        collate_fn=collate,
-        num_workers=num_workers,
-    )
-    return train_loader, val_loader, vocab, 2
+    return loaders, vocab

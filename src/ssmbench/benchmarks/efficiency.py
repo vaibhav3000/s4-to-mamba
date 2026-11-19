@@ -37,9 +37,11 @@ from torch import nn
 from ..models import build_backbone
 from ..utils import (
     dump_json,
+    load_config,
     peak_memory_stats,
     reset_peak_memory,
     resolve_device,
+    run_provenance,
     seed_everything,
 )
 
@@ -270,27 +272,55 @@ def benchmark_single(
     return entry
 
 
-def run_efficiency(cfg: dict) -> dict:
+class ProvenanceMismatchError(RuntimeError):
+    """The results file holds entries measured with different code."""
+
+
+def _load_prior_entries(out_path: Path, source_hash: str, force: bool) -> list[dict]:
+    """Entries already in out_path that may be kept when resuming a sweep.
+
+    Resuming is for finishing an interrupted sweep of the SAME code. Entries whose
+    provenance.source_sha256 differs from source_hash (including entries written
+    before provenance existed) make this raise, unless force is set. Error entries
+    are dropped so those points are measured again.
+    """
+    if not out_path.exists():
+        return []
+    prior = json.loads(out_path.read_text(encoding="utf-8"))
+    entries = [e for e in prior.get("entries", []) if "error" not in e]
+    dropped = len(prior.get("entries", [])) - len(entries)
+    if dropped:
+        print(f"re-measuring {dropped} point(s) that ended in an error", flush=True)
+    foreign = [
+        f"{e.get('model')}@{e.get('seq_len')}"
+        for e in entries
+        if (e.get("provenance") or {}).get("source_sha256") != source_hash
+    ]
+    if foreign and not force:
+        raise ProvenanceMismatchError(
+            f"{out_path} holds {len(foreign)} entries measured with other code or without "
+            f"provenance ({', '.join(foreign[:5])}{', ...' if len(foreign) > 5 else ''}). "
+            "Resuming would mix code versions in one table. Move the file away to start "
+            "a clean sweep, or pass --force to merge anyway."
+        )
+    if foreign:
+        print(f"warning: merging {len(foreign)} entries from other code (--force)", flush=True)
+    return entries
+
+
+def run_efficiency(cfg: dict, force: bool = False) -> dict:
+    """Run (or resume) the sweep in cfg and write cfg["out_path"] after every point.
+
+    Every entry carries the provenance of the run that measured it; "environment"
+    describes the most recent run. force=True merges with entries from other code.
+    """
     device = resolve_device(cfg.get("device", "auto"))
     out_path = Path(cfg["out_path"])
-    entries: list[dict] = []
-    done: set[tuple[str, int]] = set()
-    if out_path.exists():
-        # Resume support: keep prior measurements (e.g. an expensive transformer
-        # sweep) and only run what is missing.
-        try:
-            prior = json.loads(out_path.read_text(encoding="utf-8"))
-            entries = list(prior.get("entries", []))
-            done = {(e.get("model"), e.get("seq_len")) for e in entries}
-        except (json.JSONDecodeError, OSError):
-            entries, done = [], set()
+    provenance = run_provenance(device)
+    entries = _load_prior_entries(out_path, provenance["source_sha256"], force)
+    done = {(str(e["model"]), int(e["seq_len"])) for e in entries}
     results = {
-        "environment": {
-            "torch": torch.__version__,
-            "device": str(device),
-            "gpu": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
-            "date": time.strftime("%Y-%m-%d"),
-        },
+        "environment": {**provenance, "date": time.strftime("%Y-%m-%d")},
         "config": cfg,
         "entries": entries,
     }
@@ -314,13 +344,16 @@ def run_efficiency(cfg: dict) -> dict:
                     # Not a hardware limit: record it and stop, so a code bug or a
                     # broken CUDA context is never plotted as an OOM.
                     error = f"{type(exc).__name__}: {exc}"[:300]
-                    results["entries"].append({"model": name, "seq_len": L, "error": error})
+                    results["entries"].append(
+                        {"model": name, "seq_len": L, "error": error, "provenance": provenance}
+                    )
                     dump_json(results, out_path)
                     raise RuntimeError(
                         f"{name} at T={L} failed with a non-OOM error; sweep aborted "
                         f"(recorded in {out_path})"
                     ) from exc
                 entry = {"model": name, "seq_len": L, "oom": True}
+            entry["provenance"] = provenance
             results["entries"].append(entry)
             dump_json(results, out_path)
             if any(entry.get(k) for k in ("oom", "oom_train", "oom_infer", "oom_decode")):
@@ -333,11 +366,17 @@ def run_efficiency(cfg: dict) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", required=True, help="YAML config for the efficiency benchmark")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="resume into a results file that holds entries measured with other code",
+    )
     args = ap.parse_args()
-    from ..utils import load_config
-
     cfg = load_config(args.config)
-    run_efficiency(cfg)
+    try:
+        run_efficiency(cfg, force=args.force)
+    except ProvenanceMismatchError as exc:
+        raise SystemExit(f"error: {exc}") from exc
 
 
 if __name__ == "__main__":

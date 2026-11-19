@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import gc
+import hashlib
 import json
+import platform
 import random
+import subprocess
 from dataclasses import asdict, is_dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +66,62 @@ def peak_memory_stats(device: torch.device) -> dict[str, float | bool] | None:
         "peak_reserved_mb": round(reserved / mib, 1),
         "device_total_mb": round(total / mib, 1),
         "spilled": reserved > total,
+    }
+
+
+PACKAGE_DIR = Path(__file__).resolve().parent
+
+
+def source_sha256(package_dir: Path = PACKAGE_DIR) -> str:
+    """SHA-256 of the package source: every .py file under package_dir in sorted
+    relative-path order, with CRLF normalized to LF so Windows and Linux checkouts
+    of the same code hash the same."""
+    digest = hashlib.sha256()
+    for path in sorted(package_dir.rglob("*.py")):
+        digest.update(path.relative_to(package_dir).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _git(*args: str) -> str | None:
+    """Output of a git command run in the package directory; None when git is not
+    installed or the package is not inside a git checkout (provenance then records
+    the field as unknown)."""
+    try:
+        out = subprocess.run(
+            ["git", *args],
+            cwd=PACKAGE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def run_provenance(device: torch.device) -> dict[str, Any]:
+    """Where and with which code a measurement was taken; stored with every result.
+
+    git_dirty is True when the package source differs from git_sha (result files
+    written during a run do not count); source_sha256 identifies the exact code
+    even without git.
+    """
+    status = _git("status", "--porcelain", "--untracked-files=no", "--", ".")
+    return {
+        "git_sha": _git("rev-parse", "HEAD"),
+        "git_dirty": None if status is None else bool(status),
+        "source_sha256": source_sha256(),
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "device": str(device),
+        "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+        "timestamp_utc": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 
 

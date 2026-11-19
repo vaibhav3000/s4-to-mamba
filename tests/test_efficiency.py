@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import platform
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ import torch
 from torch import nn
 
 from ssmbench.benchmarks import efficiency
+from ssmbench.utils import source_sha256
 
 TINY_KWARGS: dict[str, dict[str, int]] = {
     "transformer": {"d_model": 32, "n_layers": 1, "n_heads": 4},
@@ -129,3 +131,93 @@ def test_non_oom_error_is_recorded_and_aborts_the_sweep(
     saved = json.loads(Path(cfg["out_path"]).read_text(encoding="utf-8"))
     assert saved["entries"][-1]["error"].startswith("IndexError")
     assert not any(e.get("oom") for e in saved["entries"])
+
+
+def _fake_benchmark(name: str, seq_len: int, *args: object, **kwargs: object) -> dict:
+    return {"model": name, "seq_len": seq_len, "train_step_ms": 1.0}
+
+
+PROVENANCE_KEYS = {
+    "git_sha",
+    "git_dirty",
+    "source_sha256",
+    "torch",
+    "cuda",
+    "python",
+    "platform",
+    "device",
+    "gpu",
+    "timestamp_utc",
+}
+
+
+def test_every_entry_carries_provenance(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(efficiency, "benchmark_single", _fake_benchmark)
+    results = efficiency.run_efficiency(_sweep_cfg(tmp_path, ["s4d", "mamba2"], [16]))
+    assert len(results["entries"]) == 2
+    for entry in results["entries"]:
+        assert set(entry["provenance"]) == PROVENANCE_KEYS
+        assert entry["provenance"]["source_sha256"] == source_sha256()
+        assert entry["provenance"]["python"] == platform.python_version()
+
+
+def test_resume_skips_points_measured_with_the_same_code(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    measured: list[tuple[str, int]] = []
+
+    def counting_benchmark(name: str, seq_len: int, *args: object, **kwargs: object) -> dict:
+        measured.append((name, seq_len))
+        return _fake_benchmark(name, seq_len)
+
+    monkeypatch.setattr(efficiency, "benchmark_single", counting_benchmark)
+    efficiency.run_efficiency(_sweep_cfg(tmp_path, ["s4d"], [16]))
+    results = efficiency.run_efficiency(_sweep_cfg(tmp_path, ["s4d"], [16, 32]))
+    assert measured == [("s4d", 16), ("s4d", 32)]
+    assert [e["seq_len"] for e in results["entries"]] == [16, 32]
+
+
+@pytest.mark.parametrize(
+    "prior_provenance",
+    [None, {"source_sha256": "0" * 64}],
+    ids=["no-provenance", "other-source"],
+)
+def test_resume_refuses_entries_from_other_code_unless_forced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prior_provenance: dict | None
+) -> None:
+    """A results file written by other code (or before provenance existed, like the
+    committed one) is not silently extended; --force merges explicitly."""
+    monkeypatch.setattr(efficiency, "benchmark_single", _fake_benchmark)
+    cfg = _sweep_cfg(tmp_path, ["s4d"], [16, 32])
+    prior_entry: dict = {"model": "s4d", "seq_len": 16, "train_step_ms": 9.0}
+    if prior_provenance is not None:
+        prior_entry["provenance"] = prior_provenance
+    Path(cfg["out_path"]).write_text(json.dumps({"entries": [prior_entry]}), encoding="utf-8")
+
+    with pytest.raises(efficiency.ProvenanceMismatchError, match="--force"):
+        efficiency.run_efficiency(cfg)
+    assert json.loads(Path(cfg["out_path"]).read_text(encoding="utf-8")) == {
+        "entries": [prior_entry]
+    }
+
+    results = efficiency.run_efficiency(cfg, force=True)
+    assert [(e["seq_len"], e["train_step_ms"]) for e in results["entries"]] == [
+        (16, 9.0),
+        (32, 1.0),
+    ]
+
+
+def test_resume_remeasures_points_that_ended_in_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(efficiency, "benchmark_single", _fake_benchmark)
+    cfg = _sweep_cfg(tmp_path, ["s4d"], [16])
+    error_entry = {
+        "model": "s4d",
+        "seq_len": 16,
+        "error": "IndexError: boom",
+        "provenance": {"source_sha256": source_sha256()},
+    }
+    Path(cfg["out_path"]).write_text(json.dumps({"entries": [error_entry]}), encoding="utf-8")
+    results = efficiency.run_efficiency(cfg)
+    assert len(results["entries"]) == 1 and "error" not in results["entries"][0]

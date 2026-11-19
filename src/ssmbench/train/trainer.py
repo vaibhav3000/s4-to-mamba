@@ -39,6 +39,7 @@ from ..utils import (
     peak_memory_stats,
     reset_peak_memory,
     resolve_device,
+    run_provenance,
     seed_everything,
 )
 
@@ -298,6 +299,7 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         "final_by_length": final_by_length,
         "wall_time_seconds": round(time.time() - t0, 1),
         "environment": _env_info(device),
+        "provenance": run_provenance(device),
         "peak_gpu_mb": memory["peak_allocated_mb"] if memory else None,
         "peak_gpu_reserved_mb": memory["peak_reserved_mb"] if memory else None,
         "device_total_mb": memory["device_total_mb"] if memory else None,

@@ -32,7 +32,15 @@ from ..data.synthetic import (
 )
 from ..models import build_backbone
 from ..models.blocks import SequenceClassifier, TokenLevelClassifier
-from ..utils import config_to_jsonable, count_parameters, dump_json, resolve_device, seed_everything
+from ..utils import (
+    config_to_jsonable,
+    count_parameters,
+    dump_json,
+    peak_memory_stats,
+    reset_peak_memory,
+    resolve_device,
+    seed_everything,
+)
 
 
 @dataclass
@@ -202,6 +210,9 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
     tcfg = TrainConfig(**cfg["train"])
     seed_everything(tcfg.seed)
     device = resolve_device(cfg.get("device", "auto"))
+    # One process may train several models in a row (scripts and ssmbench-train
+    # loop over a config's models), so the peak-memory window starts here.
+    reset_peak_memory(device)
 
     model = build_model(cfg).to(device)
     train_loader, val_loader, extra_eval = get_loaders(cfg)
@@ -266,10 +277,8 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
             flush=True,
         )
 
-    if device.type == "cuda":
-        peak_gpu_mb = round(torch.cuda.max_memory_allocated() / 1024**2, 1)
-    else:
-        peak_gpu_mb = None
+    # Peak over model build, training and the per-epoch evaluations of this run only.
+    memory = peak_memory_stats(device)
     # Exact-copy extension: evaluate the SAME trained model at every string
     # length (in-distribution and extrapolation), stored per length.
     final_by_length: dict | None = None
@@ -289,7 +298,10 @@ def run_training(cfg: dict, out_dir: str | Path) -> dict:
         "final_by_length": final_by_length,
         "wall_time_seconds": round(time.time() - t0, 1),
         "environment": _env_info(device),
-        "peak_gpu_mb": peak_gpu_mb,
+        "peak_gpu_mb": memory["peak_allocated_mb"] if memory else None,
+        "peak_gpu_reserved_mb": memory["peak_reserved_mb"] if memory else None,
+        "device_total_mb": memory["device_total_mb"] if memory else None,
+        "gpu_memory_spilled": memory["spilled"] if memory else None,
     }
     dump_json(results, out_dir / f"{cfg['name']}.json")
     return results

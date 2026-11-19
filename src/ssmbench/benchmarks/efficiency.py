@@ -30,7 +30,13 @@ from pathlib import Path
 import torch
 
 from ..models import BACKBONES, build_backbone
-from ..utils import dump_json, resolve_device, seed_everything
+from ..utils import (
+    dump_json,
+    peak_memory_stats,
+    reset_peak_memory,
+    resolve_device,
+    seed_everything,
+)
 
 DEFAULT_KWARGS: dict[str, dict] = {
     "transformer": dict(d_model=256, n_layers=2, n_heads=4),
@@ -65,6 +71,21 @@ def _time_gpu(fn, repeats: int, warmup: int = 2, device: str = "cuda") -> tuple[
             times.append((time.perf_counter() - t0) * 1000)
     t = torch.tensor(times)
     return float(t.mean()), float(t.std())
+
+
+def _record_memory(entry: dict, phase: str, stats: dict[str, float | bool] | None) -> None:
+    """Store peak allocated/reserved memory, device total and the spill flag for a phase.
+
+    peak_<phase>_mb keeps its historical meaning (peak allocated). spilled_<phase> is
+    True when the peak reserved memory exceeded the device's total memory, which on
+    Windows means the driver paged to system memory and the timing is not a VRAM one.
+    """
+    if stats is None:
+        return
+    entry[f"peak_{phase}_mb"] = stats["peak_allocated_mb"]
+    entry[f"peak_{phase}_reserved_mb"] = stats["peak_reserved_mb"]
+    entry["device_total_mb"] = stats["device_total_mb"]
+    entry[f"spilled_{phase}"] = stats["spilled"]
 
 
 def _decode_stepwise(backbone, embed, seq_len: int, device: torch.device) -> None:
@@ -123,13 +144,11 @@ def benchmark_single(
             loss.backward()
             opt.step()
 
-        if device.type == "cuda":
-            torch.cuda.reset_peak_memory_stats()
+        reset_peak_memory(device)
         mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
         entry["train_step_ms"] = round(mean_ms, 2)
         entry["train_step_ms_std"] = round(std_ms, 2)
-        if device.type == "cuda":
-            entry["peak_train_mb"] = round(torch.cuda.max_memory_allocated() / 1024**2, 1)
+        _record_memory(entry, "train", peak_memory_stats(device))
         entry["train_tokens_per_s"] = round(batch_size * seq_len / (mean_ms / 1000))
         del opt, tokens, target
     except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
@@ -137,9 +156,12 @@ def benchmark_single(
         torch.cuda.empty_cache()
         return entry
 
-    # Inference and decode are timed in eval mode (dropout off), as at deployment.
+    # Inference and decode are timed in eval mode (dropout off), as at deployment,
+    # and without the training gradients occupying memory.
     backbone.eval()
     embed.eval()
+    backbone.zero_grad(set_to_none=True)
+    embed.zero_grad(set_to_none=True)
 
     # ---- full forward, no grad, batch 1 ----
     try:
@@ -149,12 +171,10 @@ def benchmark_single(
             with torch.no_grad():
                 backbone(embed(tokens))
 
-        if device.type == "cuda":
-            torch.cuda.reset_peak_memory_stats()
+        reset_peak_memory(device)
         mean_ms, _ = _time_gpu(infer, repeats, device=device.type)
         entry["infer_ms"] = round(mean_ms, 2)
-        if device.type == "cuda":
-            entry["peak_infer_mb"] = round(torch.cuda.max_memory_allocated() / 1024**2, 1)
+        _record_memory(entry, "infer", peak_memory_stats(device))
         del tokens
     except (torch.cuda.OutOfMemoryError, torch.AcceleratorError):
         entry["oom_infer"] = True

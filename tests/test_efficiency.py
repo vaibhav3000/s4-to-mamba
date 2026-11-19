@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import platform
+import subprocess
 from pathlib import Path
 
 import pytest
 import torch
 from torch import nn
 
+from ssmbench import utils
 from ssmbench.benchmarks import efficiency
 from ssmbench.utils import source_sha256
 
@@ -174,7 +176,10 @@ PROVENANCE_KEYS = {
     "platform",
     "device",
     "gpu",
+    "nvidia_driver",
     "timestamp_utc",
+    "config_sha256",
+    "gpu_state_at_sweep_start",
 }
 
 
@@ -240,6 +245,7 @@ def test_resume_refuses_entries_from_other_code_unless_forced(
         ({"batch_size": 4}, "batch_size differs"),
         ({"repeats": 3}, "repeats differs"),
         ({"provenance_torch": "0.0.0"}, "torch differs"),
+        ({"warmup_note": "another measurement setting"}, "config_sha256 differs"),
     ],
 )
 def test_resume_refuses_entries_from_other_settings_or_environment(
@@ -300,3 +306,70 @@ def test_resume_remeasures_points_that_ended_in_an_error(
     Path(cfg["out_path"]).write_text(json.dumps({"entries": [error_entry]}), encoding="utf-8")
     results = efficiency.run_efficiency(cfg)
     assert len(results["entries"]) == 1 and "error" not in results["entries"][0]
+
+
+def test_config_hash_ignores_point_selection_but_not_measurement_settings() -> None:
+    """Adding models or lengths extends a sweep; changing how points are measured does
+    not, so only the latter changes the hash that resume compares."""
+    base = {
+        "device": "cuda",
+        "batch_size": 8,
+        "repeats": 5,
+        "out_path": "a.json",
+        "models": ["s4d"],
+        "seq_lengths": [1024],
+        "model_length_limits": {"mamba": 4096},
+    }
+    h = efficiency.config_sha256(base)
+    assert h == efficiency.config_sha256(
+        dict(base, out_path="b.json", models=["s4d", "mamba"], seq_lengths=[1024, 2048])
+    )
+    assert h == efficiency.config_sha256(dict(base, model_length_limits={}))
+    assert h != efficiency.config_sha256(dict(base, batch_size=4))
+    assert h != efficiency.config_sha256(dict(base, device="cpu"))
+
+
+def _fake_nvidia_smi(monkeypatch: pytest.MonkeyPatch, stdout: str | None) -> list[list[str]]:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        if stdout is None:
+            raise FileNotFoundError("nvidia-smi")
+        return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(utils.subprocess, "run", fake_run)
+    return calls
+
+
+def test_nvidia_smi_query_parses_one_gpu_and_never_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _fake_nvidia_smi(monkeypatch, "2100, 8001, P0\n")
+    assert utils.nvidia_smi_query(["clocks.sm", "clocks.mem", "pstate"]) == {
+        "clocks.sm": "2100",
+        "clocks.mem": "8001",
+        "pstate": "P0",
+    }
+    assert calls[0][0] == "nvidia-smi"
+    _fake_nvidia_smi(monkeypatch, None)  # not installed
+    assert utils.nvidia_smi_query(["driver_version"]) is None
+    _fake_nvidia_smi(monkeypatch, "only-one-field\n")  # unexpected output
+    assert utils.nvidia_smi_query(["clocks.sm", "clocks.mem"]) is None
+
+
+def test_cuda_provenance_records_the_driver_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fake_nvidia_smi(monkeypatch, "551.86\n")
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda device=None: "Fake GPU")
+    provenance = utils.run_provenance(torch.device("cuda"))
+    assert provenance["nvidia_driver"] == "551.86" and provenance["gpu"] == "Fake GPU"
+    assert provenance["python"] == platform.python_version()
+
+
+def test_gpu_state_at_sweep_start_is_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fake_nvidia_smi(monkeypatch, "1500, 8001, 2370, 8001, 61, 35.2, P2\n")
+    state = efficiency.gpu_state(torch.device("cuda"))
+    assert state is not None and state["clocks.sm"] == "1500" and state["pstate"] == "P2"
+    _fake_nvidia_smi(monkeypatch, None)
+    assert efficiency.gpu_state(torch.device("cuda")) is None
+    assert efficiency.gpu_state(torch.device("cpu")) is None

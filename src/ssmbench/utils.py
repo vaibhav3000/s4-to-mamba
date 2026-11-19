@@ -133,6 +133,27 @@ def _git(*args: str) -> str | None:
     return out.stdout.strip() if out.returncode == 0 else None
 
 
+def nvidia_smi_query(fields: list[str]) -> dict[str, str] | None:
+    """Values of `fields` (nvidia-smi --query-gpu names) for the first GPU nvidia-smi
+    lists, or None when nvidia-smi is missing, fails, times out or prints something
+    unexpected. Best effort by design: callers record None and carry on."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", f"--query-gpu={','.join(fields)}", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = out.stdout.strip().splitlines() if out.returncode == 0 else []
+    values = [v.strip() for v in lines[0].split(",")] if lines else []
+    if len(values) != len(fields):
+        return None
+    return dict(zip(fields, values, strict=True))
+
+
 def run_provenance(device: torch.device) -> dict[str, Any]:
     """Where and with which code a measurement was taken; stored with every result.
 
@@ -141,6 +162,7 @@ def run_provenance(device: torch.device) -> dict[str, Any]:
     even without git.
     """
     status = _git("status", "--porcelain", "--untracked-files=no", "--", ".")
+    driver = nvidia_smi_query(["driver_version"]) if device.type == "cuda" else None
     return {
         "git_sha": _git("rev-parse", "HEAD"),
         "git_dirty": None if status is None else bool(status),
@@ -151,6 +173,7 @@ def run_provenance(device: torch.device) -> dict[str, Any]:
         "platform": platform.platform(),
         "device": str(device),
         "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+        "nvidia_driver": driver.get("driver_version") if driver else None,
         "timestamp_utc": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 

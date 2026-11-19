@@ -559,8 +559,10 @@ rm -- results/efficiency_gpu.json
 The committed version stays in history: `git show bcc3f7d:results/efficiency_gpu.json`.
 
 If the sweep stops partway, run the same command again without changing any source file,
-`batch_size`, `repeats`, torch build or GPU in between: resume reuses an entry only when all of
-those match. If anything has to change, delete the file again and start over. `configs/efficiency.yaml` has `device: auto`, so check the new
+`batch_size`, `repeats`, other measurement setting in `configs/efficiency.yaml`, torch build or
+GPU in between: resume reuses an entry only when all of those match (adding models or lengths
+is fine). Every new entry also records the NVIDIA driver version, and the GPU clocks,
+temperature, power draw and P-state at sweep start when `nvidia-smi` is available. If anything has to change, delete the file again and start over. `configs/efficiency.yaml` has `device: auto`, so check the new
 file's environment block says CUDA before using it.
 
 For planning only: in the old sweep the slowest training-step points were mamba 4096

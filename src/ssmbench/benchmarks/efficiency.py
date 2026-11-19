@@ -27,9 +27,11 @@ Timings use CUDA events around synchronized regions after warm-up (perf_counter
 on CPU); nothing is estimated or copied from papers. Only out-of-memory errors
 are recorded as OOM; any other error is recorded and stops the sweep. Every
 entry stores its provenance (git commit, dirty flag, source hash, torch, CUDA,
-Python, platform, GPU, timestamp), and a resumed sweep reuses an entry only if
-it was measured with the same source, torch build, GPU, batch size and repeat
-count (--force overrides). Run with:
+Python, platform, GPU, NVIDIA driver, timestamp, a hash of the measurement
+settings in the config, and the GPU clocks, temperature and power at sweep start
+when nvidia-smi is available), and a resumed sweep reuses an entry only if it
+was measured with the same batch size, repeat count, source, torch build, GPU
+and config settings (--force overrides). Run with:
 
     ssmbench-efficiency --config configs/efficiency.yaml
 
@@ -41,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import time
 from collections.abc import Callable
@@ -54,6 +57,7 @@ from ..models import build_backbone
 from ..utils import (
     dump_json,
     load_config,
+    nvidia_smi_query,
     peak_memory_stats,
     reset_peak_memory,
     resolve_device,
@@ -315,20 +319,47 @@ class ProvenanceMismatchError(RuntimeError):
     """The results file holds entries measured with different code."""
 
 
-# Provenance fields that must match for a prior entry to count as the same setup.
-RESUME_PROVENANCE_KEYS = ("source_sha256", "torch", "cuda", "gpu")
-# Run settings, stored on every entry, that must match too.
+# Config keys that only choose which points a sweep runs; they do not change how a
+# point is measured, so the config hash that resume compares leaves them out.
+POINT_SELECTION_KEYS = frozenset({"out_path", "models", "seq_lengths", "model_length_limits"})
+# nvidia-smi fields recorded once at the start of a sweep (best effort).
+GPU_STATE_FIELDS = [
+    "clocks.sm",
+    "clocks.mem",
+    "clocks.max.sm",
+    "clocks.max.mem",
+    "temperature.gpu",
+    "power.draw",
+    "pstate",
+]
+# Run settings, stored on every entry, that must match for a prior entry to be reused.
 RESUME_SETTING_KEYS = ("batch_size", "repeats")
+# Provenance fields that must match too.
+RESUME_PROVENANCE_KEYS = ("source_sha256", "torch", "cuda", "gpu", "config_sha256")
+
+
+def config_sha256(cfg: dict) -> str:
+    """SHA-256 of the measurement settings in cfg (every key except POINT_SELECTION_KEYS)."""
+    measured = {k: v for k, v in cfg.items() if k not in POINT_SELECTION_KEYS}
+    return hashlib.sha256(json.dumps(measured, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def gpu_state(device: torch.device) -> dict[str, str] | None:
+    """Clocks, temperature, power draw and P-state of the GPU from nvidia-smi, or None
+    off CUDA or when nvidia-smi is unavailable. Never raises."""
+    if device.type != "cuda":
+        return None
+    return nvidia_smi_query(GPU_STATE_FIELDS)
 
 
 def _resume_mismatch(entry: dict, provenance: dict, settings: dict) -> str | None:
     """Why entry cannot be reused in this run, or None if it can."""
+    for key in RESUME_SETTING_KEYS:
+        if entry.get(key) != settings[key]:
+            return key
     prior = entry.get("provenance") or {}
     for key in RESUME_PROVENANCE_KEYS:
         if prior.get(key) != provenance[key]:
-            return key
-    for key in RESUME_SETTING_KEYS:
-        if entry.get(key) != settings[key]:
             return key
     return None
 
@@ -339,8 +370,8 @@ def _load_prior_entries(
     """Entries already in out_path that may be kept when resuming a sweep.
 
     Resuming is for finishing an interrupted sweep of the SAME setup: the same
-    package source, torch, CUDA and GPU (RESUME_PROVENANCE_KEYS) and the same
-    batch_size and repeats. Any other entry, including those written before
+    batch_size and repeats, and the same package source, torch, CUDA, GPU and
+    measurement settings in the config (RESUME_PROVENANCE_KEYS). Any other entry, including those written before
     provenance existed, makes this raise unless force is set. Error entries are
     dropped so those points are measured again.
     """
@@ -377,7 +408,11 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
     """
     device = resolve_device(cfg.get("device", "auto"))
     out_path = Path(cfg["out_path"])
-    provenance = run_provenance(device)
+    provenance = {
+        **run_provenance(device),
+        "config_sha256": config_sha256(cfg),
+        "gpu_state_at_sweep_start": gpu_state(device),
+    }
     settings = {"batch_size": cfg.get("batch_size", 8), "repeats": cfg.get("repeats", 5)}
     entries = _load_prior_entries(out_path, provenance, settings, force)
     done = {(str(e["model"]), int(e["seq_len"])) for e in entries}

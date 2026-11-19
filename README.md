@@ -435,8 +435,8 @@ sizes. The committed results are the pre-fix runs (see
 [results/PROVENANCE.md](results/PROVENANCE.md)). `ssmbench-efficiency` writes
 to the `out_path` in `configs/efficiency.yaml` (`results/efficiency_gpu.json`)
 and resumes into it only if the existing entries come from the same code, torch
-build, GPU, batch size and repeat count; otherwise it stops unless you pass
-`--force`. For a clean sweep, move the committed file aside first rather than
+build, GPU, batch size, repeat count and other measurement settings in the config
+(adding models or lengths is fine); otherwise it stops unless you pass `--force`. For a clean sweep, move the committed file aside first rather than
 forcing a merge. Because results are committed, the figures can be rebuilt
 without a GPU.
 

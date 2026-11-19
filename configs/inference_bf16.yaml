@@ -12,14 +12,18 @@ seq_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
 models:
   - transformer_flash
   - transformer_efficient
+  - transformer_cudnn
   - s4d
   - mamba
   - mamba2
   - mamba3
-# d_model 256 and 2 layers come from DEFAULT_KWARGS in efficiency.py.
+# d_model 256 and 2 layers come from DEFAULT_KWARGS in efficiency.py. The Windows torch
+# 2.14.1+cu130 wheel has no FlashAttention (the smoke check records the refusal), so the
+# flash rows are recorded as unsupported and cuDNN is the half-precision fused kernel.
 variants:
   transformer_flash:     {backbone: transformer, attn_backend: flash}
   transformer_efficient: {backbone: transformer, attn_backend: efficient}
+  transformer_cudnn:     {backbone: transformer, attn_backend: cudnn}
 # Mamba-1 prefills with its Python-loop scan, one step per prompt token.
 model_length_limits:
   mamba: 8192

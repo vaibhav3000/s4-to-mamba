@@ -1,0 +1,33 @@
+# Efficiency sweep in float32: training step, full forward and stepwise decode versus
+# sequence length (src/ssmbench/benchmarks/efficiency.py).
+# Run: ssmbench-efficiency --config configs/efficiency_fp32.yaml
+# The bf16 sweep, with the FlashAttention and cuDNN Transformer rows, is efficiency_bf16.yaml.
+device: auto
+out_path: results/efficiency/sweep_fp32.json
+precision: fp32
+batch_size: 8
+repeats: 5
+measure_decode: false      # decode has its own benchmark: configs/inference_*.yaml
+stop_after_spill: true     # skip a variant's longer lengths once its training step spills
+seq_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
+models:
+  - transformer_efficient
+  - transformer_math
+  - transformer_naive
+  - s4d
+  - mamba
+  - mamba2
+  - mamba3
+# Labels to architectures and settings; d_model 256 and 2 layers come from
+# DEFAULT_KWARGS in efficiency.py. FlashAttention and cuDNN attention need fp16/bf16,
+# so float32 has the memory-efficient kernel, the math kernel and the naive reference.
+variants:
+  transformer_efficient: {backbone: transformer, attn_backend: efficient}
+  transformer_math:      {backbone: transformer, attn_backend: math}
+  transformer_naive:     {backbone: transformer, attn_backend: naive}   # reference only
+# The quadratic references materialize (B, H, T, T) score matrices and the Mamba-1 scan
+# is a Python loop over T; past these lengths they only measure WDDM paging.
+model_length_limits:
+  transformer_math: 4096
+  transformer_naive: 4096
+  mamba: 2048

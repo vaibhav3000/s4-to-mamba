@@ -70,23 +70,25 @@ def test_train_step_uses_an_lm_head_even_when_d_model_is_below_vocab() -> None:
     assert entry["n_parameters_with_embed_and_head"] == entry["n_parameters"] + embed_and_head
 
 
+# Every backbone now decodes through prefill/step (docs/adr/0003): the SSMs with an
+# O(1) recurrent state, the Transformer with a KV cache. No full-prefix recompute and no
+# prefill-time-per-token stand-in remain.
 DECODE_CASES = {
     "s4d": ({"d_model": 32, "n_layers": 1, "d_state": 4}, "decode_per_token_ms", "stepwise"),
-    "transformer": (TINY_KWARGS["transformer"], "decode_per_token_ms", "no KV cache"),
-    "mamba2": (TINY_KWARGS["mamba2"], "prefill_per_token_ms", "no step() path"),
+    "transformer": (TINY_KWARGS["transformer"], "decode_per_token_ms", "KV cache"),
+    "mamba2": (TINY_KWARGS["mamba2"], "decode_per_token_ms", "stepwise"),
     "mamba3": (
         {"d_model": 32, "n_layers": 1, "d_state": 8, "headdim": 16},
-        "prefill_per_token_ms",
-        "no step() path",
+        "decode_per_token_ms",
+        "stepwise",
     ),
 }
 
 
 @pytest.mark.parametrize("name", list(DECODE_CASES))
 def test_decode_numbers_are_labeled_by_what_was_timed(name: str) -> None:
-    """Only models with a step() path (or the Transformer's documented full-prefix
-    recompute) report decode_per_token_ms; Mamba-2/3 report prefill time / T under
-    its own key, never as a decode cost."""
+    """decode_per_token_ms is always a real decode (step() with a recurrent state or a
+    KV cache), labeled by decode_mode; no other per-token key stands in for it."""
     kwargs, key, label = DECODE_CASES[name]
     entry = efficiency.benchmark_single(
         name, seq_len=16, batch_size=2, repeats=2, device=torch.device("cpu"), model_kwargs=kwargs
@@ -401,3 +403,81 @@ def test_cuda_timing_and_memory_path_smoke() -> None:
         assert key in entry, key
     assert entry["peak_train_reserved_mb"] >= entry["peak_train_mb"] > 0
     assert entry["train_step_ms"] > 0
+
+
+def test_bf16_points_run_under_autocast_and_say_so() -> None:
+    entry = efficiency.benchmark_single(
+        "mamba2",
+        seq_len=16,
+        batch_size=2,
+        repeats=2,
+        device=torch.device("cpu"),
+        model_kwargs=TINY_KWARGS["mamba2"],
+        precision="bf16",
+    )
+    assert entry["precision"] == "bf16" and entry["train_step_ms"] > 0
+    with pytest.raises(ValueError, match="precision"):
+        efficiency.benchmark_single(
+            "s4d", 16, 2, 2, torch.device("cpu"), {"d_model": 8, "n_layers": 1}, precision="fp8"
+        )
+
+
+def test_timings_report_median_and_p90() -> None:
+    entry = efficiency.benchmark_single(
+        "s4d", 16, 2, 3, torch.device("cpu"), {"d_model": 16, "n_layers": 1, "d_state": 4}
+    )
+    for key in ("train_step_ms_median", "train_step_ms_p90", "infer_ms_median", "infer_ms_p90"):
+        assert entry[key] > 0, key
+    assert entry["train_step_ms_p90"] >= entry["train_step_ms_median"]
+
+
+def test_variants_are_labelled_and_record_the_attention_backend(tmp_path: Path) -> None:
+    cfg = _sweep_cfg(tmp_path, ["transformer_math", "s4d"], [16])
+    cfg["variants"] = {
+        "transformer_math": {
+            "backbone": "transformer",
+            "attn_backend": "math",
+            **TINY_KWARGS["transformer"],
+        },
+        "s4d": {"d_model": 16, "n_layers": 1, "d_state": 4},
+    }
+    results = efficiency.run_efficiency(cfg)
+    by_model = {e["model"]: e for e in results["entries"]}
+    tr = by_model["transformer_math"]
+    assert tr["architecture"] == "transformer" and tr["attn_backend_used"] == ["math"]
+    assert tr["model_kwargs"]["attn_backend"] == "math"
+    assert by_model["s4d"]["attn_backend_used"] is None
+
+
+def test_longer_lengths_are_skipped_after_a_spill(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    attempted: list[int] = []
+
+    def spilling(name: str, seq_len: int, *args: object, **kwargs: object) -> dict:
+        attempted.append(seq_len)
+        return {"model": name, "seq_len": seq_len, "train_step_ms": 1.0, "spilled_train": True}
+
+    monkeypatch.setattr(efficiency, "benchmark_single", spilling)
+    cfg = dict(_sweep_cfg(tmp_path, ["s4d"], [16, 32, 64]), stop_after_spill=True)
+    results = efficiency.run_efficiency(cfg)
+    assert attempted == [16]
+    skipped = [e for e in results["entries"] if e.get("skipped")]
+    assert [e["seq_len"] for e in skipped] == [32, 64]
+    assert "spilled at T=16" in skipped[0]["skipped"]
+    # Resume treats skipped points as done.
+    efficiency.run_efficiency(cfg)
+    assert attempted == [16]
+
+
+def test_decode_can_be_switched_off() -> None:
+    entry = efficiency.benchmark_single(
+        "s4d",
+        16,
+        2,
+        2,
+        torch.device("cpu"),
+        {"d_model": 16, "n_layers": 1, "d_state": 4},
+        measure_decode=False,
+    )
+    assert "decode_per_token_ms" not in entry and entry["decode_mode"] == "not measured"

@@ -1,27 +1,33 @@
 """Efficiency benchmark: latency, memory and throughput as functions of sequence length.
 
-Measures, per (architecture, sequence length):
+Measures, per (model variant, sequence length), at one precision per sweep (``precision``:
+fp32, or bf16/fp16 autocast with the SSM scans kept in float32):
 
 - ``train_step_ms``: forward + backward + optimizer step of a small language
   model (embedding, backbone, linear LM head over VOCAB tokens, cross-entropy)
-  over `batch_size` sequences, in fp32. Peak allocated and peak reserved CUDA
-  memory, the memory available when the phase started and the device total are
-  recorded, and ``spilled_train`` flags a reserved peak within a 7% safety margin of
-  what was available, or under 2% of the card free at the end of the phase (on
-  Windows the driver then pages to system memory, so the timing is not a VRAM
-  number).
+  over `batch_size` sequences. Peak allocated and peak reserved CUDA memory, the
+  memory available when the phase started and the device total are recorded, and
+  ``spilled_train`` flags a reserved peak within a 7% safety margin of what was
+  available, or under 2% of the card free at the end of the phase (on Windows the
+  driver then pages to system memory, so the timing is not a VRAM number).
 - ``infer_ms``: full forward pass including the LM head, no grad, batch 1, in
   eval mode with the training gradients dropped; memory as above.
-- decode cost per generated token, labeled by ``decode_mode``:
-  * mamba / s4d: true incremental decode with an O(1) recurrent state via
-    ``block.step()``; ``decode_per_token_ms`` = time for T steps / T.
-  * transformer: this implementation has no KV cache, so one more token re-runs
-    the whole prefix; ``decode_per_token_ms`` = one full forward over T tokens.
-  * mamba2 / mamba3: no step() path, so no decode cost is measured.
-    ``prefill_per_token_ms`` = one full forward over T tokens / T is recorded
-    instead; it is a prefill throughput number, not a decode latency.
+- ``decode_per_token_ms`` (unless ``measure_decode: false``): generating T tokens one
+  at a time from an empty decode state through ``backbone.step()``, divided by T. The
+  SSMs carry an O(1) recurrent state; the Transformer a KV cache, so its later steps
+  attend to more positions. ``decode_mode`` says which. The prefill-then-decode
+  measurement (time to first token, tokens/s at a given context) is
+  ``ssmbench-inference``.
 - ``n_parameters`` (backbone only), ``n_parameters_with_embed_and_head`` and
-  throughput in tokens/s.
+  throughput in tokens/s. Every time has its mean, std, median and p90 over the
+  timed repeats.
+
+A sweep lists model variants in ``models``; ``variants`` maps a label to its
+architecture (``backbone``) and constructor arguments, so several Transformer attention
+backends are separate rows. Transformer entries record ``attn_backend_used``, the SDPA
+kernel family a profiled forward actually ran. With ``stop_after_spill``, a variant's
+longer lengths are recorded as skipped once its training step spills or runs out of
+memory.
 
 Timings use CUDA events around synchronized regions after warm-up (perf_counter
 on CPU); nothing is estimated or copied from papers. Only out-of-memory errors
@@ -33,10 +39,7 @@ when nvidia-smi is available), and a resumed sweep reuses an entry only if it
 was measured with the same batch size, repeat count, source, torch build, GPU
 and config settings (--force overrides). Run with:
 
-    ssmbench-efficiency --config configs/efficiency.yaml
-
-The committed results/efficiency_gpu.json predates these rules and the model
-fixes; see results/PROVENANCE.md.
+    ssmbench-efficiency --config configs/efficiency_fp32.yaml
 """
 
 from __future__ import annotations
@@ -45,15 +48,18 @@ import argparse
 import gc
 import hashlib
 import json
+import statistics
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol, cast
 
 import torch
 from torch import nn
 
 from ..models import build_backbone
+from ..models.attention import detect_attention_backend
+from ..models.blocks import Backbone
+from ..models.transformer_minimal import TransformerBackbone
 from ..utils import (
     dump_json,
     load_config,
@@ -63,6 +69,13 @@ from ..utils import (
     resolve_device,
     run_provenance,
     seed_everything,
+)
+from .common import (
+    check_precision,
+    precision_context,
+    resolve_variant,
+    summarize_ms,
+    time_calls,
 )
 
 DEFAULT_KWARGS: dict[str, dict] = {
@@ -83,24 +96,7 @@ def _time_gpu(
 
     std_ms is None when there is a single timed repeat.
     """
-    for _ in range(warmup):
-        fn()
-    if device == "cuda":
-        torch.cuda.synchronize()
-        times = []
-        for _ in range(repeats):
-            start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-            start.record()
-            fn()
-            end.record()
-            torch.cuda.synchronize()
-            times.append(start.elapsed_time(end))
-    else:
-        times = []
-        for _ in range(repeats):
-            t0 = time.perf_counter()
-            fn()
-            times.append((time.perf_counter() - t0) * 1000)
+    times = time_calls(fn, repeats, warmup, torch.device(device))
     t = torch.tensor(times)
     return float(t.mean()), (float(t.std()) if len(times) > 1 else None)
 
@@ -138,37 +134,20 @@ def _release_cuda_memory(device: torch.device) -> None:
         torch.cuda.empty_cache()
 
 
-class _StepBlock(Protocol):
-    """A block with an O(1)-state decode path (Mamba-1 and S4D blocks)."""
-
-    def init_state(self, batch_size: int, device: torch.device) -> dict[str, torch.Tensor]: ...
-
-    def step(self, x_t: torch.Tensor, state: dict[str, torch.Tensor]) -> torch.Tensor: ...
-
-
 def _decode_stepwise(
     backbone: nn.Module, embed: nn.Module, head: nn.Module, tokens: torch.Tensor
 ) -> None:
-    """True incremental decode of tokens (1, T) for backbones whose blocks expose
-    step(). The timed session includes one init_state() per block (for S4D, the
-    one-off discretization) and T steps; the tokens are generated beforehand."""
+    """Incremental decode of tokens (1, T) from an empty decode state: one
+    backbone.step() per token (O(1) recurrent state for the SSMs, a KV cache sized T for
+    the Transformer). The timed session includes init_state() (for S4D, the one-off
+    discretization; for the Transformer, the cache allocation); the tokens are generated
+    beforehand."""
+    if not isinstance(backbone, Backbone):
+        raise TypeError(f"{type(backbone).__name__} has no decode interface")
     with torch.no_grad():
-        blocks = backbone.blocks
-        if not isinstance(blocks, nn.ModuleList):
-            raise TypeError(f"{type(backbone).__name__} has no ModuleList of blocks to step")
-        steppers = [cast(_StepBlock, block) for block in blocks]
-        states = [block.init_state(1, tokens.device) for block in steppers]
+        state = backbone.init_state(1, tokens.device, max_len=tokens.shape[1])
         for t in range(tokens.shape[1]):
-            h = embed(tokens[:, t : t + 1])
-            for block, state in zip(steppers, states, strict=True):
-                h = block.step(h, state)
-            head(h)
-
-
-def _prefill(backbone: nn.Module, embed: nn.Module, head: nn.Module, tokens: torch.Tensor) -> None:
-    """One full forward over a prompt of shape (1, T)."""
-    with torch.no_grad():
-        head(backbone(embed(tokens)))
+            head(backbone.step(embed(tokens[:, t : t + 1]), state))
 
 
 def _measure_train_step(
@@ -179,6 +158,7 @@ def _measure_train_step(
     seq_len: int,
     repeats: int,
     device: torch.device,
+    precision: str = "fp32",
 ) -> dict:
     """Time AdamW steps of embed -> backbone -> head with cross-entropy.
 
@@ -191,20 +171,20 @@ def _measure_train_step(
     opt = torch.optim.AdamW(params, lr=1e-4)
 
     def train_step() -> None:
-        logits = head(backbone(embed(tokens)))  # (B, T, VOCAB)
-        loss = nn.functional.cross_entropy(logits.reshape(-1, VOCAB), target.reshape(-1))
+        with precision_context(device, precision):
+            logits = head(backbone(embed(tokens)))  # (B, T, VOCAB)
+            loss = nn.functional.cross_entropy(
+                logits.reshape(-1, VOCAB).float(), target.reshape(-1)
+            )
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
 
     available_at_start = reset_peak_memory(device)
-    mean_ms, std_ms = _time_gpu(train_step, repeats, device=device.type)
-    result = {
-        "train_step_ms": round(mean_ms, 2),
-        "train_step_ms_std": round(std_ms, 2) if std_ms is not None else None,
-    }
+    times = time_calls(train_step, repeats, warmup=2, device=device)
+    result: dict = summarize_ms(times, "train_step_ms")
     _record_memory(result, "train", peak_memory_stats(device, available_at_start))
-    result["train_tokens_per_s"] = round(batch_size * seq_len / (mean_ms / 1000))
+    result["train_tokens_per_s"] = round(batch_size * seq_len / (result["train_step_ms"] / 1000))
     return result
 
 
@@ -215,7 +195,11 @@ def benchmark_single(
     repeats: int,
     device: torch.device,
     model_kwargs: dict | None = None,
+    precision: str = "fp32",
+    measure_decode: bool = True,
 ) -> dict:
+    """Measure one sweep point of architecture `name` (see the module docstring)."""
+    check_precision(precision)
     kwargs = dict(DEFAULT_KWARGS.get(name, {}))
     if model_kwargs:
         kwargs.update(model_kwargs)
@@ -226,8 +210,10 @@ def benchmark_single(
     lm_modules = (embed, backbone, head)
     entry: dict = {
         "model": name,
+        "architecture": name,
         "seq_len": seq_len,
         "batch_size": batch_size,
+        "precision": precision,
         # Backbone only, so the count compares mixers; the embedding and LM head add
         # the same 2 * VOCAB * d_model + VOCAB for every model of a given width.
         "n_parameters": sum(p.numel() for p in backbone.parameters()),
@@ -235,12 +221,14 @@ def benchmark_single(
             p.numel() for m in lm_modules for p in m.parameters()
         ),
         "model_kwargs": kwargs,
+        "attn_backend_used": None,
     }
-
     # ---- training step: embedding -> backbone -> LM head -> cross-entropy ----
     try:
         entry.update(
-            _measure_train_step(embed, backbone, head, batch_size, seq_len, repeats, device)
+            _measure_train_step(
+                embed, backbone, head, batch_size, seq_len, repeats, device, precision
+            )
         )
     except Exception as exc:
         if not _is_oom(exc):
@@ -254,18 +242,27 @@ def benchmark_single(
     for m in lm_modules:
         m.eval()
         m.zero_grad(set_to_none=True)
+    if isinstance(backbone, TransformerBackbone):
+        # Which SDPA kernel family runs, read from a profiled no-grad forward outside
+        # every timed region.
+        probe = torch.randint(1, VOCAB, (1, min(seq_len, 64)), device=device)
+
+        def probe_forward() -> None:
+            with torch.no_grad(), precision_context(device, precision):
+                backbone(embed(probe))
+
+        entry["attn_backend_used"] = detect_attention_backend(probe_forward)
 
     # ---- full forward, no grad, batch 1 ----
     try:
         tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)
 
         def infer() -> None:
-            with torch.no_grad():
+            with torch.no_grad(), precision_context(device, precision):
                 head(backbone(embed(tokens)))
 
         available_at_start = reset_peak_memory(device)
-        mean_ms, _ = _time_gpu(infer, repeats, device=device.type)
-        entry["infer_ms"] = round(mean_ms, 2)
+        entry.update(summarize_ms(time_calls(infer, repeats, warmup=2, device=device), "infer_ms"))
         _record_memory(entry, "infer", peak_memory_stats(device, available_at_start))
     except Exception as exc:
         if not _is_oom(exc):
@@ -274,38 +271,26 @@ def benchmark_single(
         _release_cuda_memory(device)
         return entry
 
-    # ---- decode ----
+    # ---- decode: T tokens from an empty state, one step() each ----
+    if not measure_decode:
+        entry["decode_mode"] = "not measured"
+        return entry
     try:
         rep_d = max(repeats // 2, 1)
         prompt = torch.randint(1, VOCAB, (1, seq_len), device=device)  # outside timing
-        if name in ("mamba", "s4d"):
 
-            def decode_steps() -> None:
+        def decode_steps() -> None:
+            with precision_context(device, precision):
                 _decode_stepwise(backbone, embed, head, prompt)
 
-            entry["decode_mode"] = "stepwise (O(1) state)"
-            mean_ms, _ = _time_gpu(decode_steps, rep_d, warmup=1, device=device.type)
-            entry["decode_ms"] = round(mean_ms, 2)
-            entry["decode_per_token_ms"] = round(mean_ms / seq_len, 4)
-        elif name in ("mamba2", "mamba3"):
-
-            def prefill() -> None:
-                _prefill(backbone, embed, head, prompt)
-
-            entry["decode_mode"] = (
-                "not measured: no step() path; prefill_per_token_ms is one full forward / T"
-            )
-            mean_ms, _ = _time_gpu(prefill, rep_d, warmup=1, device=device.type)
-            entry["prefill_per_token_ms"] = round(mean_ms / seq_len, 4)
-        else:  # transformer: no KV cache, so each new token re-runs the full prefix
-
-            def decode_tr() -> None:
-                _prefill(backbone, embed, head, prompt)
-
-            entry["decode_mode"] = "full-prefix recompute per new token (no KV cache)"
-            mean_ms, _ = _time_gpu(decode_tr, rep_d, warmup=1, device=device.type)
-            # Generating ONE more token costs a full forward over the prefix.
-            entry["decode_per_token_ms"] = round(mean_ms, 4)
+        entry["decode_mode"] = (
+            "KV cache (step attends to every cached position)"
+            if isinstance(backbone, TransformerBackbone)
+            else "stepwise (O(1) state)"
+        )
+        times = time_calls(decode_steps, rep_d, warmup=1, device=device)
+        entry["decode_ms"] = round(statistics.fmean(times), 2)
+        entry["decode_per_token_ms"] = round(statistics.fmean(times) / seq_len, 4)
     except Exception as exc:
         if not _is_oom(exc):
             raise
@@ -421,20 +406,45 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
         "config": cfg,
         "entries": entries,
     }
-    for name in cfg["models"]:
-        # Optional per-model length cap: the educational sequential scans
-        # (mamba, mamba3) have python-loop step counts proportional to T, so
-        # very long sequences are measured only for the vectorized forms.
-        limit = cfg.get("model_length_limits", {}).get(name)
+    precision = cfg.get("precision", "fp32")
+    check_precision(precision)
+    for label in cfg["models"]:
+        architecture, model_kwargs = resolve_variant(label, cfg.get("variants"))
+        # Optional per-model length cap: the educational sequential scan (mamba) has
+        # python-loop step counts proportional to T, so very long sequences are
+        # measured only for the vectorized forms.
+        limit = cfg.get("model_length_limits", {}).get(label)
         lengths = [L for L in cfg["seq_lengths"] if limit is None or limit >= L]
+        stopped_at: int | None = None
         for L in lengths:
-            if (name, L) in done:
-                print(f"skipping {name} @ T={L} (already measured)", flush=True)
+            if (label, L) in done:
+                print(f"skipping {label} @ T={L} (already measured)", flush=True)
+                prior = next(e for e in entries if (e["model"], int(e["seq_len"])) == (label, L))
+                if prior.get("spilled_train") or prior.get("oom_train") or prior.get("oom"):
+                    stopped_at = stopped_at or L
                 continue
-            print(f"benchmarking {name} @ T={L} ...", flush=True)
+            if stopped_at is not None and cfg.get("stop_after_spill", False):
+                entry = {
+                    "model": label,
+                    "architecture": architecture,
+                    "seq_len": L,
+                    "skipped": f"not measured: training spilled at T={stopped_at}",
+                }
+                entry.update(settings, provenance=provenance)
+                results["entries"].append(entry)
+                dump_json(results, out_path)
+                continue
+            print(f"benchmarking {label} @ T={L} ({precision}) ...", flush=True)
             try:
                 entry = benchmark_single(
-                    name, L, settings["batch_size"], settings["repeats"], device
+                    architecture,
+                    L,
+                    settings["batch_size"],
+                    settings["repeats"],
+                    device,
+                    model_kwargs=model_kwargs,
+                    precision=precision,
+                    measure_decode=cfg.get("measure_decode", True),
                 )
             except Exception as exc:
                 if not _is_oom(exc):
@@ -443,7 +453,7 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
                     error = f"{type(exc).__name__}: {exc}"[:300]
                     results["entries"].append(
                         {
-                            "model": name,
+                            "model": label,
                             "seq_len": L,
                             "error": error,
                             **settings,
@@ -452,13 +462,17 @@ def run_efficiency(cfg: dict, force: bool = False) -> dict:
                     )
                     dump_json(results, out_path)
                     raise RuntimeError(
-                        f"{name} at T={L} failed with a non-OOM error; sweep aborted "
+                        f"{label} at T={L} failed with a non-OOM error; sweep aborted "
                         f"(recorded in {out_path})"
                     ) from exc
-                entry = {"model": name, "seq_len": L, "oom": True}
+                entry = {"model": label, "seq_len": L, "oom": True}
+            entry["model"] = label
+            entry.setdefault("architecture", architecture)
             entry.update(settings, provenance=provenance)
             results["entries"].append(entry)
             dump_json(results, out_path)
+            if any(entry.get(k) for k in ("oom", "oom_train", "spilled_train")):
+                stopped_at = stopped_at or L
             if any(entry.get(k) for k in ("oom", "oom_train", "oom_infer", "oom_decode")):
                 # A context that cannot free memory after an OOM raises here and
                 # stops the sweep, instead of poisoning the next measurements.

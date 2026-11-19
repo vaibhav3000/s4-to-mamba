@@ -1,0 +1,26 @@
+# Efficiency sweep under bf16 autocast (the SSM scans and their input projections stay
+# float32): training step and full forward versus sequence length.
+# Run: ssmbench-efficiency --config configs/efficiency_bf16.yaml
+device: auto
+out_path: results/efficiency/sweep_bf16.json
+precision: bf16
+batch_size: 8
+repeats: 5
+measure_decode: false      # decode has its own benchmark: configs/inference_*.yaml
+stop_after_spill: true
+seq_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
+models:
+  - transformer_flash
+  - transformer_cudnn
+  - transformer_efficient
+  - s4d
+  - mamba
+  - mamba2
+  - mamba3
+# d_model 256 and 2 layers come from DEFAULT_KWARGS in efficiency.py; head dim 64.
+variants:
+  transformer_flash:     {backbone: transformer, attn_backend: flash}
+  transformer_cudnn:     {backbone: transformer, attn_backend: cudnn}
+  transformer_efficient: {backbone: transformer, attn_backend: efficient}
+model_length_limits:
+  mamba: 2048

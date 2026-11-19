@@ -21,6 +21,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 MODELS = ["transformer", "s4d", "mamba", "mamba2", "mamba3"]
 LABELS = {
@@ -39,14 +41,14 @@ COLORS = {
 }
 
 
-def _style(ax: plt.Axes) -> None:
+def _style(ax: Axes) -> None:
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.grid(True, alpha=0.3)
     ax.legend(frameon=False, fontsize=9)
 
 
-def _save(fig: plt.Figure, out: Path, name: str) -> None:
+def _save(fig: Figure, out: Path, name: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / f"{name}.png", dpi=200, bbox_inches="tight")
     fig.savefig(out / f"{name}.pdf", bbox_inches="tight")

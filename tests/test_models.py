@@ -254,6 +254,7 @@ def test_make_figures_smoke(tmp_path) -> None:
     spec = importlib.util.spec_from_file_location(
         "make_figures", repo_root / "scripts" / "make_figures.py"
     )
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 

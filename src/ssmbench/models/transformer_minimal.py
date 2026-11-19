@@ -62,6 +62,8 @@ class TransformerBlock(nn.Module):
 
 
 class TransformerBackbone(nn.Module):
+    pe: torch.Tensor  # (max_len, d_model) sinusoidal table, a non-persistent buffer
+
     def __init__(
         self,
         d_model: int = 128,

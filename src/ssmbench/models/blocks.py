@@ -18,7 +18,7 @@ import contextlib
 import functools
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ParamSpec, Protocol, TypeVar, cast
 
 import torch
@@ -182,12 +182,15 @@ class DecodeState:
     blocks: one state dict per block (KV cache for attention, recurrent state, short-conv
     history and boundary input for the SSMs). position: tokens consumed so far.
     max_len: the longest sequence the state was sized for (only the KV cache uses it).
-    Callers treat it as opaque and pass it back to step().
+    tables: per-sequence lookup tables a backbone builds once (the Transformer's RoPE
+    cos/sin rows for every position up to max_len). Callers treat the state as opaque
+    and pass it back to step().
     """
 
     blocks: list[dict[str, torch.Tensor]]
     position: int = 0
     max_len: int = 0
+    tables: dict[str, torch.Tensor] = field(default_factory=dict)
 
 
 class DecodeBlock(Protocol):
@@ -211,8 +214,9 @@ class Backbone(nn.Module):
     step(emb_t (B, 1, D), state) -> features (B, 1, D); advances state by one token.
 
     prefill followed by step over the remaining tokens reproduces forward() position by
-    position (tests/test_decode.py). This default composes the blocks' own prefill and
-    step; the Transformer overrides it to handle positions and its KV cache.
+    position (tests/test_decode.py). Decode is inference only: prefill and step run
+    without autograd. This default composes the blocks' own prefill and step; the
+    Transformer overrides it to handle positions and its KV cache.
     """
 
     blocks: nn.ModuleList
@@ -230,6 +234,7 @@ class Backbone(nn.Module):
         blocks = [b.init_state(batch_size, device, dtype=dtype) for b in self._decode_blocks()]
         return DecodeState(blocks=blocks, position=0, max_len=max_len)
 
+    @torch.no_grad()
     def prefill(self, emb: torch.Tensor, max_len: int = 0) -> tuple[torch.Tensor, DecodeState]:
         x = emb
         states = []
@@ -239,6 +244,7 @@ class Backbone(nn.Module):
         T = emb.shape[1]
         return x, DecodeState(blocks=states, position=T, max_len=max(max_len, T))
 
+    @torch.no_grad()
     def step(self, emb_t: torch.Tensor, state: DecodeState) -> torch.Tensor:
         if emb_t.ndim != 3 or emb_t.shape[1] != 1:
             raise ValueError(f"step() takes one token of shape (B, 1, D), got {tuple(emb_t.shape)}")

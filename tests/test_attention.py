@@ -172,3 +172,90 @@ def test_sdpa_math_reference_is_float64_capable() -> None:
     )
     assert out.dtype == torch.float64
     torch.testing.assert_close(out, ref, rtol=RTOL, atol=ATOL)
+
+
+@pytest.mark.parametrize("position", [0, 3, 32767])
+def test_rope_matches_an_independent_complex_rotation(position: int) -> None:
+    """Rotate-half RoPE equals multiplying the complex pairs (x_j, x_{j + d/2}) by
+    exp(i * position * base^(-2j/d)). Catches a flipped sine, a wrong frequency exponent
+    or interleaved pairing, which the offset test cannot. float64, 1e-10."""
+    d = 8
+    x = torch.randn(1, 1, 1, d, dtype=torch.float64)
+    z = torch.complex(x[..., : d // 2], x[..., d // 2 :])
+    freqs = 10000.0 ** (-2.0 * torch.arange(d // 2, dtype=torch.float64) / d)
+    rotated = z * torch.exp(1j * position * freqs)
+    expected = torch.cat([rotated.real, rotated.imag], dim=-1)
+    cos, sin = rope_angles(torch.tensor([position]), d, dtype=torch.float64)
+    torch.testing.assert_close(apply_rope(x, cos, sin), expected, rtol=RTOL, atol=ATOL)
+
+
+def test_rope_tables_keep_precision_at_long_positions() -> None:
+    """float32 cos/sin at position 32767 are the float64 values rounded once (error below
+    1e-6), not angles formed in float32 (error about 4e-3 rad at the top frequency)."""
+    cos32, sin32 = rope_angles(torch.tensor([32767]), 64, dtype=torch.float32)
+    cos64, sin64 = rope_angles(torch.tensor([32767]), 64, dtype=torch.float64)
+    assert (cos32.double() - cos64).abs().max().item() < 1e-6
+    assert (sin32.double() - sin64).abs().max().item() < 1e-6
+
+
+def test_empty_kv_cache_follows_the_autocast_dtype() -> None:
+    torch.manual_seed(0)
+    backbone = build_backbone("transformer", {"d_model": 8, "n_layers": 1, "n_heads": 2}).eval()
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        state = backbone.init_state(1, torch.device("cpu"), max_len=4)
+    assert state.blocks[0]["k"].dtype == torch.bfloat16
+    assert backbone.init_state(1, torch.device("cpu"), max_len=4).blocks[0]["k"].dtype == (
+        torch.float32
+    )
+
+
+def test_stepping_a_cache_in_another_dtype_raises() -> None:
+    """A bf16 cache stepped without autocast would round fp32 keys into bf16 and stop
+    matching forward(); it raises instead."""
+    torch.manual_seed(0)
+    backbone = build_backbone("transformer", {"d_model": 8, "n_layers": 1, "n_heads": 2}).eval()
+    x = torch.randn(1, 4, 8)
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        _, state = backbone.prefill(x[:, :3], max_len=4)
+    with pytest.raises(ValueError, match="dtype"):
+        backbone.step(x[:, 3:4], state)
+
+
+@pytest.mark.parametrize("name", ["transformer", "mamba3"])
+def test_decode_is_inference_only(name: str) -> None:
+    """prefill and step build no autograd graph, so the in-place KV-cache writes cannot
+    break a backward pass and the state does not keep a graph alive."""
+    torch.manual_seed(0)
+    kwargs = {"d_model": 8, "n_layers": 1}
+    kwargs |= {"n_heads": 2} if name == "transformer" else {"d_state": 2, "headdim": 4}
+    backbone = build_backbone(name, kwargs)
+    x = torch.randn(1, 4, 8, requires_grad=True)
+    y, state = backbone.prefill(x[:, :3], max_len=4)
+    y_t = backbone.step(x[:, 3:4], state)
+    assert y.grad_fn is None and y_t.grad_fn is None
+    assert all(t.grad_fn is None for s in state.blocks for t in s.values())
+
+
+def test_rope_tables_are_built_once_per_forward_not_per_layer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ssmbench.models import transformer_minimal
+
+    calls = {"n": 0}
+    real = transformer_minimal.rope_angles
+
+    def counting(*args: object, **kwargs: object) -> tuple[torch.Tensor, torch.Tensor]:
+        calls["n"] += 1
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(transformer_minimal, "rope_angles", counting)
+    backbone = _transformer(pos_encoding="rope")  # two layers
+    x = torch.randn(1, 5, 8, dtype=torch.float64)
+    with torch.no_grad():
+        backbone(x)
+        assert calls["n"] == 1
+        _, state = backbone.prefill(x[:, :4], max_len=8)
+        calls["n"] = 0
+        backbone.step(x[:, 4:5], state)
+        backbone.step(x[:, 4:5], state)
+    assert calls["n"] == 0  # steps slice the table the prefill built

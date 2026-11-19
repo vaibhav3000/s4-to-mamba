@@ -67,6 +67,8 @@ from .blocks import (
     complex_dtype_for,
     expand_groups_to_heads,
     scan_dtype,
+    short_conv,
+    short_conv_step,
 )
 
 # Transient-memory budget of one group of chunks in chunked_scan (bytes).
@@ -373,23 +375,90 @@ class Mamba3Block(nn.Module):
         y = torch.stack(ys, dim=1).reshape(Bsz, nc * Q, H, P)[:, :T]
         return y, h, s_last
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
-        T = x.shape[1]
+    def prefill(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """forward(x) plus the decode state after the last token: (B, T, D) -> ((B, T, D), state).
+
+        The state holds the complex SSM state h, the boundary input prev = B_{T-1} (x)
+        x_{T-1} that the next step's beta term needs, and the short-conv history.
+        """
         xz = self.in_proj(self.norm(x))
         x_in, z = xz.chunk(2, dim=-1)
-        x_conv = x_in.transpose(1, 2)
-        x_conv = F.pad(x_conv, (self.d_conv - 1, 0))
-        x_conv = self.conv1d(x_conv)[..., :T].transpose(1, 2)
-        x_conv = F.silu(x_conv)
+        x_conv, history = short_conv(self.conv1d, x_in)
 
         x_h, delta, B_h, C_h, lam_h = self._ssm_inputs(x_conv)
         if self.scan_mode == "chunked":
-            y = self.chunked_scan(x_h, delta, B_h, C_h, lam_h)
+            y, h, prev = self.chunked_scan_with_state(x_h, delta, B_h, C_h, lam_h)
         else:
-            y = self.selective_scan(x_h, delta, B_h, C_h, lam_h)
+            y, h, prev = self.selective_scan_with_state(x_h, delta, B_h, C_h, lam_h)
         y = y.reshape(*y.shape[:2], self.d_inner)
         y = y + x_conv * self.D
-        return x + self.out_proj(y * F.silu(z))
+        return x + self.out_proj(y * F.silu(z)), {"h": h, "prev": prev, "conv": history}
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        return self.prefill(x)[0]
+
+    # -------------------- incremental decode (O(1) state per block) --------------------
+
+    def init_state(
+        self, batch_size: int, device: torch.device, dtype: torch.dtype | None = None
+    ) -> dict[str, torch.Tensor]:
+        """Empty decode state: complex h and real boundary input prev, both (B, H, N, P)
+        in scan precision, and the short-conv history (B, d_inner, d_conv - 1)."""
+        param_dtype = self.in_proj.weight.dtype
+        real = torch.promote_types(param_dtype, torch.float32)
+        shape = (batch_size, self.n_heads, self.d_state, self.headdim)
+        return {
+            "h": torch.zeros(shape, dtype=complex_dtype_for(real), device=device),
+            "prev": torch.zeros(shape, dtype=real, device=device),
+            "conv": torch.zeros(
+                batch_size, self.d_inner, self.d_conv - 1, device=device, dtype=dtype or param_dtype
+            ),
+        }
+
+    @autocast_disabled
+    def _recurrent_update(
+        self,
+        h: torch.Tensor,
+        prev: torch.Tensor,
+        x_h: torch.Tensor,
+        delta: torch.Tensor,
+        B_h: torch.Tensor,
+        C_h: torch.Tensor,
+        lam: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """One exponential-trapezoidal step in scan precision.
+
+        h (B, H, N, P) complex, prev (B, H, N, P) real, x_h (B, H, P), delta and lam (B, H),
+        B_h and C_h (B, H, N) -> (y (B, H, P), new h, new prev = B_t (x) x_t).
+        """
+        dtype = scan_dtype(prev, x_h, delta, B_h, C_h, lam)
+        cdtype = complex_dtype_for(dtype)
+        d, lm = delta.to(dtype), lam.to(dtype)
+        A = torch.complex(-torch.exp(self.a_real_log.to(dtype)), self.theta.to(dtype))
+        alpha = torch.exp(d.unsqueeze(-1) * A)  # (B, H, N)
+        beta = ((1.0 - lm) * d).unsqueeze(-1) * alpha  # (B, H, N) complex
+        gamma = (lm * d)[:, :, None, None]  # (B, H, 1, 1)
+        inject = B_h.to(dtype).unsqueeze(-1) * x_h.to(dtype).unsqueeze(2)  # (B, H, N, P)
+        h = (
+            alpha.unsqueeze(-1) * h.to(cdtype)
+            + beta.unsqueeze(-1) * prev.to(dtype)
+            + gamma * inject.to(cdtype)
+        )
+        y = torch.einsum("bhnp,bhn->bhp", h.real, C_h.to(dtype))
+        return y, h, inject
+
+    def step(self, x_t: torch.Tensor, state: dict[str, torch.Tensor]) -> torch.Tensor:
+        """One decode step. x_t: (B, 1, D) -> (B, 1, D), O(1) time and state per token."""
+        xz = self.in_proj(self.norm(x_t))  # (B, 1, 2*d_inner)
+        x_in, z = xz.chunk(2, dim=-1)
+        conv_out, state["conv"] = short_conv_step(self.conv1d, state["conv"], x_in.squeeze(1))
+        x_h, delta, B_h, C_h, lam = self._ssm_inputs(conv_out)  # (B, H, P), (B, H), ...
+        y, state["h"], state["prev"] = self._recurrent_update(
+            state["h"], state["prev"], x_h, delta, B_h, C_h, lam
+        )
+        y = y.reshape(y.shape[0], self.d_inner) + conv_out * self.D
+        out = self.out_proj(y * F.silu(z.squeeze(1)))
+        return out.unsqueeze(1) + x_t
 
 
 class Mamba3Backbone(Backbone):

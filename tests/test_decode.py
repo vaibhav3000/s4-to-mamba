@@ -13,6 +13,7 @@ import torch
 from ssmbench.models import build_backbone
 from ssmbench.models.blocks import Backbone, DecodeState
 from ssmbench.models.mamba2_minimal import Mamba2Block
+from ssmbench.models.mamba3_minimal import Mamba3Block
 from ssmbench.models.mamba_minimal import MambaBlock
 
 RTOL = ATOL = 1e-10
@@ -30,6 +31,25 @@ DECODE_CASES: dict[str, tuple[str, dict]] = {
         "mamba2",
         {"d_model": 8, "n_layers": 2, "d_state": 4, "headdim": 4, "scan_mode": "sequential"},
     ),
+    "mamba3-chunked": (
+        "mamba3",
+        {"d_model": 8, "n_layers": 2, "d_state": 4, "headdim": 4, "n_groups": 2, "chunk_size": 4},
+    ),
+    "mamba3-sequential": (
+        "mamba3",
+        {"d_model": 8, "n_layers": 2, "d_state": 4, "headdim": 4, "scan_mode": "sequential"},
+    ),
+    "mamba3-no-rotation": (
+        "mamba3",
+        {
+            "d_model": 8,
+            "n_layers": 2,
+            "d_state": 4,
+            "headdim": 4,
+            "chunk_size": 4,
+            "rotation": False,
+        },
+    ),
 }
 
 
@@ -43,6 +63,11 @@ def _backbone(case: str, seed: int = 0) -> Backbone:
         for n, p in backbone.named_parameters():
             if n.endswith(".D"):
                 p.uniform_(-1.0, 1.0)
+            # Mamba-3: lambda away from its constant 1/2 init, so both bands matter.
+            if n.endswith("lambda_proj.weight"):
+                p.normal_(0.0, 1.0)
+            if n.endswith(".theta"):
+                p.add_(torch.randn_like(p))
     return backbone
 
 
@@ -128,3 +153,30 @@ def test_step_recurrence_runs_in_float32_under_bf16_autocast(case: str) -> None:
             )
     assert h.dtype == torch.float32 and h_new.dtype == torch.float32
     assert y.dtype == torch.float32
+
+
+def test_mamba3_step_recurrence_runs_in_scan_precision_under_bf16_autocast() -> None:
+    """Mamba-3's one-token update keeps a complex64 state and a float32 readout under
+    bf16 autocast."""
+    torch.manual_seed(0)
+    name, kwargs = DECODE_CASES["mamba3-chunked"]
+    backbone = build_backbone(name, kwargs).eval()
+    assert isinstance(backbone, Backbone)
+    x = torch.randn(2, 5, _width("mamba3-chunked"))
+    with torch.no_grad(), torch.autocast("cpu", dtype=torch.bfloat16):
+        _, state = backbone.prefill(x[:, :3])
+        backbone.step(x[:, 3:4], state)
+        block = backbone.blocks[0]
+        assert isinstance(block, Mamba3Block)
+        H, P, N = block.n_heads, block.headdim, block.d_state
+        y, h_new, prev_new = block._recurrent_update(
+            state.blocks[0]["h"],
+            state.blocks[0]["prev"],
+            torch.randn(2, H, P),
+            torch.rand(2, H),
+            torch.randn(2, H, N),
+            torch.randn(2, H, N),
+            torch.rand(2, H),
+        )
+    assert state.blocks[0]["h"].dtype == h_new.dtype == torch.complex64
+    assert prev_new.dtype == y.dtype == torch.float32

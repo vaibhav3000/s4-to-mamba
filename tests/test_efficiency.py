@@ -42,7 +42,8 @@ def test_inference_and_decode_timing_run_in_eval_mode(
         device=torch.device("cpu"),
         model_kwargs=TINY_KWARGS[name],
     )
-    assert "train_step_ms" in entry and "infer_ms" in entry and "decode_per_token_ms" in entry
+    assert "train_step_ms" in entry and "infer_ms" in entry
+    assert "decode_per_token_ms" in entry or "prefill_per_token_ms" in entry
     # _time_gpu: 2 warmup + 2 timed train steps, then inference and decode calls.
     assert modes[:4] == [True] * 4
     assert len(modes) > 4 and not any(modes[4:])
@@ -65,6 +66,32 @@ def test_train_step_uses_an_lm_head_even_when_d_model_is_below_vocab() -> None:
     vocab = efficiency.VOCAB
     embed_and_head = vocab * d_model + (d_model * vocab + vocab)  # Embedding + Linear(+bias)
     assert entry["n_parameters_with_embed_and_head"] == entry["n_parameters"] + embed_and_head
+
+
+DECODE_CASES = {
+    "s4d": ({"d_model": 32, "n_layers": 1, "d_state": 4}, "decode_per_token_ms", "stepwise"),
+    "transformer": (TINY_KWARGS["transformer"], "decode_per_token_ms", "no KV cache"),
+    "mamba2": (TINY_KWARGS["mamba2"], "prefill_per_token_ms", "no step() path"),
+    "mamba3": (
+        {"d_model": 32, "n_layers": 1, "d_state": 8, "headdim": 16},
+        "prefill_per_token_ms",
+        "no step() path",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", list(DECODE_CASES))
+def test_decode_numbers_are_labeled_by_what_was_timed(name: str) -> None:
+    """Only models with a step() path (or the Transformer's documented full-prefix
+    recompute) report decode_per_token_ms; Mamba-2/3 report prefill time / T under
+    its own key, never as a decode cost."""
+    kwargs, key, label = DECODE_CASES[name]
+    entry = efficiency.benchmark_single(
+        name, seq_len=16, batch_size=2, repeats=2, device=torch.device("cpu"), model_kwargs=kwargs
+    )
+    assert entry[key] > 0 and label in entry["decode_mode"]
+    other = {"decode_per_token_ms", "prefill_per_token_ms"} - {key}
+    assert not other & set(entry)
 
 
 def test_single_repeat_reports_no_std() -> None:

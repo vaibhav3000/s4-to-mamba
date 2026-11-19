@@ -6,13 +6,14 @@ Measures, per (architecture, sequence length):
   model (embedding, backbone, linear LM head over VOCAB tokens, cross-entropy)
   over `batch_size` sequences; peak CUDA memory recorded alongside.
 - ``infer_ms``: full forward pass including the LM head, no grad, batch 1.
-- ``decode_ms``: autoregressive one-token-at-a-time generation cost.
-  * mamba / s4d: true incremental decode with O(1) recurrent state via
-    ``block.step()`` (state carried between calls).
-  * mamba2 / mamba3: sequential-scan recurrence over the whole sequence,
-    reported as per-token cost (the recurrence IS the decode computation).
-  * transformer: full prefix recompute — the educational implementation has no
-    KV cache, so this is its honest per-token cost. Labeled accordingly.
+- decode cost per generated token, labeled by ``decode_mode``:
+  * mamba / s4d: true incremental decode with an O(1) recurrent state via
+    ``block.step()``; ``decode_per_token_ms`` = time for T steps / T.
+  * transformer: this implementation has no KV cache, so one more token re-runs
+    the whole prefix; ``decode_per_token_ms`` = one full forward over T tokens.
+  * mamba2 / mamba3: no step() path, so no decode cost is measured.
+    ``prefill_per_token_ms`` = one full forward over T tokens / T is recorded
+    instead; it is a prefill throughput number, not a decode latency.
 - ``n_parameters`` and throughput in tokens/s.
 
 All timings use CUDA events around synchronized regions; nothing is estimated
@@ -140,10 +141,10 @@ def _decode_stepwise(
             head(h)
 
 
-def _decode_sequential(
+def _prefill(
     backbone: nn.Module, embed: nn.Module, head: nn.Module, seq_len: int, device: torch.device
 ) -> None:
-    """Run the recurrent scan over a full sequence (per-token cost = time/T)."""
+    """One full forward over a fresh batch-1 prompt of seq_len tokens."""
     with torch.no_grad():
         tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)
         head(backbone(embed(tokens)))
@@ -246,12 +247,14 @@ def benchmark_single(
             entry["decode_per_token_ms"] = round(mean_ms / seq_len, 4)
         elif name in ("mamba2", "mamba3"):
 
-            def decode_full() -> None:
-                _decode_sequential(backbone, embed, head, seq_len, device)
+            def prefill() -> None:
+                _prefill(backbone, embed, head, seq_len, device)
 
-            entry["decode_mode"] = "sequential scan over full sequence (per-token = time/T)"
-            mean_ms, _ = _time_gpu(decode_full, rep_d, warmup=1, device=device.type)
-            entry["decode_per_token_ms"] = round(mean_ms / seq_len, 4)
+            entry["decode_mode"] = (
+                "not measured: no step() path; prefill_per_token_ms is one full forward / T"
+            )
+            mean_ms, _ = _time_gpu(prefill, rep_d, warmup=1, device=device.type)
+            entry["prefill_per_token_ms"] = round(mean_ms / seq_len, 4)
         else:  # transformer: no KV cache, so each new token re-runs the full prefix
             tokens = torch.randint(1, VOCAB, (1, seq_len), device=device)
 

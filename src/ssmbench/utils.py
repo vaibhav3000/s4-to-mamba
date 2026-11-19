@@ -5,9 +5,11 @@ from __future__ import annotations
 import gc
 import hashlib
 import json
+import os
 import platform
 import random
 import subprocess
+import tempfile
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -167,9 +169,22 @@ def config_to_jsonable(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def dump_json(obj: Any, path: str | Path) -> None:
-    """Write JSON with stable formatting, creating parent directories."""
+    """Write JSON with stable formatting, creating parent directories.
+
+    The JSON goes to a temporary file in the same directory, which then replaces
+    `path` in one os.replace, so an interrupted or failed write never leaves a
+    truncated file (the benchmark resumes from these files).
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2, sort_keys=True, default=str)
-        f.write("\n")
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(obj, f, indent=2, sort_keys=True, default=str)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise

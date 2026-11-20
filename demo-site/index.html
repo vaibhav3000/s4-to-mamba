@@ -136,7 +136,7 @@
       <span class="term" tabindex="0" data-tip="Mamba-3 (2026): input-dependent complex-valued transitions add rotation, which the paper credits for state tracking such as parity. S4D's transitions are complex too, but fixed (LTI).">Mamba-3 (complex)</span>
       and a Transformer baseline. Every backbone has a parallel form for training and an O(1) decode step (a KV cache for the Transformer), and tests check the two against each other in float64. Every number below is a committed measurement, a mean over three run seeds where training is involved, not a paper claim.</p>
     <div class="chips">
-      <span class="chip">Parity, three seeds: Mamba-3 <b>66.0%</b> mean (one seed at 89.2%) vs &le;<b>57.7%</b> for every other model; none extrapolates to longer sequences</span>
+      <span class="chip">Parity, five seeds: Mamba-3 <b>72.6%</b> mean (two seeds at 89.2 and 99.0%) vs &le;<b>57.3%</b> for every other model; none extrapolates to longer sequences</span>
       <span class="chip">Selective copying out of distribution: Mamba-1/2 about <b>50%</b>, Mamba-3 <b>14.4%</b>, S4D <b>17.6%</b>, Transformers <b>7.5 to 12.1%</b> token accuracy</span>
       <span class="chip">Decode state after a 32K prompt: <b>0.14 to 0.39&nbsp;MiB</b> for the SSMs vs a <b>64&nbsp;MiB</b> bf16 KV cache (6&nbsp;GB RTX&nbsp;4050)</span>
     </div>
@@ -169,13 +169,13 @@
   <section id="capability" aria-labelledby="cap-h">
     <h2 id="cap-h">Capability: where each architecture wins</h2>
     <p class="sub">Cumulative parity needs the state to <em>rotate</em> in response to each input. Of these models only Mamba-3
-      has input-dependent complex transitions, and only Mamba-3 had a run that learned the task (one of three seeds); with the
+      has input-dependent complex transitions, and only Mamba-3 had runs that learned the task (two of five seeds); with the
       rotation switched off it falls back to the level of Mamba-1/2. Selective copying rewards <em>gating</em>: the LTI S4D
       fails even in distribution, and the chart shows the harder out-of-distribution test. Exact copying at the trained length
       of 32 is a fixed shift, which the Transformers, the LTI S4D and Mamba-3 solve and Mamba-1/2 do not.</p>
     <div class="grid">
       <div class="card" id="card-parity"><h3>Parity / state tracking (token accuracy)</h3>
-        <p class="note">Cumulative XOR, train and test L=128, 20 epochs, mean of three run seeds. Parameter counts are matched within 10% (99,902 to 102,642). Dashed line = chance (0.5).</p>
+        <p class="note">Cumulative XOR, train and test L=128, 20 epochs, mean of five run seeds. Parameter counts are matched within 10% (99,902 to 102,642). Dashed line = chance (0.5).</p>
         <div id="chart-parity"></div>
         <div class="seg" id="parity-pick" role="group" aria-label="focus one model"></div>
         <div id="parity-read"></div>
@@ -507,7 +507,7 @@ const SCHEM = {
       "Token n arrives.",
       "<b>Processing</b>: like Mamba-1/2, but the transition is complex-valued - the state can <i>rotate</i>, not just decay.",
       "<b>State</b>: the state cell is a phasor: magnitude decays (<1, stable) while the phase rotates by an input-dependent angle.",
-      "<b>Output</b>: rotations can encode state tracking, the mechanism the Mamba-3 paper credits for parity (one of three Mamba-3 seeds learned it here; none did with the rotation off).",
+      "<b>Output</b>: rotations can encode state tracking, the mechanism the Mamba-3 paper credits for parity (two of five Mamba-3 seeds learned it here; none did with the rotation off).",
     ],
     draw: (svg, step) => {
       schematicBase(svg);
@@ -643,11 +643,11 @@ function renderParity(){
   if (!v){ box.innerHTML = "<p class='note' style='margin:8px 0 0'>Click a model to focus its measured bar and read the interpretation.</p>"; return; }
   const gap = (v.token_accuracy - 0.5);
   const interp = {
-    mamba3: "Complex, input-dependent transitions let the state rotate, the operation cumulative parity requires. It is the only model with a run far above chance (one of three seeds, 89.2%), and with the rotation switched off it stays near the others, consistent with the Mamba-3 paper's claim.",
+    mamba3: "Complex, input-dependent transitions let the state rotate, the operation cumulative parity requires. It is the only model with runs far above chance (two of five seeds, 89.2 and 99.0%), and with the rotation switched off it stays near the others, consistent with the Mamba-3 paper's claim.",
     mamba2: "Scalar real transitions can only decay the state - they cannot rotate it, so parity is out of reach at this budget.",
     mamba:  "Same story as Mamba-2: real non-negative transitions = decay-only dynamics.",
     s4d:    "Complex but <i>LTI</i> transitions: the rotation is fixed, not input-dependent - it cannot respond to each bit, so it stays at chance.",
-    transformer: "Attention re-reads the prefix, but with this training budget (20 epochs, three seeds) it did not learn parity: measured near chance.",
+    transformer: "Attention re-reads the prefix, but with this training budget (20 epochs, five seeds) it did not learn parity: measured near chance.",
   }[parityFocus];
   box.innerHTML = `
     <div class="chips" style="margin:8px 0 0">
@@ -663,7 +663,7 @@ document.getElementById("parity-why").addEventListener("click", () => {
 /* ================= D. task formulation switcher ================= */
 const TASKS = {
   parity:   { label: "Parity (state tracking)", metric: "token accuracy",
-              get: id => (DATA.parity[id]||{}).token_accuracy, note: "Cumulative XOR, test L=128. Mamba-3 (input-dependent rotation) leads on the mean of three seeds, carried by one run." },
+              get: id => (DATA.parity[id]||{}).token_accuracy, note: "Cumulative XOR, test L=128. Mamba-3 (input-dependent rotation) leads on the mean of five seeds, carried by two runs." },
   selcopy:  { label: "Selective copy", metric: "full-sequence success (test L=128)",
               get: id => (DATA.selective_copy[id]||{}).sequence_success, note: "Keep k pairs, filter noise. Scored out of distribution, on a longer test with more pairs than training. Mamba-1/2 lead." },
   exact:    { label: "Exact copy (in-dist L=32)", metric: "full-sequence success (in-dist L=32)",
@@ -834,7 +834,7 @@ const TOURS = {
   main: { steps: [
     { title: "What this page is", el: ".hero", html: "Five sequence architectures, implemented from first principles in pure PyTorch, with equivalence tests between computation paths, and benchmarked on one machine. Every chart is a committed measurement, averaged over three run seeds for the tasks; the tour shows the mechanisms behind them." },
     { title: "The mechanism, one token at a time", el: "#schem-wrap", html: "This schematic walks a token through each architecture: what is input, what is kept in state, what is filtered. Switch models to feel the difference between attention, fixed (LTI) recurrence, selective recurrence, chunked SSD and complex rotation. <span class='badge badge-schematic'>teaching schematic</span>" },
-    { title: "Capability: parity", el: "#card-parity", html: "Cumulative parity needs the state to <i>rotate</i>. Click a model under the chart, then 'Explain this result' for a step-by-step interpretation of the measured means (three seeds)." },
+    { title: "Capability: parity", el: "#card-parity", html: "Cumulative parity needs the state to <i>rotate</i>. Click a model under the chart, then 'Explain this result' for a step-by-step interpretation of the measured means (five seeds)." },
     { title: "Capability: the ranking flips", el: "#task-flip", html: "Switch between Parity, Selective copy and Exact copy and watch the models reorder. The tasks are not scored on equal terms (selective copy out of distribution, exact copy at the trained length), so read the flip as suggestive rather than as proof that each task's bottleneck decides." },
     { title: "Efficiency, scrubbed", el: "#efficiency", html: "Drag the slider to jump between the six <b>measured</b> lengths (1K to 32K). Every chart highlights the same point, and open circles mark points that ran over the card's memory through system-memory fallback. Nothing between points is interpolated." },
     { title: "How the number was made", el: "#method", html: "Warm-up, CUDA events, repeats, peak-memory reset, aggregation: step through the protocol in the 'How was this measured?' card. Then it's yours to explore; keyboard: Space play/pause, arrows step, R resets an active player." },
@@ -842,9 +842,9 @@ const TOURS = {
   parity: { steps: [
     { title: "1. The task", el: "#card-parity", html: "<b>Cumulative parity:</b> at every position t, output the XOR of all bits so far. One flipped bit flips the answer - the state must encode exact parity, not an average." },
     { title: "2. What the mechanism needs", el: "#schem-wrap", html: "Encoding parity = the state must rotate by \u03c0 on every 1-bit and hold still on 0. Real decaying transitions cannot do that, and neither can a fixed (LTI) rotation like S4D's; an input-dependent complex transition can. The Mamba-3 paper credits this mechanism, and the ablation here that switches the rotation off loses it. <span class='badge badge-schematic'>teaching schematic</span>" },
-    { title: "3. Prediction behavior", el: "#card-parity", html: "Every model's mean stays between 50.7% and 57.7% except Mamba-3's. Only Mamba-3, the model with input-dependent complex transitions, has a run that learned the function, and only one of its three." },
-    { title: "4. The measurement", el: "#card-parity", html: "Mamba-3: <b>66.0 &plusmn; 20.1%</b> token accuracy (seeds at 52.7, 89.2 and 56.2%; 20 epochs, matched parameters). Without rotation 55.8%, Mamba-1 57.7%, Mamba-2 56.7%, Transformer 53.0%, S4D 50.7%." },
-    { title: "5. Interpretation", el: "#card-parity", html: "This is consistent with the Mamba-3 paper's claim that input-dependent complex transitions restore state tracking that real-transition SSMs lack. It is not a clean reproduction: only one of three seeds learned the task, no model extrapolates to longer sequences, and this Mamba-3 also differs from Mamba-2 in other ways (per-state decay, trapezoidal update, gating). S4D is complex too but <i>LTI</i>: its rotation cannot respond to each bit." },
+    { title: "3. Prediction behavior", el: "#card-parity", html: "Every model's mean stays between 50.9% and 57.3% except Mamba-3's. Only Mamba-3, the model with input-dependent complex transitions, has runs that learned the function, two of its five." },
+    { title: "4. The measurement", el: "#card-parity", html: "Mamba-3: <b>72.6 &plusmn; 20.5%</b> token accuracy (seeds at 52.7, 89.2, 56.2, 65.9 and 99.0%; 20 epochs, matched parameters). Without rotation 55.4%, Mamba-1 57.3%, Mamba-2 56.8%, Transformer 52.5%, S4D 50.9%." },
+    { title: "5. Interpretation", el: "#card-parity", html: "This is consistent with the Mamba-3 paper's claim that input-dependent complex transitions restore state tracking that real-transition SSMs lack. It is not a clean reproduction: only two of five seeds learned the task, no model extrapolates to longer sequences, and this Mamba-3 also differs from Mamba-2 in other ways (per-state decay, trapezoidal update, gating). S4D is complex too but <i>LTI</i>: its rotation cannot respond to each bit." },
   ]},
 };
 

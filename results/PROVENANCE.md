@@ -1,15 +1,16 @@
 # Provenance of the committed results
 
-Every result file under `results/` comes from one run of `scripts/run_gpu_plan.py`
-on 2026-11-20 (local time UTC+05:30), started at commit `c4c111b` with the package
-source unchanged. Each file records where it came from, so the claims below can be
+Every result file under `results/` comes from `scripts/run_gpu_plan.py` on 2026-11-20
+(local time UTC+05:30): the full plan started at commit `c4c111b`, and a later run of
+the parity job for seeds 3 and 4 started at `3d6a776`. The package source is the same
+in both (one source hash). Each file records where it came from, so the claims below can be
 checked against the files themselves.
 
 ## Code and environment
 
 | Item | Value |
 |---|---|
-| Commit | `c4c111b` (Measure cuDNN attention in the bf16 inference sweep) |
+| Commit | `c4c111b` (full plan), `3d6a776` (parity seeds 3 and 4); `git_sha` in each result file |
 | Package source hash | `c4adb70bef570702...` in every result file (`source_sha256`) |
 | `git_dirty` | `false` in every result file: `src/ssmbench` matched the commit |
 | Environment | `results/ENVIRONMENT.json`: RTX 4050 Laptop GPU (6140.5 MiB), driver 610.74, torch 2.14.1+cu130, CUDA 13.0, Python 3.13.7, Windows 11, the full package list and the `uv.lock` hash |
@@ -38,6 +39,8 @@ The plan ran these jobs in order, each logging to `results/logs/<job>.log`:
 | `numerics` | 11:21 | `results/numerics/numerics.json` |
 | `compile` | 11:22 | `results/compile/compile.json` |
 | `figures`, `tables` | 11:24 | `figures/`, `reports/figures/`, `reports/tables/`, `results/SUMMARY.md` |
+| `train-parity` with `--seeds 3 4` | 12:01 | `results/train/parity/<variant>/seed{3,4}.json` (7 variants), from `3d6a776` with the same package source hash |
+| `summarize`, `figures`, `tables` | 12:30 | the parity summary over five seeds and everything generated from it |
 
 The first smoke attempt (02:33) failed while loading IMDb under the dataset id
 `imdb`, which the installed `huggingface_hub` rejects; the loader was switched to
@@ -49,7 +52,8 @@ Both attempts are in `results/logs/smoke.log`.
 Each `seed<k>.json` holds the config and its SHA-256, the run seed, the parameter
 count, the per-epoch history on the validation set, the final test evaluations, the
 attention kernel detected for the Transformers, wall time, peak memory, a spill flag
-and the provenance above. All 90 runs (30 variant and task pairs, seeds 0, 1, 2) ran
+and the provenance above. All 104 runs (30 variant and task pairs with seeds 0, 1, 2, plus seeds 3 and 4 for
+the 7 parity variants) ran
 with deterministic algorithms; none resumed from a checkpoint
 (`resumed_from_epoch: null`) and none exceeded free GPU memory
 (`gpu_memory_spilled: false`).

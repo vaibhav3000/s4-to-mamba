@@ -24,7 +24,7 @@ chunked matmul) runs on hardware. This document traces those choices in order. T
 implemented in each file are checked by tests in `tests/test_models.py` and
 `tests/test_references.py`, the second against independent float64 references written from
 the equations. Every number cited is read from a committed result file in `results/`
-(three run seeds per configuration; see `results/SUMMARY.md` and `results/PROVENANCE.md`).
+(three run seeds per configuration, five for parity; see `results/SUMMARY.md` and `results/PROVENANCE.md`).
 
 ```mermaid
 flowchart LR
@@ -293,27 +293,28 @@ al. on state tracking in recurrent models and Merrill et al. on the limits of re
 transitions) makes this argument formally; our parity benchmark is consistent with it, with the
 caveats listed below the table.
 
-On cumulative XOR (trained at L = 128 for 20 epochs, parameter-matched, three run seeds,
+On cumulative XOR (trained at L = 128 for 20 epochs, parameter-matched, five run seeds,
 `results/train/parity/`), token accuracy in percent:
 
 | Model | L = 128 | L = 2048 |
 |---|---|---|
-| Mamba-3 | 66.0 ± 20.1 | 51.1 ± 1.3 |
-| Mamba-1 | 57.7 ± 3.1 | 50.6 ± 0.2 |
-| Mamba-2 | 56.7 ± 3.8 | 50.5 ± 0.2 |
-| Mamba-3, `theta = 0` | 55.8 ± 1.5 | 50.4 ± 0.1 |
-| Transformer (sinusoidal) | 53.0 ± 0.7 | 50.2 ± 0.1 |
-| Transformer (RoPE) | 51.6 ± 0.2 | 50.1 ± 0.0 |
-| S4D | 50.7 ± 0.4 | 50.0 ± 0.1 |
+| Mamba-3 | 72.6 ± 20.5 | 51.5 ± 1.3 |
+| Mamba-1 | 57.3 ± 2.3 | 50.5 ± 0.1 |
+| Mamba-2 | 56.8 ± 2.7 | 50.4 ± 0.2 |
+| Mamba-3, `theta = 0` | 55.4 ± 1.2 | 50.4 ± 0.1 |
+| Transformer (sinusoidal) | 52.5 ± 0.9 | 50.2 ± 0.1 |
+| Transformer (RoPE) | 51.7 ± 0.2 | 50.1 ± 0.0 |
+| S4D | 50.9 ± 0.5 | 50.1 ± 0.0 |
 
-Only Mamba-3 has a run that learns the task: one seed reaches 89.2%, the other two 52.7 and
-56.2%. With the rotation removed (`theta = 0`) it falls back to the level of Mamba-1 and
-Mamba-2, so the rotation is what made the successful run possible, but with three seeds the
-effect is not reliable. Nothing extrapolates: at L = 2048 every model is within 1.1 points of
-chance, including the successful Mamba-3 seed (52.6%).
+Only Mamba-3 has runs that learn the task: two of five seeds reach 89.2 and 99.0%, one
+65.9%, and two stay at 52.7 and 56.2%. With the rotation removed (`theta = 0`) no seed exceeds
+57.2%, the level of Mamba-1 and Mamba-2, so the rotation is what made the successful runs
+possible, but whether a run succeeds depends on the seed. Nothing extrapolates: at L = 2048
+every mean is within 1.5 points of chance, and the successful Mamba-3 seeds fall to 52.6 and
+53.1%.
 
 S4D deserves its own sentence here: it also has complex `A`, and it still fails parity
-(50.7%). Complexity of the transition is not sufficient; the transition
+(50.9%). Complexity of the transition is not sufficient; the transition
 must also be input-dependent. S4D is LTI: `A, B, C, delta` are constants, the rotation is
 fixed at initialization and training time, and the input only drives a fixed linear system
 additively. Parity requires multiplying the state by a factor that depends on the current
@@ -405,7 +406,8 @@ it is exactly why fused selective-scan kernels and the chunked SSD formulation e
 uv run python scripts/run_gpu_plan.py --seeds 0 1 2
 ```
 
-runs every training config with three seeds and every benchmark, logging each job to
+runs every training config with three seeds (parity later gained seeds 3 and 4 with
+`--seeds 3 4 --only train-parity`) and every benchmark, logging each job to
 `results/logs/`; `ssmbench-train --config configs/<task>.yaml --out results/train --seeds 0 1 2`
 runs one config. Each run writes one file per seed with its full config and hash, the
 validation history, the final test evaluations, parameter count, per-run peak GPU memory, a

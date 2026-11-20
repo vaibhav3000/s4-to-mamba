@@ -6,16 +6,16 @@ Five sequence backbones (a causal Transformer, S4D, Mamba-1, Mamba-2 and Mamba-3
 written from first principles in plain PyTorch, behind one interface with a parallel
 form for training and an O(1) recurrent `step()` for generation (a KV cache for the
 Transformer). The models are compared on controlled tasks with matched parameter
-counts and three run seeds, and benchmarked for training, prefill, decode, memory,
+counts and three to five run seeds, and benchmarked for training, prefill, decode, memory,
 reduced-precision error and `torch.compile` readiness on one RTX 4050 Laptop GPU
 (6 GB). Every number below is generated from the committed result files by
 `scripts/make_tables.py`.
 
-**What the runs show (three seeds each).**
+**What the runs show (three seeds each, five on parity).**
 
-- Parity at length 128: Mamba-3 has the best mean, 66.0 ± 20.1% token accuracy,
-  but only one of its three seeds learns the task (89.2%). With its rotation
-  removed it falls to 55.8 ± 1.5%, close to Mamba-1 and Mamba-2; the Transformers
+- Parity at length 128: Mamba-3 has the best mean, 72.6 ± 20.5% token accuracy,
+  but only two of its five seeds learn the task (89.2 and 99.0%). With its rotation
+  removed it falls to 55.4 ± 1.2%, close to Mamba-1 and Mamba-2; the Transformers
   and S4D stay near chance. No model extrapolates to longer sequences.
 - Selective copying: the selective SSMs and the Transformers solve it in
   distribution (98 to 100%) and LTI S4D does not (28.4%). With twice the length and
@@ -72,7 +72,7 @@ over 512 tokens is too slow on this GPU.
 
 ## Results
 
-Mean ± sample standard deviation over run seeds 0, 1 and 2.
+Mean ± sample standard deviation over run seeds 0 to 2 (0 to 4 for parity).
 
 ### Parity (state tracking) and the rotation ablation
 

@@ -38,13 +38,14 @@ recurrent step for generation (a KV cache for the Transformer). For
 \mamba{}-3 we derive and implement a chunked parallel form, a complex SSD
 with a two-band correction for the exponential-trapezoidal rule, and verify
 it against the recurrence in float64 and with \texttt{gradcheck}. Models
-are parameter-matched per task and trained with three run seeds under
+are parameter-matched per task and trained with three run seeds (five on
+parity) under
 deterministic algorithms on four synthetic tasks and IMDb; a separate
 benchmark measures training steps, time to first token, decode latency,
 memory, reduced-precision error and \texttt{torch.compile} readiness on a
 6\,GB laptop GPU. \mamba{}-3 has the best mean on cumulative parity
-(66.0\,$\pm$\,20.1\% token accuracy against at most 57.7\% for every other
-model) but only one of its three seeds learns the task (89.2\%), and no
+(72.6\,$\pm$\,20.5\% token accuracy against at most 57.3\% for every other
+model) but only two of its five seeds learn the task (89.2 and 99.0\%), and no
 model extrapolates beyond the training length. Selective models solve
 selective copying in distribution (98 to 99\%); out of distribution
 \mamba{}-1 and \mamba{}-2 keep about half the answers and \mamba{}-3 falls
@@ -274,7 +275,8 @@ training reviews truncated at 512 tokens (dataset revision pinned), with 2{,}500
 held-out training reviews for validation and the 25{,}000-review test split
 for testing.
 
-\emph{Runs.} Each (task, variant) is trained with three run seeds. A run seed
+\emph{Runs.} Each (task, variant) is trained with three run seeds, and
+parity with five. A run seed
 sets initialization, dropout and batch order; the datasets are fixed by a
 separate data seed, so all runs and variants see the same examples. Training
 runs with deterministic algorithms, and a run reproduces bitwise. The
@@ -314,7 +316,8 @@ breaks. All runs used the environment in Table~\ref{tab:env}.
 
 \section{Results}
 \label{sec:results}
-Tables give the mean and sample standard deviation over three run seeds;
+Tables give the mean and sample standard deviation over three run seeds
+(five for parity);
 every number in them is generated from the committed result files. No
 training run exceeded device memory or resumed from a checkpoint.
 
@@ -330,20 +333,21 @@ and at longer test lengths.}
 \centering
 \includegraphics[width=0.8\columnwidth]{fig_parity.pdf}
 \caption{Parity token accuracy by test length; error bars are one sample
-standard deviation over three seeds.}
+standard deviation over five seeds.}
 \label{fig:parity}
 \end{figure}
 \mamba{}-3 has the highest mean at the training length
-(Table~\ref{tab:parity}), but the mean hides a split: one seed reaches
-89.2\% and the other two 52.7 and 56.2\%. With $\theta=0$ the same model
-reaches 55.8\,$\pm$\,1.5\%, close to \mamba{}-1 and \mamba{}-2
-(57.7 and 56.7\%), and the Transformers and S4D stay within 3 points of
-chance. So the rotation is what allows the one successful run, which fits
-the argument that real, non-negative transitions cannot track parity
-\cite{lahoti2026mamba3}, but with three seeds the effect is not reliable.
-No model extrapolates: at $T=2048$ every mean lies between 50.0 and
-51.1\%, and the successful \mamba{}-3 seed falls to 52.6\%
-(Fig.~\ref{fig:parity}).
+(Table~\ref{tab:parity}), but the mean hides a split: two of five seeds
+learn the task (89.2 and 99.0\%), one gets part of the way (65.9\%) and two
+stay near the other models (52.7 and 56.2\%). With $\theta=0$ the same
+model reaches 55.4\,$\pm$\,1.2\% and no seed exceeds 57.2\%, close to
+\mamba{}-1 and \mamba{}-2 (57.3 and 56.8\%), and the Transformers and S4D
+stay within 3 points of chance. So the rotation is what allows the
+successful runs, which fits the argument that real, non-negative
+transitions cannot track parity \cite{lahoti2026mamba3}, but whether a run
+succeeds depends on the seed. No model extrapolates: at $T=2048$ every mean
+lies between 50.1 and 51.5\%, and the two successful \mamba{}-3 seeds fall
+to 52.6 and 53.1\% (Fig.~\ref{fig:parity}).
 
 \subsection{Selective Copying}
 \begin{table*}[t]
@@ -515,9 +519,9 @@ The capability results separate along the transition. A fixed convolution
 (S4D) copies at a fixed offset but cannot select tokens or count; input
 dependence (\mamba{}-1, \mamba{}-2) is enough for selective copying in
 distribution and partly beyond it; the complex transition of \mamba{}-3
-is the only one with which any run learned parity, and the $\theta=0$
-ablation removes that run. Several of these effects are carried by single
-seeds out of three (\mamba{}-3 on parity, the weaker \mamba{}-1 and
+is the only one with which any run learned parity, and none of the five
+$\theta=0$ runs did. Several of these effects are carried by a minority of
+seeds (two of five for \mamba{}-3 on parity, the weaker \mamba{}-1 and
 \mamba{}-2 seeds out of distribution), so the spread across seeds is as
 informative as the means, and more seeds would be needed to rank the
 selective models. Nothing in this study generalizes in length: the
@@ -536,8 +540,9 @@ therefore measures the memory advantage of SSMs directly and leaves their
 speed advantage to fused implementations.
 
 \section{Limitations}
-(1) Three seeds per configuration; several standard deviations are large
-and the parity and out-of-distribution means rest on one or two runs.
+(1) Three seeds per configuration (five for parity); several standard
+deviations are large and the parity and out-of-distribution means rest on
+two or three runs.
 (2) The models are small (0.1M to 3.4M parameters), the synthetic tasks
 are short and IMDb uses half the training split for three epochs.
 (3) The implementations are plain PyTorch; no fused SSM kernel and no
@@ -553,7 +558,7 @@ initialization.
 \section{Conclusion}
 Five sequence architectures share one interface with a parallel form and
 an $O(1)$ decode step, including a verified chunked form of \mamba{}-3.
-Parameter-matched, three-seed experiments confirm the qualitative picture
+Parameter-matched, multi-seed experiments confirm the qualitative picture
 of the SSM literature at small scale: input dependence enables selective
 copying, the complex transition is what makes parity learnable here
 (though unreliably), and fixed-size states fall behind attention on

@@ -60,8 +60,10 @@ def efficiency() -> tuple[str | None, list[dict]]:
         if sweep is None:
             continue
         decode = load_sweep(RESULTS, "inference", precision) or {"entries": []}
+        # Keyed by variant, not architecture: the Transformer variants differ in their
+        # attention kernel, and an unsupported kernel has no decode measurement.
         per_token = {
-            (e["architecture"], int(e["seq_len"])): e.get("decode_ms_per_token_median")
+            (e["model"], int(e["seq_len"])): e.get("decode_ms_per_token_median")
             for e in decode["entries"]
         }
         rows = []
@@ -74,9 +76,7 @@ def efficiency() -> tuple[str | None, list[dict]]:
                     "train_step_ms": e.get("train_step_ms_median"),
                     "peak_train_mb": e.get("peak_train_mb"),
                     "train_tokens_per_s": e.get("train_tokens_per_s"),
-                    "decode_per_token_ms": per_token.get(
-                        (e.get("architecture"), int(e["seq_len"]))
-                    ),
+                    "decode_per_token_ms": per_token.get((e["model"], int(e["seq_len"]))),
                     "decode_label": "prefill then step(), median per token (ssmbench-inference)",
                     "oom": status == "OOM",
                     "unavailable": status,

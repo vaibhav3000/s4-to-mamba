@@ -2,505 +2,371 @@
 
 [![CI](https://github.com/vaibhav3000/s4-to-mamba/actions/workflows/ci.yml/badge.svg)](https://github.com/vaibhav3000/s4-to-mamba/actions/workflows/ci.yml)
 
-An experimental study of how efficient sequence architectures evolved from
-S4 through Mamba, Mamba-2 and Mamba-3, and what trade-offs emerge in quality,
-latency, memory and state-tracking capability. Everything is implemented in
-pure PyTorch from first principles. Every committed number was measured on one
-laptop GPU (RTX 4050 Laptop, 6 GB) with code from before the fixes described
-under [Status of the committed results](#status-of-the-committed-results), and
-five of the efficiency points ran only because Windows let them spill past the
-card's memory into system RAM. `scripts/make_figures.py` draws every figure in
-`figures/` and the report figures in `reports/figures/` from the committed JSON.
+Five sequence backbones (a causal Transformer, S4D, Mamba-1, Mamba-2 and Mamba-3)
+written from first principles in plain PyTorch, behind one interface with a parallel
+form for training and an O(1) recurrent `step()` for generation (a KV cache for the
+Transformer). The models are compared on controlled tasks with matched parameter
+counts and three run seeds, and benchmarked for training, prefill, decode, memory,
+reduced-precision error and `torch.compile` readiness on one RTX 4050 Laptop GPU
+(6 GB). Every number below is generated from the committed result files by
+`scripts/make_tables.py`.
 
-**Headline result (pre-fix code, one seed).** On cumulative parity at length
-128, the Mamba-3 recurrence, whose complex transitions depend on the input,
-reached **98.3% token accuracy** (42% of sequences fully correct), while
-Mamba-2, Mamba-1, S4D and a Transformer ended between 50.6% and 56.3%, close to
-the 50% chance level. S4D also has complex transitions (fixed, not
-input-dependent), and this Mamba-3 differs from Mamba-2 in more than its
-transitions, so the run does not isolate the cause (see section 1). On
-selective copying, scored on longer test sequences with up to twice as many
-pairs as training showed, LTI S4D stayed near chance (**6.4%** token accuracy)
-while the best selective SSM, Mamba-2, reached **67%** and Mamba-3 reached
-21.5% (see section 2 for why the 67% is weaker evidence of selectivity than it
-looks).
+**What the runs show (three seeds each).**
 
-## Status of the committed results
+- Parity at length 128: Mamba-3 has the best mean, 66.0 ± 20.1% token accuracy,
+  but only one of its three seeds learns the task (89.2%). With its rotation
+  removed it falls to 55.8 ± 1.5%, close to Mamba-1 and Mamba-2; the Transformers
+  and S4D stay near chance. No model extrapolates to longer sequences.
+- Selective copying: the selective SSMs and the Transformers solve it in
+  distribution (98 to 100%) and LTI S4D does not (28.4%). With twice the length and
+  pairs, Mamba-1 and Mamba-2 keep about half the answers, while Mamba-3 (14.4%) and
+  the Transformers (7.5 to 12.1%) collapse.
+- Exact copying on lengths 1 to 32: the Transformers copy best (98.6% at length 32
+  with RoPE), Mamba-3 is the best SSM (61.4%), and nobody generalizes to 64.
+- IMDb: all models lie between 81.6 and 84.5% (Mamba-2 best).
+- Inference: after a 32K prompt the SSM decode states take 0.14 to 0.39 MiB, the
+  Transformer's KV cache 64 MiB in bf16; fused attention still gives the fastest
+  bf16 prefill at every length.
 
-Every number, table and figure in this README, every result file in `results/`
-and every plot in `figures/` comes from code that predates the correctness
-fixes on this branch, and so do the numbers quoted in `reports/` and `docs/`.
-None of it has been re-run yet. The S4D, Mamba-1, Mamba-2 and Mamba-3 task
-results are all affected: each Mamba-2/3 head read only a slice of its group's
-B and C instead of the full vectors, the S4D ZOH input matrix was missing its
-1/z factor, weight decay was applied to the SSM dynamics parameters of S4D,
-Mamba-1 and Mamba-3, and Mamba-2's chunked scan dropped the gradient of very
-strong decays. The whole efficiency sweep is affected too, Transformer
-included: the timed train step had no LM head, the Transformer decode values
-come from older code that divided one forward pass by T, the Mamba-2/3 decode
-values are prefill time divided by T, S4D's `step()` recomputed its
-discretization on every token, and five points ran only because Windows
-spilled GPU memory into system RAM. The Transformer's task results come from
-code whose training behavior the fixes do not change, but they have not been
-re-run either. The figures were redrawn from the same JSON with honest labels
-(no number changed). [results/PROVENANCE.md](results/PROVENANCE.md) records
-where each result file came from and how to regenerate it on the GPU.
+The full write-up is
+[reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf](reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf);
+the design behind this version is in [docs/design/step2.md](docs/design/step2.md) and
+the decisions in [docs/adr/](docs/adr/).
 
-Where the committed results came from: the parity, selective-copy and IMDb
-results were produced with the code of b327a35 (the Mamba-2 IMDb file was
-committed later, in bcc3f7d), the efficiency sweep with versions from b327a35
-to bcc3f7d (it was stitched together from eight processes, several of them
-running uncommitted code), and the exact-copy results with 246f4cb. They are stale after these fixes: P1 Mamba-2/3
-B/C head expansion (0a2461a), P2 S4D ZOH (1751001), D10 weight decay on SSM
-dynamics parameters (dcb4dd1), D17 Mamba-2 chunked log decay (52f53bf) and P16
-the LM head in the timed train step (0b58559); P6 (8d15605) makes every
-`peak_gpu_mb` after the first model of a process an inherited value. The
-Transformer task metrics are not changed by any fix but come from the same
-runs.
+## The five implementations
 
-### Re-running every result on the GPU
+| Model | Transition | Parallel form | Decode |
+|---|---|---|---|
+| `transformer_minimal` | none; sinusoidal or RoPE positions | causal SDPA with the backend pinned per variant, or a naive reference | preallocated KV cache |
+| `s4_minimal` (S4D) | complex diagonal, LTI, ZOH | FFT convolution | complex state, O(1) |
+| `mamba_minimal` | real diagonal, input-dependent, exponential Euler | sequential selective scan | state plus conv history, O(1) |
+| `mamba2_minimal` | scalar per head, exponential Euler | chunked SSD | state plus conv history, O(1) |
+| `mamba3_minimal` | complex diagonal per head and state slot, exponential trapezoidal | chunked complex SSD with a two-band correction | complex state, boundary input and conv history, O(1) |
 
-From the repository root in PowerShell, with no other job on the GPU and
-`CUDA_VISIBLE_DEVICES` unset (results/PROVENANCE.md has the pre-flight checks
-and the Git Bash version):
+Every backbone implements `init_state`, `prefill` (the parallel form, returning the
+state a recurrence would hold) and `step`. The Mamba-3 chunked form unrolls the
+trapezoidal recurrence into decayed products with two-band input weights; the
+derivation is in docs/design/step2.md section 3.4 and
+[docs/adr/0002](docs/adr/). The Mamba-3 here has static rotation frequencies, real
+B and C with a real-part readout, and no MIMO.
 
-```powershell
-uv pip install --no-deps -e . --python .venv\Scripts\python.exe
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\ssmbench-train.exe --config configs/parity.yaml --out results --device cuda
-.\.venv\Scripts\ssmbench-train.exe --config configs/selective_copy.yaml --out results --device cuda
-.\.venv\Scripts\ssmbench-train.exe --config configs/imdb.yaml --out results --device cuda
-.\.venv\Scripts\ssmbench-train.exe --config configs/exact_copy.yaml --out results --device cuda
-Remove-Item -LiteralPath results\efficiency_gpu.json
-.\.venv\Scripts\ssmbench-efficiency.exe --config configs/efficiency.yaml
-.\.venv\Scripts\python.exe scripts/make_figures.py
-.\.venv\Scripts\python.exe demo-site/build.py
-```
+The CPU test suite checks, among other things: prefill plus single steps against the
+full forward pass for every backbone in float64 at 1e-10; the chunked Mamba-3 against
+its recurrence in float64 (values, final state and all gradients, chunk sizes 1 to 64,
+underflowing decays) plus `gradcheck`; RoPE against an independent complex rotation;
+the attention backends against each other; bitwise-identical training for equal seeds
+and after resuming from a checkpoint; and that the timed generation produces exactly
+the tokens of greedy decoding by repeated full forwards.
 
-The stale efficiency file must be removed first: the benchmark refuses to
-resume into entries measured with other code, and `--force` would merge them.
-Then update the numbers typed into this README, the docs and
-`reports/Efficient_Sequence_Modeling_S4_to_Mamba3.tex`, and rebuild the report
-with `latexmk -pdf` in `reports/`.
+## Protocol
 
-## Evolution at a glance
+Per task, the Transformer keeps its width and depth, and each SSM gets the width on
+its constraint grid whose parameter count is closest (all within 10%;
+`scripts/match_params.py`). A run seed sets initialization, dropout and batch order;
+a separate data seed fixes the datasets, so every run sees the same examples. Training
+uses deterministic algorithms, validation drives the per-epoch history, and the test
+sets are scored once after the last epoch. The Transformers train with the
+memory-efficient SDPA kernel; the kernel that ran is detected from a profiler trace
+and stored with each result. Mamba-1 is not trained on IMDb, where its sequential scan
+over 512 tokens is too slow on this GPU.
 
-```mermaid
-flowchart LR
-    S4D["S4D - complex diagonal A<br/>LTI, FFT-conv training<br/>O(1)-state decode"] -->|"make Delta, B, C<br/>input-dependent"| M1["Mamba-1 - selective scan<br/>chooses what to remember"]
-    M1 -->|"A = scalar x I<br/>scan becomes matmuls"| M2["Mamba-2 - chunked SSD<br/>tensor-core friendly"]
-    M2 -->|"complex A +<br/>exp-trapezoidal"| M3["Mamba-3 - rotations<br/>meant to restore state tracking"]
-    T["Transformer - O(T^2) attention"] -.baseline.-> S4D
-```
+## Results
 
-**Parity / state tracking (pre-fix run, one seed):** only Mamba-3, whose
-complex transitions depend on the input, ends far above the 0.5 chance line;
-the other four end between 0.506 and 0.563 token accuracy.
+Mean ± sample standard deviation over run seeds 0, 1 and 2.
 
-![Parity: Mamba-3 vs Mamba-1, Mamba-2, S4D and Transformer (pre-fix, one seed)](figures/fig_parity.png)
+### Parity (state tracking) and the rotation ablation
 
-**Train step time vs sequence length (pre-fix sweep, batch 8, fp32, no LM head
-in the timed step; the models differ in size, and five points spilled past GPU
-memory, see section 5):**
+<!-- generated:parity -->
+| Model | Parameters | T=128 | T=256 | T=512 | T=1024 | T=2048 |
+|---|---|---|---|---|---|---|
+| Transformer (sinusoidal) | 100,354 | 53.0 ± 0.7 | 51.6 ± 0.4 | 50.7 ± 0.1 | 50.3 ± 0.1 | 50.2 ± 0.1 |
+| Transformer (RoPE) | 100,354 | 51.6 ± 0.2 | 50.9 ± 0.1 | 50.4 ± 0.1 | 50.2 ± 0.0 | 50.1 ± 0.0 |
+| S4D | 101,034 | 50.7 ± 0.4 | 50.3 ± 0.2 | 50.1 ± 0.1 | 50.0 ± 0.0 | 50.0 ± 0.1 |
+| Mamba-1 | 99,902 | 57.7 ± 3.1 | 54.0 ± 1.5 | 51.9 ± 0.9 | 50.9 ± 0.3 | 50.6 ± 0.2 |
+| Mamba-2 | 101,672 | 56.7 ± 3.8 | 53.4 ± 2.0 | 51.6 ± 1.0 | 50.8 ± 0.5 | 50.5 ± 0.2 |
+| Mamba-3 | 102,642 | 66.0 ± 20.1 | 58.2 ± 10.1 | 53.9 ± 5.1 | 52.0 ± 2.6 | 51.1 ± 1.3 |
+| Mamba-3, no rotation | 102,322 | 55.8 ± 1.5 | 53.0 ± 0.9 | 51.4 ± 0.4 | 50.7 ± 0.2 | 50.4 ± 0.1 |
 
-![Training step time vs sequence length](figures/fig_efficiency_latency.png)
+token accuracy in percent, mean ± sample std over n = 3 run seeds; chance 50.0.
+<!-- /generated:parity -->
 
-**Peak allocated memory in the train step (pre-fix sweep; x markers = runs
-recorded as out of memory, rings = points that exceeded the card's memory).** The card holds 6 140.5 MB, so the five points
-above that level (Transformer and S4D at 32K, Mamba-2 at 16K, Mamba-1 at 4K,
-Mamba-3 at 1K) ran only because Windows spilled GPU memory into system RAM.
-Mamba-1 stops at 4K because `configs/efficiency.yaml` caps it there; no
-Mamba-1 run was recorded as out of memory. Reserved memory was not recorded.
+![Parity by test length](figures/fig_parity.png)
 
-![Peak memory vs sequence length](figures/fig_efficiency_memory.png)
+### Selective copying
 
-**Selective copying (pre-fix run, one seed, final epoch, scored on length-128
-test sequences with 5 to 10 pairs after training on length 64 with 3 to 5
-pairs; see section 2):**
+In distribution: T=64 with 3 to 5 marker-value pairs. Out of distribution: T=128 with
+5 to 10 pairs.
 
-![Selective copying results](figures/fig_selective_copy.png)
+<!-- generated:selective_copy -->
+| Model | Parameters | id | ood |
+|---|---|---|---|
+| Transformer (sinusoidal) | 401,940 | 100.0 ± 0.0 | 12.1 ± 1.9 |
+| Transformer (RoPE) | 401,940 | 100.0 ± 0.0 | 7.5 ± 0.9 |
+| S4D | 402,996 | 28.4 ± 6.7 | 17.6 ± 3.4 |
+| Mamba-1 | 398,180 | 99.3 ± 1.3 | 52.1 ± 20.4 |
+| Mamba-2 | 365,900 | 98.3 ± 2.9 | 49.6 ± 17.9 |
+| Mamba-3 | 367,190 | 99.1 ± 1.6 | 14.4 ± 6.3 |
 
-## Why this matters
+answer-token accuracy in percent, mean ± sample std over n = 3 run seeds; chance 5.9.
+<!-- /generated:selective_copy -->
 
-Efficient sequence modeling is the main alternative to quadratic attention for
-long context. Understanding it requires more than importing `mamba-ssm`: the
-interesting questions - what is the state, what makes Mamba selective, why did
-Mamba-2 move to a matmul form, what does complexity in Mamba-3 buy - are only
-answerable if the recurrence is written down and tested. This repository is
-that exercise, with benchmarks attached.
+### Exact copying
 
-## The five implementations (src/ssmbench/models/)
+Trained at the single string length 32:
 
-| model | transition A | discretization | training form | decode |
+<!-- generated:exact_copy -->
+| Model | Parameters | L=16 | L=32 | L=64 | L=128 |
+|---|---|---|---|---|---|
+| Transformer (sinusoidal) | 602,782 | 8.7 ± 3.7 | 100.0 ± 0.0 | 3.6 ± 0.5 | 3.6 ± 0.3 |
+| Transformer (RoPE) | 602,782 | 3.4 ± 0.4 | 100.0 ± 0.0 | 3.9 ± 0.2 | 3.5 ± 0.5 |
+| S4D | 604,102 | 3.0 ± 0.8 | 100.0 ± 0.0 | 4.6 ± 0.7 | 2.7 ± 0.3 |
+| Mamba-1 | 597,102 | 10.1 ± 1.7 | 21.8 ± 8.1 | 5.1 ± 0.4 | 1.6 ± 0.5 |
+| Mamba-2 | 548,690 | 16.8 ± 2.2 | 23.5 ± 2.0 | 7.1 ± 1.6 | 3.0 ± 0.9 |
+| Mamba-3 | 550,625 | 2.5 ± 0.3 | 100.0 ± 0.0 | 3.6 ± 0.5 | 2.8 ± 0.8 |
+
+token accuracy in percent, mean ± sample std over n = 3 run seeds; chance 3.8.
+<!-- /generated:exact_copy -->
+
+Trained on lengths 1 to 32:
+
+<!-- generated:exact_copy_varlen -->
+| Model | Parameters | L=16 | L=32 | L=64 | L=128 |
+|---|---|---|---|---|---|
+| Transformer (sinusoidal) | 602,782 | 100.0 ± 0.0 | 87.4 ± 3.7 | 5.0 ± 0.4 | 4.0 ± 0.2 |
+| Transformer (RoPE) | 602,782 | 100.0 ± 0.0 | 98.6 ± 0.7 | 6.4 ± 1.1 | 4.1 ± 0.3 |
+| S4D | 604,102 | 21.4 ± 0.5 | 19.7 ± 1.0 | 5.9 ± 0.6 | 3.2 ± 0.7 |
+| Mamba-1 | 597,102 | 62.6 ± 11.9 | 35.6 ± 8.3 | 13.1 ± 3.2 | 5.0 ± 0.9 |
+| Mamba-2 | 548,690 | 50.0 ± 5.4 | 29.0 ± 2.4 | 12.4 ± 1.8 | 4.8 ± 0.9 |
+| Mamba-3 | 550,625 | 80.2 ± 4.1 | 61.4 ± 5.7 | 5.8 ± 3.1 | 3.8 ± 0.5 |
+
+token accuracy in percent, mean ± sample std over n = 3 run seeds; chance 3.8.
+<!-- /generated:exact_copy_varlen -->
+
+A string of fixed length is a fixed delay, which S4D's convolution represents
+exactly; once lengths vary, S4D falls to 19.7% at length 32.
+
+### IMDb sentiment
+
+12,500 training reviews truncated at 512 tokens, 2,500 held out for validation, the
+25,000-review test split for testing; dataset revision pinned.
+
+<!-- generated:imdb -->
+| Model | Parameters | test |
+|---|---|---|
+| Transformer (sinusoidal) | 3,353,602 | 81.6 ± 0.2 |
+| Transformer (RoPE) | 3,353,602 | 81.9 ± 0.6 |
+| S4D | 3,367,682 | 83.7 ± 0.2 |
+| Mamba-2 | 3,034,786 | 84.5 ± 0.1 |
+| Mamba-3 | 3,036,850 | 82.5 ± 1.2 |
+
+test accuracy in percent, mean ± sample std over n = 3 run seeds; chance 50.0; the single test set is the 25k IMDb test split.
+<!-- /generated:imdb -->
+
+### Training step (batch 8)
+
+Language-model wrappers of width 256 and two layers (equal width, not equal
+parameters). A spilled point ran past free GPU memory and was paged to system memory
+by the Windows display driver, so its time is not a GPU-resident measurement.
+
+<!-- generated:efficiency_fp32 -->
+| Model | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
+|---|---|---|---|---|---|---|
+| Transformer, mem.-efficient attention | 32.2 / 349 | 85.4 / 649 | 259.0 / 1245 | 903.1 / 2440 | 3194.8 / 4830 (spilled) | skipped |
+| Transformer, math attention | 55.2 / 855 | 185.0 / 2953 | 7778.9 / 10990 (spilled) | - | - | - |
+| Transformer, naive attention (reference) | 62.8 / 857 | 214.4 / 2961 | 11031.4 / 11022 (spilled) | - | - | - |
+| S4D | 23.4 / 287 | 45.8 / 554 | 90.1 / 1089 | 179.6 / 2158 | 842.0 / 4808 (spilled) | skipped |
+| Mamba-1 | 4095.4 / 1993 | - | - | - | - | - |
+| Mamba-2 | 62.1 / 703 | 186.8 / 1375 | 616.3 / 2688 | 2240.8 / 5313 (spilled) | skipped | skipped |
+| Mamba-3 | 677.8 / 658 | 1418.2 / 1061 | 3061.9 / 1864 | 6963.8 / 3494 | 112812.1 / 6960 (spilled) | skipped |
+
+fp32, batch 8: median training-step time in ms / peak allocated MiB. spilled: the step ran past free GPU memory (WDDM paging, not a VRAM number); skipped: not run after a shorter length spilled; unsupported: the pinned attention kernel refused the inputs; -: not in the sweep.
+<!-- /generated:efficiency_fp32 -->
+
+<!-- generated:efficiency_bf16 -->
+| Model | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
+|---|---|---|---|---|---|---|
+| Transformer, FlashAttention | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| Transformer, mem.-efficient attention | 11.6 / 227 | 29.2 / 401 | 79.3 / 750 | 239.4 / 1446 | 808.1 / 2840 | 3025.5 / 5642 (spilled) |
+| S4D | 25.0 / 283 | 43.9 / 546 | 88.3 / 1071 | 176.2 / 2122 | 770.9 / 4736 (spilled) | skipped |
+| Mamba-1 | 4235.9 / 1905 | - | - | - | - | - |
+| Mamba-2 | 60.7 / 616 | 176.9 / 1200 | 597.0 / 2337 | 2070.4 / 4610 (spilled) | skipped | skipped |
+| Mamba-3 | 676.3 / 578 | 1402.4 / 900 | 2986.1 / 1543 | 6674.0 / 2915 | 34101.2 / 5801 (spilled) | skipped |
+| Transformer, cuDNN attention | 9.8 / 227 | 32.7 / 401 | 61.7 / 750 | 170.6 / 1446 | 530.0 / 2840 | 15630.3 / 5642 (spilled) |
+
+bf16, batch 8: median training-step time in ms / peak allocated MiB. spilled: the step ran past free GPU memory (WDDM paging, not a VRAM number); skipped: not run after a shorter length spilled; unsupported: the pinned attention kernel refused the inputs; -: not in the sweep.
+<!-- /generated:efficiency_bf16 -->
+
+![Training step and memory](figures/fig_efficiency.png)
+
+Without fused kernels, Mamba-2's chunked SSD is slower than fused attention at every
+length it reaches, and Mamba-3's chunked form costs 5 to 11 times Mamba-2 because it
+builds a decay tensor per state slot. FlashAttention is not built into the Windows
+torch wheel, so it is reported as unsupported.
+
+### Generation (batch 1, 64 new tokens)
+
+<!-- generated:inference_fp32 -->
+| Model | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
+|---|---|---|---|---|---|---|
+| Transformer, mem.-efficient attention | 1.5 / 0.98 | 3.2 / 0.96 | 8.7 / 1.32 | 27.0 / 2.46 | 93.4 / 4.61 | 364.2 / 9.26 |
+| S4D | 14.9 / 2.02 | 19.9 / 2.37 | 21.8 / 2.48 | 36.1 / 2.52 | 69.4 / 1.81 | 144.4 / 0.55 |
+| Mamba-1 | 857.6 / 3.28 | 1700.6 / 3.59 | 1429.5 / 1.32 | 3153.2 / 2.42 | - | - |
+| Mamba-2 | 27.0 / 6.22 | 49.1 / 5.88 | 99.1 / 6.77 | 96.5 / 3.67 | 171.9 / 3.60 | 345.1 / 3.46 |
+| Mamba-3 | 49.3 / 4.87 | 56.7 / 4.96 | 87.5 / 4.80 | 156.4 / 1.91 | 313.1 / 1.90 | 629.6 / 1.89 |
+
+fp32, batch 1: median time to first token in ms / median decode latency per token in ms, prompt length T, 64 new tokens. Decode state at the longest measured prompt: Transformer, mem.-efficient attention 128.25 MiB at T=32768; S4D 0.25 MiB at T=32768; Mamba-1 0.07 MiB at T=8192; Mamba-2 0.14 MiB at T=32768; Mamba-3 0.39 MiB at T=32768.
+<!-- /generated:inference_fp32 -->
+
+<!-- generated:inference_bf16 -->
+| Model | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
+|---|---|---|---|---|---|---|
+| Transformer, FlashAttention | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| Transformer, mem.-efficient attention | 1.4 / 1.01 | 1.3 / 0.98 | 2.6 / 0.96 | 6.5 / 0.93 | 20.3 / 1.43 | 68.1 / 2.65 |
+| Transformer, cuDNN attention | 2.7 / 1.02 | 1.6 / 1.10 | 11.8 / 1.00 | 7.1 / 1.04 | 20.4 / 0.97 | 64.1 / 0.63 |
+| S4D | 6.6 / 0.75 | 9.3 / 0.74 | 17.2 / 0.75 | 34.7 / 0.84 | 64.3 / 0.87 | 133.7 / 0.29 |
+| Mamba-1 | 572.7 / 2.95 | 656.9 / 1.55 | 1244.5 / 1.59 | 3878.3 / 1.78 | - | - |
+| Mamba-2 | 14.2 / 1.92 | 20.4 / 2.08 | 44.6 / 2.06 | 49.2 / 2.42 | 133.0 / 2.31 | 240.9 / 2.47 |
+| Mamba-3 | 40.0 / 3.04 | 59.8 / 2.79 | 80.0 / 2.88 | 156.1 / 2.67 | 317.0 / 2.83 | 628.0 / 3.86 |
+
+bf16, batch 1: median time to first token in ms / median decode latency per token in ms, prompt length T, 64 new tokens. Decode state at the longest measured prompt: Transformer, FlashAttention -; Transformer, mem.-efficient attention 64.12 MiB at T=32768; Transformer, cuDNN attention 64.12 MiB at T=32768; S4D 0.25 MiB at T=32768; Mamba-1 0.07 MiB at T=8192; Mamba-2 0.14 MiB at T=32768; Mamba-3 0.39 MiB at T=32768.
+<!-- /generated:inference_bf16 -->
+
+![Generation](figures/fig_inference.png)
+
+The SSM decode steps do the same work at every prompt length; their medians vary
+without a trend because a step launches many small kernels from Python, so at batch 1
+they measure launch overhead rather than arithmetic.
+
+### Numerics and compilation
+
+<!-- generated:numerics -->
+| Model | fp32 vs fp64 | bf16 vs fp64 | fp16 vs fp64 | bf16 decode, max |
 |---|---|---|---|---|
-| `transformer_minimal` | - (absolute sinusoidal positions, no RoPE or ALiBi) | - | causal SDPA attention, run in fp32 (so no flash kernel) | full-prefix recompute (no KV cache, labeled) |
-| `s4_minimal` (S4D) | complex diagonal, HiPPO-style init | ZOH with exact (e^z-1)/z | FFT convolution, O(T log T) | O(1)-state complex `step()` |
-| `mamba_minimal` | real negative diagonal, input-dependent | exponential-Euler: exp(dA), dB | python-loop selective scan | true incremental `step()`, O(1) state |
-| `mamba2_minimal` | scalar-per-head x I | exponential-Euler | **chunked SSD** matmuls + carried (N,P) state | no `step()`; the benchmark reports prefill time / T, not a decode cost |
-| `mamba3_minimal` | **complex** diagonal per (head, state): learned static frequency theta, so the rotation angle delta_t x theta depends on the input only through delta_t | **exponential-trapezoidal** (data-dependent lambda) | python-loop selective scan | no `step()`; the benchmark reports prefill time / T, not a decode cost |
+| Transformer (sinusoidal) | 1.4e-07 | 1.0e-03 | 1.2e-04 | 1.2e-03 |
+| Transformer (RoPE) | 1.4e-07 | 1.2e-03 | 1.4e-04 | 1.3e-03 |
+| S4D | 1.1e-07 | 1.3e-03 | 1.7e-04 | 2.0e-03 |
+| Mamba-1 | 5.0e-08 | 3.5e-04 | 4.5e-05 | 4.7e-04 |
+| Mamba-2 | 5.0e-08 | 3.5e-04 | 4.5e-05 | 4.9e-04 |
+| Mamba-3 | 5.0e-08 | 3.5e-04 | 4.5e-05 | 4.4e-04 |
 
-The table describes the code after the fixes on this branch: S4D's ZOH now
-includes the 1/z factor, and every Mamba-2/3 head reads its group's full B and
-C. The committed results were produced before those fixes (see
-[Status of the committed results](#status-of-the-committed-results)).
+Relative L2 error of the backbone output against float64 at T=4096, mean over 3 initialization seeds; the last column is the largest per-step error of a bf16 decode against the float64 forward pass.
+<!-- /generated:numerics -->
 
-Correctness is tested against independent references (`tests/`, 152
-tests, one of which needs CUDA and is skipped without it). `tests/test_references.py` compares each efficient form with a slow
-float64 or complex128 loop written from the equations: S4D's ZOH against the
-matrix exponential, its convolution kernel and conv-vs-step path at T=2100
-(three kernel chunks), Mamba-2 and Mamba-3 blocks with one and two B/C groups
-(Mamba-3 at random theta and lambda), and chunked against sequential Mamba-2
-through `forward()`, plus float64 gradient checks of each scan and of the S4D
-layer. The older checks in `tests/test_models.py` (S4D conv vs step at T=64,
-Mamba-2 chunked vs sequential on random scan inputs, Mamba-3 at lambda=1 and
-theta=0, Mamba-1 step vs forward, all at atol = rtol = 1e-3) passed on the
-pre-fix code even though it had the B/C and ZOH bugs, and none of them reached
-the multi-chunk S4D kernel used above T=1024. A concatenation bug in that
-kernel was found by the efficiency sweep, not by a test; the T=2100 tests now
-cover that path.
+The models are randomly initialized, and the residual stream dominates their outputs
+(the Mamba blocks change it by about 6%), which is why the three Mamba variants show
+nearly the same error.
 
-## Experiments and results (results/*.json)
-
-### 1. Parity (state tracking): the Mamba-3 motivation, one pre-fix run
-
-Cumulative XOR over L=128; the target at position t is the parity of inputs
-1..t. Real non-negative transitions can only decay; they cannot rotate state,
-which parity requires. Setup: 2 000 training sequences, training and test both
-at length 128 (no length extrapolation), 20 epochs, one seed (42), matched
-width and depth (d_model 64, 2 layers) but not matched parameter counts
-(33 794 for S4D up to 100 354 for the Transformer). Results from pre-fix code:
-
-| model | token accuracy | full-sequence success |
-|---|---|---|
-| **mamba3** (complex, input-dependent) | **0.983** | **0.42** |
-| mamba2 | 0.563 | 0.0 |
-| mamba | 0.559 | 0.0 |
-| transformer | 0.533 | 0.0 |
-| s4d | 0.506 | 0.0 |
-
-S4D has complex transitions too, but LTI ones (a fixed rotation per step, not
-input-dependent). The usual explanation for its failure is that the rotation
-has to respond to each bit; this run does not test that directly. Nor does it
-isolate complex transitions as the reason Mamba-3 succeeds. Besides its complex
-transitions (a learned static frequency theta, scaled by the input-dependent
-step delta), this Mamba-3 differs from Mamba-2 in its decay (a vector per head
-and state instead of one scalar per head) and in its trapezoidal update with an
-input-dependent lambda, and no run with theta fixed at 0 or lambda fixed at 1
-was trained. The Mamba-3 curve also dropped to 0.480 token accuracy at epoch 10
-before reaching 0.983, and with one seed there is no estimate of run-to-run
-spread. Every SSM run here predates the fixes: the S4D run used the ZOH input
-matrix without its 1/z factor, the Mamba-2 and Mamba-3 runs had the B/C
-head-expansion bug, and S4D, Mamba-1 and Mamba-3 had weight decay on their SSM
-parameters.
-
-### 2. Selective copying (pre-fix, one seed, out-of-distribution test only)
-
-Marker-value pairs embedded in noise; the model must emit the remembered
-values after a separator. Train L=64 (3-5 pairs), test L=128 (5-10 pairs),
-12 epochs, one seed. Every number below is from that out-of-distribution test
-set; no in-distribution accuracy was recorded. Training never shows more than
-five pairs, and about two thirds of the answer tokens in this test set belong
-to the first five pairs, so a model that recalls only the first five values
-would score almost exactly Mamba-2's token accuracy. Training loss ended below
-0.0005 while test loss stayed at 1.2 (Mamba-2) and 2.4 (Mamba-1), which is
-consistent with fitting the training distribution rather than extrapolating
-to more pairs. The Transformer uses absolute sinusoidal positions and never saw
-a position beyond 64 in training. Results from pre-fix code:
-
-| model | sequence success | token accuracy |
-|---|---|---|
-| mamba2 | **0.183** | **0.670** |
-| mamba | 0.149 | 0.649 |
-| mamba3 | 0.129 | 0.215 |
-| transformer | 0.0 | 0.205 |
-| s4d | 0.0 | 0.064 |
-
-LTI S4D stays near chance (1 in 17 values), consistent with an LTI state that
-cannot gate noise out. Mamba-2 and Mamba-1 recall part of the values, with the
-first-five-pairs caveat above. Mamba-3, also a selective SSM, reaches only
-0.215 token accuracy, although its training loss ended at 0.021, so it did fit
-the training distribution. Why it falls further on the longer test is not
-established: the idea that its rotations trade recall for state tracking was
-never tested, and this run also had the B/C head-expansion bug and weight decay
-on its decay and rotation parameters, both fixed on this branch. Reported as
-measured, pending a re-run.
-
-### 3. Two copy tasks, two rankings (not a like-for-like comparison)
-
-"Copying" is not one task. Our selective copying (keep k pairs, filter noise)
-and our exact copying (reproduce every token, a reduced version of the Jelassi
-et al. ICML 2024 task) rank the models differently in the pre-fix runs below.
-The two scores are not measured the same way: the selective-copy scores come
-from an out-of-distribution test (length 128 with 5-10 pairs, after training on
-length 64 with 3-5 pairs), while the exact-copy scores are in distribution, at
-the single string length (32) used for every training example.
-
-```mermaid
-flowchart TB
-    subgraph SC["Selective copying, pre-fix (out-of-distribution test)"]
-        direction LR
-        A1["Mamba-2 0.183<br/>Mamba-1 0.149"] -->|"higher"| A2["Transformer 0.0<br/>S4D 0.0<br/>(sequence success at test L=128 with 5-10 pairs,<br/>trained at L=64 with 3-5 pairs)"]
-    end
-    subgraph EC["Exact copying, pre-fix (in distribution)"]
-        direction LR
-        B1["Transformer 1.00<br/>S4D 1.00<br/>(sequence success, trained and tested<br/>at string length 32 only)"] -->|"higher"| B2["Mamba-1 0.0<br/>Mamba-2 0.0<br/>(6 epochs, loss still falling)"]
-    end
-    SC ~~~ EC
-```
-
-No single task establishes that one architecture universally dominates
-another. Our results are benchmark-specific by design; see
-docs/copy_task_comparison.md and docs/literature/. Both predate the fixes, so
-any numbers they quote are the same pre-fix results, and where they say
-exact-copy training used string lengths 5..32, every training string actually
-had length 32.
-
-### 4. IMDb sentiment (quality on real text)
-
-Same protocol for every model: 12.5k training samples (fixed seed), max length
-512, 3 epochs, d_model=128, 4 blocks, cosine schedule, one training seed (42).
-Accuracy and AUC are from the final epoch on the full 25k IMDb test split,
-which also served as the per-epoch validation set. Parameter counts are
-3 353 602 (Transformer), 3 034 786 (Mamba-2) and 2 677 762 (S4D), most of it
-the 20 000-word embedding. These rows predate the fixes (the B/C fix for
-Mamba-2, the ZOH and weight-decay fixes for S4D; the Transformer is
-unaffected), and with one seed the 0.9 to 2.3 point gaps have no error bars:
-
-| model | accuracy | AUC |
-|---|---|---|
-| **mamba2** | **0.836** | **0.917** |
-| s4d | 0.827 | 0.907 |
-| transformer | 0.813 | 0.894 |
-
-The python-loop sequential implementations (mamba, mamba3) were not trained on
-IMDb at this scale because their scans are too slow at length 512 (see the
-efficiency table below); experiments.log shows two Mamba-1 IMDb starts that did
-not finish an epoch. The selective-SSM family is represented only by mamba2,
-which keeps Mamba-1's exponential-Euler selective recurrence with a scalar
-decay per head. Mamba-3 also changes the discretization (trapezoidal, with a
-learned lambda) and makes the state complex, so this table says nothing about
-it.
-
-### 5. Efficiency vs sequence length (pre-fix sweep, RTX 4050 Laptop 6 GB)
-
-`results/efficiency_gpu.json` holds per-model train-step latency, peak
-allocated memory, training throughput and a per-token "decode" value, all
-CUDA-event timed in fp32. Train steps use batch 8 and 5 timed repeats; the
-inference and decode timings use batch 1, and decode only 2 repeats. The file
-is one pre-fix sweep pieced together from several restarted runs while the
-code was still changing. Its limits: the timed train step fed the backbone's
-hidden features straight into the loss (no LM head); the Transformer decode
-values were recorded by older code as forward time divided by T, the
-Mamba-2/3 values are prefill time divided by T, and S4D's `step()` recomputed
-its discretization on every token, so the decode values do not compare
-per-token decode costs; only allocated memory was recorded, not reserved; and
-the models differ in size (Transformer 1 579 520 parameters, S4D 182 784 with
-no MLP, Mamba-1/2/3 between 875 808 and 877 872). Only the Transformer and S4D
-cover the whole 1K to 32K range. Train step time, batch 8 ("spilled" = peak
-allocation above the card's 6 140.5 MB, so the run paged into system RAM):
-
-| T | Transformer | S4D (FFT) | Mamba-2 (chunked) | Mamba-1 (loop) |
+<!-- generated:compile -->
+| Model | Forward graphs / breaks | Step graphs / breaks | aot_eager max diff | Inductor |
 |---|---|---|---|---|
-| 1024 | 30 ms | 20 ms | 79 ms | 2 632 ms |
-| 4096 | 250 ms | 85 ms | 842 ms | 248 138 ms (spilled) |
-| 16384 | 4 482 ms | 741 ms | 130 426 ms (spilled) | not run (capped at 4096 by config) |
-| 32768 | 186 025 ms (spilled) | 13 456 ms (spilled) | OOM | not run (capped at 4096 by config) |
+| Transformer (sinusoidal) | 1 / 0 | 1 / 0 | 0.0e+00 | not run: Triton is not installed in this environment |
+| Transformer (RoPE) | 1 / 0 | 1 / 0 | 0.0e+00 | not run: Triton is not installed in this environment |
+| S4D | 1 / 0 | 5 / 4 | 0.0e+00 | not run: Triton is not installed in this environment |
+| Mamba-1 | 1 / 0 | 1 / 0 | 0.0e+00 | not run: Triton is not installed in this environment |
+| Mamba-2 | 1 / 0 | 1 / 0 | 0.0e+00 | not run: Triton is not installed in this environment |
+| Mamba-3 | 1 / 0 | 1 / 0 | 0.0e+00 | not run: Triton is not installed in this environment |
 
-What the measurements show, stated plainly:
+torch.compile readiness: Dynamo graphs and graph breaks, and the largest output or gradient difference of aot_eager against eager.
+<!-- /generated:compile -->
 
-- The Transformer's O(T^2) compute is visible in wall-clock even with
-  memory-efficient attention: 30 ms at 1K becomes 4 482 ms at 16K. The 186 s
-  at 32K is not a clean attention measurement: that run allocated more memory
-  than the card holds and paged into system RAM.
-- S4D's FFT-convolution form has the lowest train step time at every measured
-  length (at 16K, 741 ms against 4 482 ms for the Transformer, about 6x). It is
-  also by far the smallest model (182 784 parameters against 1 579 520, and no
-  MLP), and everything runs in fp32 without autocast and with TF32 matmuls left
-  off, so this is not a size-matched or mixed-precision comparison.
-- The educational python-loop scans are O(T) in operations but far slower in
-  wall-clock than the vectorized forms at the same length: at 1K a Mamba-1
-  train step took 2 632 ms against 79 ms for chunked Mamba-2 and 20 ms for S4D,
-  and a Mamba-3 step took 10 880 ms (a run that also spilled past GPU memory).
-  The constant overhead (kernel launches, T-step autograd graphs) is why fused
-  kernels exist, and why Mamba-2 moved to a matmul formulation.
-- Out-of-memory runs are recorded, not hidden: Mamba-2 training at 32K and
-  Mamba-3 training at 2K carry `oom_train: true`, and Mamba-3 at 4K carries
-  `oom: true`. No Mamba-1 entry is an OOM: Mamba-1 was measured at 1K, 2K and
-  4K and not run beyond, because `configs/efficiency.yaml` caps Mamba-1 and
-  Mamba-3 at 4096. Five measured points allocated more than the card's
-  6 140.5 MB (Transformer and S4D at 32K, Mamba-2 at 16K, Mamba-1 at 4K,
-  Mamba-3 at 1K). Windows WDDM let them spill into shared system memory, so
-  their timings include that paging; on Linux, or with the fallback disabled,
-  they would be expected to fail with OOM instead (not tested). Since only
-  allocated memory was recorded, the sweep cannot show whether the 16K
-  Transformer and S4D points (about 5 GB allocated) also spilled.
+S4D's decode step breaks the graph at a `Tensor.item()` call in its parameter-version
+check; every other forward and step compiles to one graph.
 
-### 6. The wall-clock lesson (the honest part)
+### Environment
 
-The minimal Mamba-1/3 scans are O(T) in operations but slow in wall-clock:
-a python loop over T steps x n_layers launches thousands of tiny kernels and
-builds a T-step autograd graph. The chunked Mamba-2 form cuts the loop by
-`chunk_size` and turns the inner work into matmuls, the kind of work tensor
-cores speed up in bf16 or TF32. This benchmark runs fp32 without autocast and
-with TF32 matmuls left off, and in it chunked Mamba-2 is slower than the
-Transformer at every measured length (79 ms vs 30 ms at 1K, 842 ms vs 250 ms at
-4K, pre-fix). The official repository goes further with fused Triton/CUDA
-kernels (Linux-only, not used here). Theoretical complexity and wall-clock
-performance are different claims, and this repository measures both.
+<!-- generated:environment -->
+| Item | Value |
+|---|---|
+| GPU | NVIDIA GeForce RTX 4050 Laptop GPU (6140.5 MiB) |
+| NVIDIA driver | 610.74 |
+| PyTorch | 2.14.1+cu130 |
+| CUDA / cuDNN | 13.0 / 92400 |
+| Python | 3.13.7 |
+| Platform | Windows-11-10.0.26300-SP0 |
+| Code | git c4c111b |
+| uv.lock sha256 | c67a82f69221 |
 
-## Literature Comparisons
+Recorded by scripts/write_environment.py at the start of the GPU runs.
+<!-- /generated:environment -->
 
-**Repeat After Me (Jelassi et al., ICML 2024): Transformers beat SSMs at
-copying.** We rebuilt a reduced version of their exact-copy task
-(`<bos> string <sep>` -> reproduce the string) in pure PyTorch and ran our
-baseline grid on it. Three simplifications matter: every training string has
-length 32, so the answer is always the prompt shifted by 33 positions; the
-answer positions are fed PAD rather than the previous target token; and each
-model trained for 6 epochs with one seed. Measured with pre-fix code
-(full-sequence success at the training length L=32): Transformer 1.00, S4D
-1.00, Mamba-1 0.00, Mamba-2 0.00. This is weak evidence for the paper's
-Transformer-over-SSM result. The LTI S4D, itself an SSM, matches the
-Transformer. The Mamba-1 and Mamba-2 validation losses (3.09 and 2.81) were
-still falling after 6 epochs and sit not far below ln 26, the loss of uniform
-guessing over 26 letters, so their 0.00 looks more like under-training than a
-measured state-capacity limit; the Mamba-2 run also had the B/C head-expansion
-bug. Parameter counts differ too (602 782 Transformer, 363 670 Mamba-2,
-358 174 Mamba-1, 95 902 S4D). Beyond the training length (L=64/128) every
-model collapses, the Transformer included; ours uses absolute sinusoidal
-positions, the kind the paper reports failing to extrapolate (their ALiBi
-variant did).
+## Reproducing
 
-- Research note (pre-fix; it says training used string lengths 5..32, but
-  every training string had length 32): docs/literature/repeat_after_me_reproduction.md
-- Task comparison (pre-fix, same length caveat): docs/copy_task_comparison.md
-- Figures (pre-fix): figures/fig_exact_copy.png (its x-axis label says
-  'train: 5 to 32', but every training string had length 32; its chance line
-  is 1/30, uniform over all 30 output classes, while guessing among the 26
-  letters would give 1/26), figures/fig_task_formulation.png (puts
-  out-of-distribution selective-copy scores beside in-distribution exact-copy
-  scores)
-- Interview framing: docs/literature/interview_defense.md
-- Analysis notes (no reproduction claimed): LongMamba
-  (docs/literature/longmamba_analysis.md), PD-SSM
-  (docs/literature/pd_ssm_analysis.md)
-
-## Technical Report
-
-A concise IEEE-style technical paper documenting this study is at
-[reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf](reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf),
-with its LaTeX source under `reports/`. It was written before the fixes on
-this branch and quotes the same pre-fix numbers, now marked as such. The PDF is
-rebuilt from the .tex, and its figures in `reports/figures/` are drawn by
-`scripts/make_figures.py` from the committed JSON.
-
-## What is NOT implemented (and why that is stated)
-
-- Full S4 (NPLR parameterization, Woodbury-corrected Cauchy kernel): S4D keeps
-  every idea this study needs; the delta is documented in docs/evolution.md.
-- Fused/official kernels: this repo is dependency-light pure PyTorch; the
-  official `mamba-ssm` requires Linux and CUDA compilation.
-- Mamba-3's MIMO formulation and its chunked dual: the recurrence, complex
-  states and trapezoidal discretization are implemented; the parallel form is
-  described in docs/evolution.md.
-- Choices in this Mamba-3 that are easy to miss: its rotation frequency theta
-  is a learned static parameter, so the rotation angle varies with the input
-  only through the step size delta; its decay A is a vector per (head, state),
-  where Mamba-2 uses one scalar per head; and the readout uses only the real
-  part of the state (y = C^T Re(h)).
-- Incremental decode for Mamba-2 and Mamba-3: neither has a `step()` method,
-  so the benchmark's per-token "decode" value for them is prefill time divided
-  by T.
-- Relative position schemes for the Transformer: it uses absolute sinusoidal
-  positions (no RoPE or ALiBi), a known weakness on test sequences longer than
-  the training ones, which the selective-copy and exact-copy tests use. Its
-  attention also runs in fp32, which rules out the flash kernel.
-
-## Reproducibility
+The environment is locked with uv (`uv.lock`); torch 2.14.1 comes from the PyTorch CPU
+or CUDA 13.0 index through the `cpu` or `cu130` extra (docs/adr/0007).
 
 ```bash
-python -m pip install -e ".[dev]"        # torch required (CPU or CUDA)
-python -m pytest tests/ -q               # 152 tests (1 skipped without CUDA)
-ssmbench-train --config configs/parity.yaml --out results
-ssmbench-train --config configs/selective_copy.yaml --out results
-ssmbench-train --config configs/exact_copy.yaml --out results
-ssmbench-train --config configs/imdb.yaml --out results
-ssmbench-efficiency --config configs/efficiency.yaml
-python scripts/make_figures.py           # figures/ and reports/figures/ from results/
+uv sync --locked --extra cu130        # or --extra cpu
+uv run --locked pytest -q             # CPU test suite
 ```
 
-`scripts/run_training.py` and `scripts/run_efficiency.py` still work with the
-same flags. The training configs pin one seed (42), the protocols and the model
-sizes. The committed results are the pre-fix runs (see
-[Status of the committed results](#status-of-the-committed-results) and
-[results/PROVENANCE.md](results/PROVENANCE.md)). `ssmbench-efficiency` writes
-to the `out_path` in `configs/efficiency.yaml` (`results/efficiency_gpu.json`)
-and resumes into it only if the existing entries come from the same code, torch
-build, GPU, batch size, repeat count and other measurement settings in the config
-(adding models or lengths is fine); otherwise it stops unless you pass `--force`. For a clean sweep, move the committed file aside first rather than
-forcing a merge. Because results are committed, the figures can be rebuilt
-without a GPU.
+Every GPU result comes from one resumable plan; each job writes its log to
+`results/logs/<job>.log` and can be rerun on its own:
+
+```bash
+uv run python scripts/run_gpu_plan.py --seeds 0 1 2 --dry-run   # list the jobs
+uv run python scripts/run_gpu_plan.py --seeds 0 1 2             # run them all
+uv run python scripts/run_gpu_plan.py --from summarize          # continue from a job
+```
+
+The jobs are: `environment` (results/ENVIRONMENT.json), `smoke` (two training steps per
+variant, twice, which must agree bitwise, and every pinned attention kernel once),
+`train-<config>` (`ssmbench-train --seeds 0 1 2 --checkpoints checkpoints`, resumable
+per epoch), `summarize`, `efficiency-fp32/bf16`, `inference-fp32/bf16`, `numerics`,
+`compile`, `figures` and `tables`. The tables in this README, results/SUMMARY.md and
+the report tables are regenerated by `scripts/make_tables.py`; `--check` fails if a
+committed table differs from the committed results. Where each result file came from
+is in [results/PROVENANCE.md](results/PROVENANCE.md).
 
 ## Project structure
 
 ```
-src/ssmbench/models/     five backbones + shared blocks + registry
-src/ssmbench/data/       IMDb pipeline; selective copy; parity
-src/ssmbench/train/      config-driven trainer, JSON results
-src/ssmbench/benchmarks/ sequence-length efficiency harness
-configs/                 experiment YAMLs
-tests/                   reference, equivalence, gradient, shape and determinism tests
-results/                 committed experiment outputs (JSON, pre-fix; see results/PROVENANCE.md)
-figures/                 plots generated from results/ (PNG + PDF, pre-fix)
-docs/                    evolution.md, interview_guide.md
-legacy/                  the original project's scripts, preserved with notes
+src/ssmbench/models/      five backbones, attention backends, decode interface
+src/ssmbench/data/        parity, selective copy, exact copy, IMDb (pinned revision)
+src/ssmbench/train/       trainer (seeds, validation and test sets, checkpoints), CLI
+src/ssmbench/benchmarks/  efficiency, inference, numerics and compile benchmarks
+src/ssmbench/analysis/    multi-seed summaries and result loading
+configs/                  training configs (parameter-matched) and benchmark configs
+scripts/                  run plan, smoke check, tables, figures, parameter matching
+results/                  per-seed runs, summaries, sweeps, logs, environment, provenance
+reports/                  LaTeX report, generated tables and figures
+docs/                     design (docs/design/step2.md), ADRs, glossary, notes
+tests/                    references, equivalence, gradient, decode and protocol tests
+legacy/                   the original project's scripts, preserved with notes
 ```
 
-## References
+## What is not implemented
 
-See REFERENCES.md. Primary: S4 (arXiv 2111.00396), S4D (2206.11893), HiPPO
-(2008.07669), Mamba (2312.00752), Mamba-2 (2405.21060), Mamba-3 (2603.15569).
-The official state-spaces/mamba repository (Apache-2.0) was consulted for
-parameterization conventions; no code was copied.
+- Full S4 (NPLR parameterization with a Cauchy kernel); S4D keeps what this study needs.
+- Fused kernels: the official `mamba-ssm` needs Linux and CUDA compilation, and
+  Inductor needs Triton, which this Windows environment does not have.
+- Mamba-3's MIMO formulation and input-dependent rotation frequencies.
 
-## License
+## Notes on earlier versions
 
-
-
-
-MIT.
-
-
-## Visual Benchmark Results (pre-fix)
-
-Every plot here comes from the pre-fix results described under
-[Status of the committed results](#status-of-the-committed-results).
-
-| Train step time (forward, backward, optimizer step; only Transformer and S4D reach 32K) | Peak allocated GPU memory in the train step (points above 6 140.5 MB spilled into system RAM) |
-| :---: | :---: |
-| ![Train step time](figures/fig_efficiency_latency.png) | ![Peak allocated memory](figures/fig_efficiency_memory.png) |
-
-| Training throughput (tokens/s) | Left: generation cost per token for the models with a real `step()` decode (S4D, Mamba-1). Right: forward time / T for every model, which is not a decode cost |
-| :---: | :---: |
-| ![Throughput](figures/fig_efficiency_throughput.png) | ![Decode value](figures/fig_efficiency_decode.png) |
-
-| Cumulative parity (one seed) | Exact copy by string length (every training string has length 32) |
-| :---: | :---: |
-| ![Parity](figures/fig_parity.png) | ![Exact copy](figures/fig_exact_copy.png) |
-
-| IMDb accuracy and AUC (one seed) | Learning curves (IMDb, selective copy, parity) |
-| :---: | :---: |
-| ![IMDb Quality](figures/fig_imdb_quality.png) | ![Learning Curves](figures/fig_learning_curves.png) |
+The notes under docs/literature/, docs/copy_task_comparison.md, docs/interview_guide.md
+and reports/SSM_LITERATURE_REPRODUCTION_REPORT.md were written for an earlier,
+single-seed version of this repository whose models had defects since fixed; their
+numbers are kept for the record and are superseded by the tables above. Those runs are
+still in the git history.
 
 ## Running the tests in Docker
 
-The image installs the package and runs the test suite (152 tests, one skipped without CUDA, on
-CPU). It does not reproduce any training or benchmark result. Each test states
-its own tolerance: the float32 parallel-vs-recurrent checks in
-`tests/test_models.py` use atol = rtol = 1e-3, and the reference checks in
-`tests/test_references.py` use 1e-10 for most float64 comparisons and 1e-4 for
-float32 against a float64 reference.
+The image installs the locked CPU environment and runs the test suite; it does not
+reproduce any GPU result.
 
 ```bash
 docker build -t s4-to-mamba .
 docker run --rm s4-to-mamba
 ```
+
+## References
+
+See REFERENCES.md. Primary: S4 (arXiv 2111.00396), S4D (2206.11893), HiPPO
+(2008.07669), Mamba (2312.00752), Mamba-2 (2405.21060), Mamba-3 (2603.15569),
+Repeat After Me (2402.01032), RoFormer (2104.09864). The official state-spaces/mamba
+repository (Apache-2.0) was consulted for parameterization conventions; no code was
+copied.
+
+## License
+
+MIT.

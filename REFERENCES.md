@@ -51,9 +51,21 @@ entry, and the originality statement at the end applies to all of them.
   rotation parameter `theta`, so the per-step rotation depends on the input only through the
   step size `delta`, and with real `B` and `C` and a real readout; the module docstring lists
   these details), and the MIMO formulation (described only; this repository keeps SISO per
-  head). Its expressivity discussion, drawing
-  on Grazzi et al. and Merrill et al., is the background for the parity result in
-  `results/parity_*.json`.
+  head). The chunked parallel form in the same file (complex SSD with a two-band
+  correction) is derived in docs/design/step2.md. Its expressivity discussion, drawing
+  on Grazzi et al. and Merrill et al., is the background for the parity results in
+  `results/train/parity/`.
+
+- **Repeat After Me: Transformers are Better than State Space Models at Copying.**
+  Jelassi, Brandfonbrener, Kakade, Malach (2024).
+  [arXiv:2402.01032](https://arxiv.org/abs/2402.01032)
+  The exact-copy task in `src/ssmbench/data/synthetic.py`, trained at a fixed length and
+  on variable lengths.
+
+- **RoFormer: Enhanced Transformer with Rotary Position Embedding.** Su, Lu, Pan,
+  Murtadha, Wen, Liu (2021).
+  [arXiv:2104.09864](https://arxiv.org/abs/2104.09864)
+  The RoPE variant of the Transformer baseline in `src/ssmbench/models/attention.py`.
 
 ## Code
 
@@ -82,6 +94,6 @@ rule) and in `tests/test_references.py` (independent float64 and complex128 refe
 written from the equations, ZOH through the matrix exponential, and float64 gradchecks), not
 by comparison against the official kernels. The first group alone passed while two real bugs
 were present (the S4D ZOH input matrix and the way Mamba-2/3 heads read `B` and `C`), which is
-why the second group exists. Benchmark numbers quoted in the documentation come exclusively
-from committed JSON files in `results/`; those runs predate the fixes and are stale until
-re-run (see `results/PROVENANCE.md`).
+why the second group exists. Benchmark numbers quoted in the README and the report come
+exclusively from committed result files in `results/`, generated into tables by
+`scripts/make_tables.py` (see `results/PROVENANCE.md`).

@@ -38,11 +38,12 @@ but applied to the SSM state dynamics instead of positional embeddings.
 
 ## Why it matters to this repository
 
-Our exact-copy extrapolation results (results/exact_copy_*.json) show every
-model collapsing beyond the single training length (32), and our
-efficiency suite shows what happens near hardware limits (the committed sweep predates
-later benchmark fixes, and some of its points only ran through Windows system-memory
-fallback; see results/PROVENANCE.md). LongMamba's thesis
+Our exact-copy extrapolation results (results/train/exact_copy/ and
+results/train/exact_copy_varlen/) show every model, the Transformers included, at most 13.1%
+token accuracy beyond the longest training length, and our parity runs fall to 50.1 to 51.5%
+at length 2048. The efficiency sweeps show what happens near hardware limits (some points
+only ran through Windows system-memory fallback and are marked as spilled; see
+results/PROVENANCE.md). LongMamba's thesis
 is that length extrapolation failures have *mechanical* causes inside the
 state dynamics (specific channels, specific decays), not just "not enough
 training". That complements our Jelassi-et-al. reproduction: the paper shows

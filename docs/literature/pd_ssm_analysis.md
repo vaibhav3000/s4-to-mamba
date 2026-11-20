@@ -1,11 +1,5 @@
 # PD-SSM: Analysis Note (Research Note Only)
 
-> **Status (November 2026).** This note was written for the earlier single-seed version
-> of this repository, whose models had defects that have since been fixed. The numbers and
-> result files it quotes are kept for the record (the files are in the git history before
-> commit `ab29379`) and are superseded by the three-seed results in `results/SUMMARY.md`,
-> the README and the report.
-
 Paper: "Structured Sparse Transition Matrices to Enable State Tracking in
 SSMs" (PD-SSM; arXiv:2509.22284, NeurIPS 2025 Spotlight). Code:
 https://github.com/IBM/expressive-sparse-state-space-model (license checked:
@@ -17,9 +11,10 @@ Mamba-style SSMs use diagonal (or scalar-times-identity) transition matrices
 A_t: cheap, parallelizable, but provably weak at state tracking, because
 diagonal real transitions only scale/decay coordinates and cannot implement
 the rotations or permutations that finite-state automata need (the same
-expressivity gap our parity experiment is consistent with: Mamba-1/2 stay near chance
-while Mamba-3's input-dependent complex transitions reach 98.3% token accuracy; one seed,
-pre-fix code, and no ablation that isolates the rotation). PD-SSM replaces the fully
+expressivity gap our parity experiment is consistent with: over five seeds Mamba-1/2
+average 56.8 to 57.3% token accuracy, near the 50% chance rate, while Mamba-3's
+input-dependent complex transitions learn the task in two of five seeds (89.2 and 99.0%),
+and none of the five Mamba-3 runs with theta = 0 exceeds 57.2%). PD-SSM replaces the fully
 diagonal transition with a **structured sparse** one:
 
     h_t = A(u_t) h_{t-1} + B(u_t) x_t,   A(u_t) = P(u_t) + D(u_t)
@@ -41,9 +36,11 @@ survives).
 
 Our repository's capability axis is exactly the one PD-SSM targets:
 
-- Mamba-1/2 (real diagonal): near chance on parity (measured 0.559/0.563 token accuracy),
-- Mamba-3 (complex diagonal, input-dependent step): 0.983 token accuracy and 0.42
-  sequence success, which we attribute to rotation although no theta = 0 ablation was run,
+- Mamba-1/2 (real diagonal): near chance on parity (57.3 and 56.8% token accuracy, five
+  seeds),
+- Mamba-3 (complex diagonal, input-dependent step): 72.6 +/- 20.5% token accuracy, with two
+  of five seeds learning the task; the theta = 0 ablation (55.4%) ties the gain to the
+  rotation,
 - S4D (complex LTI): chance (rotation not input-dependent),
 - PD-SSM would add a third mechanism: input-dependent *permutation*.
 

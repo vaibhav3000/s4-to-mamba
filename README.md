@@ -341,14 +341,6 @@ legacy/                   the original project's scripts, preserved with notes
   Inductor needs Triton, which this Windows environment does not have.
 - Mamba-3's MIMO formulation and input-dependent rotation frequencies.
 
-## Notes on earlier versions
-
-The notes under docs/literature/, docs/copy_task_comparison.md, docs/interview_guide.md
-and reports/SSM_LITERATURE_REPRODUCTION_REPORT.md were written for an earlier,
-single-seed version of this repository whose models had defects since fixed; their
-numbers are kept for the record and are superseded by the tables above. Those runs are
-still in the git history.
-
 ## Running the tests in Docker
 
 The image installs the locked CPU environment and runs the test suite; it does not

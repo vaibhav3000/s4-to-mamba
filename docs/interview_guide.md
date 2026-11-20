@@ -1,22 +1,15 @@
 # Interview guide: state space models from S4 to Mamba-3
 
-> **Status (November 2026).** This note was written for the earlier single-seed version
-> of this repository, whose models had defects that have since been fixed. The numbers and
-> result files it quotes are kept for the record (the files are in the git history before
-> commit `ab29379`) and are superseded by the three-seed results in `results/SUMMARY.md`,
-> the README and the report.
-
 Questions and answers tied to the actual code in `src/ssmbench/models/`, the tests in
 `tests/test_models.py` and `tests/test_references.py`, and the committed results in
 `results/`. The answers are written to be said out loud in an interview: exact where the
 mathematics is exact, honest where the implementation is educational. See
 `docs/evolution.md` for the full narrative and `REFERENCES.md` for sources.
 
-A note on the numbers: every result quoted below comes from the committed JSON files in
-`results/`. Those runs predate several fixes (the S4D ZOH input matrix, how Mamba-2 and
-Mamba-3 heads read `B` and `C`, weight decay on SSM dynamics parameters, and the efficiency
-benchmark) and have not been re-run, so treat them as stale. Each task result is also a
-single seed. `results/PROVENANCE.md` describes what changed.
+A note on the numbers: every result quoted below comes from the committed result files in
+`results/` (summarized in `results/SUMMARY.md`): a mean and sample standard deviation over
+three run seeds, five for parity, with parameter-matched models. `results/PROVENANCE.md`
+describes how they were produced.
 
 ## A. The core abstraction
 
@@ -170,9 +163,9 @@ is O(1) per token with a fixed-size state. In wall-clock, no, not in this reposi
 scan is a python loop, so each step launches small eager-mode kernels and the per-step launch
 overhead dominates; asymptotic O(T) with a large constant is still slow. The official fused
 selective-scan kernels exist precisely to remove that overhead. Our length sweep measures the
-gap (`ssmbench-efficiency` or `scripts/run_efficiency.py`; the committed
-`results/efficiency_gpu.json` predates the benchmark fixes and is stale), and the per-epoch
-`epoch_seconds` and total `wall_time_seconds` in every `results/*.json` show it too. Being able to separate operation
+gap (`results/efficiency/`: 4.1 s per Mamba-1 training step at T = 1K against 62 ms for
+Mamba-2's chunked form), and the `wall_time_seconds` in every run file under `results/train/`
+shows it too. Being able to separate operation
 count from wall-clock is part of what this repository teaches.
 
 ### 16. How does incremental decoding work and what state does each block carry?
@@ -208,8 +201,9 @@ unrollable into matmuls within a chunk. The chunk loop then runs `T / chunk_size
 instead of `T`, each doing matmul-shaped work. The restriction trades a little expressive
 power (scalar decay, no per-entry transition) for hardware efficiency, and the paper argues
 the trade is favorable. Our educational version does not show the speed side: its chunk
-loop is plain PyTorch in float32, and in the committed (stale) sweep it trains slower per
-step than the float32 Transformer at every length both ran.
+loop is plain PyTorch, and in the committed sweep it trains slower per step than the
+Transformer with fused memory-efficient attention at every length both ran (the models are
+equal in width, not in parameters: 875,808 against 1,579,520).
 
 ### 19. Write down the chunk equations.
 
@@ -309,11 +303,11 @@ projection), so the model can interpolate the rule per token and per head.
 Parity requires the hidden state to flip according to the input bit, which is a rotation-like
 operation, and a real non-negative matrix can only scale (decay or grow) the state, never
 rotate it; a complex phase `exp(i delta theta)` can. Our numbers: on cumulative XOR
-(L = 128, 20 epochs), mamba3 reaches 0.9834 token accuracy with 0.42 sequence success while
-mamba2, mamba, transformer, and s4d sit at 0.563, 0.559, 0.533, and 0.506 token accuracy with
-0.0 sequence success (`results/parity_*.json`). These are single-seed runs with train and
-test both at L = 128, made with code that predates the fixes to the Mamba-2/3 head expansion,
-the S4D ZOH and weight decay on SSM dynamics parameters, so they are stale until re-run.
+(trained and tested at L = 128, 20 epochs, five seeds, `results/train/parity/`), Mamba-3
+averages 72.6 ± 20.5% token accuracy, with two of five seeds learning the task (89.2 and
+99.0%), while Mamba-1, Mamba-2, the Transformers and S4D average 50.9 to 57.3% and never
+solve a full sequence. Mamba-3 with `theta = 0` averages 55.4 ± 1.2% and no seed exceeds
+57.2%.
 
 ### 26. S4D also has complex A. Why does it still fail parity?
 
@@ -323,10 +317,10 @@ system driven additively by the input. Parity needs the transition's effect to d
 current bit, which no fixed linear system represents. Mamba-3 has both properties at once:
 selective (input-dependent `delta, B, C, lambda`) and rotating (complex `A`). In our run,
 selectivity without rotation stayed near chance (Mamba-1/2), rotation without selectivity
-stayed at chance (S4D), and the combination reached 0.9834 (Mamba-3). That pattern fits the
-argument but is not an ablation: Mamba-3 also differs from Mamba-2 in its per-state decay
-vector, the trapezoidal term and the `lambda` gate, and no `theta = 0` or `lambda = 1` variant
-was trained.
+stayed at chance (S4D), and the combination learned it in two of five seeds (Mamba-3).
+The `theta = 0` ablation isolates the rotation: the same Mamba-3, with its per-state decay,
+trapezoidal term and `lambda` gate intact, stays at 55.4% when the rotation is removed. No
+`lambda = 1` variant was trained.
 
 ## F. Expressivity and benchmarks
 
@@ -340,9 +334,9 @@ recurrent and state space models can represent and by Merrill et al. on the limi
 real-valued transitions; we cite it through that discussion rather than restating the theory.
 Empirically our benchmark is consistent with this: the four baselines (real selective
 Mamba-1/2, complex but LTI S4D, and the attention Transformer) solve zero full parity
-sequences and sit at token accuracy 0.506 to 0.563, near the 0.5 chance rate, while Mamba-3,
-with input-dependent complex transitions, reaches 0.9834 with 0.42 full-sequence success
-(one seed, pre-fix code; see question 25).
+sequences and average 50.9 to 57.3% token accuracy, near the 50% chance rate, while
+Mamba-3, with input-dependent complex transitions, learns the task in two of five seeds
+(see question 25).
 
 ### 28. What breaks at 10x context, for each model?
 
@@ -353,33 +347,28 @@ O(T) activation memory. Mamba-1 and Mamba-3 scan with a python loop, so wall-clo
 linearly in T with a large per-step constant. Mamba-2's chunk loop is `T / chunk_size`
 iterations with quadratic-within-chunk cost, so total cost grows roughly linearly in T for
 fixed chunk size. Decode memory stays O(1) per SSM block at any context, which is the
-structural advantage the efficiency sweep is meant to probe. Only S4D and Mamba-1 have a
-`step()` path, so only they are timed as true token-by-token decode; for Mamba-2 and Mamba-3
-the sweep reports the full-sequence forward time divided by T, and the Transformer, which has
-no KV cache, pays a full forward per new token. The committed `results/efficiency_gpu.json`
-predates these labels and other benchmark fixes, so it is stale.
+structural advantage the inference benchmark measures. Every backbone now has a `step()`
+path: after a 32K prompt the decode state is 0.25 MiB for S4D, 0.14 MiB for Mamba-2 and
+0.39 MiB for Mamba-3, against a 128.25 MiB fp32 (64.12 MiB bf16) KV cache for the
+Transformer (`results/inference/`).
 
 ### 29. Selective copying: why do the LTI models collapse, and how do you read the mamba3 number?
 
-The task: train on L = 64 with 3 to 5 marker-value pairs, test on L = 128 with 5 to 10 pairs,
-where the values must be copied past noise. An LTI system mixes all positions with the same
-fixed kernel, so it cannot suppress the noise tokens; that is the selectivity argument of the
-Mamba paper, and our run is consistent with it: s4d gets 0.0 sequence success and 0.064 token
-accuracy, close to the 1/17 chance rate over the 17 value tokens. The Transformer gets 0.0 and
-0.205, which may also reflect its absolute sinusoidal positions, trained only up to L = 64
-(`results/selective_copy_*.json`). Mamba-2 and Mamba-1 score higher: mamba2 0.183 / 0.670,
-mamba 0.149 / 0.649 (sequence success / token accuracy). Read these as out-of-distribution
-scores. The test asks for more values than any training sequence held, and mamba2's numbers
-sit close to where a model would land if it recalled the first five values of every test
-sequence and nothing after. So the run does not show that the selective models generalize to
-the doubled length; it is just as consistent with them having learned to recall at most five
-values, and no in-distribution accuracy was recorded. Mamba-3 is the exception: 0.129 / 0.215.
-Selective copying rewards content filtering, not rotation, and in our small educational setup
-the complex dynamics plus the trapezoidal rule were the hardest to optimize (its final loss is
-by far the highest). That run predates the fixes to the Mamba-3 head expansion of `B` and `C`
-and to weight decay on its `theta` and `a_real_log`, so its number may change. We report it as
-measured rather than tune it away; nothing in the Mamba-3 paper promises a win on this task at
-this scale.
+The task: train on L = 64 with 3 to 5 marker-value pairs; test in distribution, and out of
+distribution on L = 128 with 5 to 10 pairs, where the values must be copied past noise. An
+LTI system mixes all positions with the same fixed kernel, so it cannot suppress the noise
+tokens; that is the selectivity argument of the Mamba paper, and the runs are consistent with
+it: in distribution S4D reaches 28.4 ± 6.7% token accuracy, while Mamba-1, Mamba-2, Mamba-3
+and the Transformers reach 98.3 to 100% (`results/train/selective_copy/`, three seeds). Out
+of distribution, Mamba-1 and Mamba-2 keep 52.1 and 49.6% with a wide seed spread (four of
+their six seeds between 52.4 and 65.9%, close to the 66.7% that recalling exactly the first
+five answers would give). So they do not show that the selective models generalize to more
+pairs; they are consistent with recalling at most five. Mamba-3 falls to 14.4% and the
+Transformers to 12.1% (sinusoidal) and 7.5% (RoPE).
+Mamba-3 solves the task in distribution (99.1%) like the other selective models, so its
+out-of-distribution collapse is a length and pair-count generalization failure, not a failure
+to select. We report it as measured rather than tune it away; nothing in the Mamba-3 paper
+promises a win on this task at this scale.
 
 ### 30. What exactly do your tests verify, and what would a failure mean?
 
@@ -433,8 +422,9 @@ step-versus-forward test.
 
 Not implemented: fused selective-scan CUDA kernels and Triton SSD chunk kernels (all scans are
 python or chunk-level loops), full S4 NPLR with the Woodbury-corrected kernel, the Mamba-3
-parallel dual and MIMO form, a parallel associative scan for Mamba-1, hardware-aware `dt`
-scaling, incremental `step()` decode for Mamba-2/3, and a KV cache for the Transformer.
+MIMO form, a parallel associative scan for Mamba-1 and hardware-aware `dt` scaling. (The
+Mamba-3 chunked parallel form, `step()` decode for every SSM and the Transformer's KV cache
+are implemented.)
 Mamba-3's rotation angle `theta` is also a static learned parameter here, not computed from
 the input. Production speed would require porting
 the scans to fused kernels (that is what the official repositories do), accumulating state in
@@ -445,16 +435,13 @@ would.
 ### 32. Where do your numbers come from and how do I reproduce them?
 
 Every number in these docs is read from a committed JSON in `results/`, produced by
-`ssmbench-train --config configs/<task>.yaml --out results/` (`scripts/run_training.py`
-takes the same flags). Each JSON stores its data, train, and model config, environment,
-per-epoch history, parameter count, peak GPU memory, and wall time. Two limits: the committed
-JSONs do not record the code version that produced them, and their `peak_gpu_mb` is a running
-maximum over every model trained earlier in the same process, not a per-model peak (the
-trainer now resets it per model and also records reserved and total device memory). Every
-task result is a single seed (42). Parity is 20 epochs at L = 128, selective copying trains
-at L = 64 (3-5 pairs) and tests at L = 128 (5-10 pairs), exact copying trains at a single
-string length of 32, and IMDb is half-train at L = 512. IMDb results exist for s4d (0.827
-accuracy / 0.907 AUC), transformer (0.813 / 0.894) and mamba2 (0.836 / 0.917); mamba and
-mamba3 were not trained on IMDb because their python-loop scans are too slow at L = 512 on
-this GPU (`configs/imdb.yaml`). All of these runs predate the fixes described in
-`results/PROVENANCE.md` and are stale until re-run.
+`ssmbench-train --config configs/<task>.yaml --out results/train --seeds 0 1 2`
+(`scripts/run_gpu_plan.py` runs every config and benchmark). Each run file stores its config
+and hash, the code revision and source hash, environment, validation history, final test
+evaluations, parameter count, per-run peak GPU memory, a spill flag and wall time. Every
+task has three run seeds and parity five. Parity is 20 epochs at L = 128, selective copying
+trains at L = 64 (3-5 pairs) and tests in and out of distribution, exact copying trains at
+the single length 32 or on lengths 1 to 32, and IMDb is half-train at L = 512. IMDb test
+accuracy / AUC: Mamba-2 84.5 / 92.3%, S4D 83.7 / 91.7%, Mamba-3 82.5 / 90.5%, Transformer
+81.6 / 89.8% and with RoPE 81.9 / 90.0%; Mamba-1 is not trained on IMDb because its
+python-loop scan is too slow at L = 512 on this GPU (`configs/imdb.yaml`).

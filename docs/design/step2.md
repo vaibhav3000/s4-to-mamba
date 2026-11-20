@@ -8,8 +8,9 @@ Status: approved scope, written before implementation. Terms in **bold** are def
 
 Step 1 fixed two math bugs (S4D ZOH input matrix, Mamba-2/3 grouped B and C), made the scans
 dtype-aware, added naive float64 references with gradchecks, and hardened the efficiency
-benchmark (provenance, spill flags, OOM handling). Every committed number was produced by
-pre-fix code and is marked stale in `results/PROVENANCE.md`. Nothing has been re-run.
+benchmark (provenance, spill flags, OOM handling). When this design was written, every
+committed number came from pre-fix code; the results produced under this design replaced
+them (`results/SUMMARY.md`, `results/PROVENANCE.md`).
 
 What is still missing, and what this step adds:
 

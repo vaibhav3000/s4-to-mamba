@@ -1,5 +1,11 @@
 # PD-SSM: Analysis Note (Research Note Only)
 
+> **Status (November 2026).** This note was written for the earlier single-seed version
+> of this repository, whose models had defects that have since been fixed. The numbers and
+> result files it quotes are kept for the record (the files are in the git history before
+> commit `ab29379`) and are superseded by the three-seed results in `results/SUMMARY.md`,
+> the README and the report.
+
 Paper: "Structured Sparse Transition Matrices to Enable State Tracking in
 SSMs" (PD-SSM; arXiv:2509.22284, NeurIPS 2025 Spotlight). Code:
 https://github.com/IBM/expressive-sparse-state-space-model (license checked:

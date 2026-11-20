@@ -1,5 +1,11 @@
 # Repeat After Me: Qualitative Reproduction and Task-Formulation Study
 
+> **Status (November 2026).** This note was written for the earlier single-seed version
+> of this repository, whose models had defects that have since been fixed. The numbers and
+> result files it quotes are kept for the record (the files are in the git history before
+> commit `ab29379`) and are superseded by the three-seed results in `results/SUMMARY.md`,
+> the README and the report.
+
 Paper: "Repeat After Me: Transformers are Better than State Space Models at
 Copying" - Samy Jelassi, David Brandfonbrener, Sham M. Kakade, Eran Malach,
 ICML 2024. arXiv:2402.01032. Official code: sjelassi/transformers_ssm_copy

@@ -1,5 +1,11 @@
 # Copy Task Comparison: Selective Copying vs Exact Copying
 
+> **Status (November 2026).** This note was written for the earlier single-seed version
+> of this repository, whose models had defects that have since been fixed. The numbers and
+> result files it quotes are kept for the record (the files are in the git history before
+> commit `ab29379`) and are superseded by the three-seed results in `results/SUMMARY.md`,
+> the README and the report.
+
 Two benchmarks in this repository both carry the word "copy", yet they make
 opposite demands on a sequence model and, in our runs, produce different rankings. This
 document pins down the differences precisely so the two result sets can be

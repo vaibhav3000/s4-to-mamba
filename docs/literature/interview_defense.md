@@ -1,5 +1,11 @@
 # Interview Defense: Copying, State Tracking, and Task Formulation
 
+> **Status (November 2026).** This note was written for the earlier single-seed version
+> of this repository, whose models had defects that have since been fixed. The numbers and
+> result files it quotes are kept for the record (the files are in the git history before
+> commit `ab29379`) and are superseded by the three-seed results in `results/SUMMARY.md`,
+> the README and the report.
+
 Answers are tied to the actual experiments in this repository
 (results/selective_copy_*.json, results/exact_copy_*.json, and the papers in
 REFERENCES.md). Those runs are single-seed and predate later fixes to the models (see

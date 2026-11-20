@@ -1,5 +1,11 @@
 # Interview guide: state space models from S4 to Mamba-3
 
+> **Status (November 2026).** This note was written for the earlier single-seed version
+> of this repository, whose models had defects that have since been fixed. The numbers and
+> result files it quotes are kept for the record (the files are in the git history before
+> commit `ab29379`) and are superseded by the three-seed results in `results/SUMMARY.md`,
+> the README and the report.
+
 Questions and answers tied to the actual code in `src/ssmbench/models/`, the tests in
 `tests/test_models.py` and `tests/test_references.py`, and the committed results in
 `results/`. The answers are written to be said out loud in an interview: exact where the

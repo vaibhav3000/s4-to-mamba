@@ -1,5 +1,11 @@
 # SSM Literature Reproduction Report
 
+> **Status (November 2026).** This note was written for the earlier single-seed version
+> of this repository, whose models had defects that have since been fixed. The numbers and
+> result files it quotes are kept for the record (the files are in the git history before
+> commit `ab29379`) and are superseded by the three-seed results in `results/SUMMARY.md`,
+> the README and the report.
+
 Date: 2026-09-18. Extension selected from the Awesome-state-space-models
 collection: **Repeat After Me** (Jelassi et al., ICML 2024, arXiv:2402.01032).
 

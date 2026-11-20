@@ -212,7 +212,8 @@
       Missing points were skipped after a shorter length spilled, or are outside a model's configured range.</p>
     <p class="sub">Open circles mark points whose training step needed more than the free GPU memory. Windows let them run by
       spilling into system memory, so their time, memory and throughput are not VRAM-only results. Every benchmark model has
-      width 256 and two layers (equal width, not equal parameters). FlashAttention is not built into the Windows torch wheel,
+      width 256 and two layers, so the sizes differ (Transformer 1,579,520 parameters, S4D 182,784, Mamba-1/2/3 875,808 to
+      877,872) and no speed or memory ratio between architectures is like for like. FlashAttention is not built into the Windows torch wheel,
       so its rows are recorded as unsupported.</p>
     <div class="legend" id="eff-legend" role="group" aria-label="toggle models on efficiency charts"></div>
     <div class="card" style="margin-bottom:18px">

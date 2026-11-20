@@ -110,7 +110,10 @@ results are small-scale and say nothing about fused kernels.
 A diagonal SSM maps an input $u(t)$ to an output $y(t)$ through a state
 $x(t)\in\mathbb{C}^{N}$:
 \begin{equation}
-\dot{x}(t) = A\,x(t) + B\,u(t), \qquad y(t) = \mathrm{Re}\!\left(\textstyle\sum_{n} C_n x_n(t)\right) + D\,u(t),
+\begin{gathered}
+\dot{x}(t) = A\,x(t) + B\,u(t),\\
+y(t) = \mathrm{Re}\!\left(\textstyle\sum_{n} C_n x_n(t)\right) + D\,u(t),
+\end{gathered}
 \label{eq:cont}
 \end{equation}
 with $A=\mathrm{diag}(A_1,\dots,A_N)$. The real part of $A_n$ sets the decay
@@ -155,7 +158,7 @@ Table~\ref{tab:arch} summarizes the mixers.
 exponential-trapezoidal rule.}
 \label{tab:arch}
 \small
-\begin{tabular}{@{}p{0.15\columnwidth}p{0.25\columnwidth}p{0.24\columnwidth}p{0.22\columnwidth}@{}}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.19\columnwidth}>{\raggedright\arraybackslash}p{0.25\columnwidth}>{\raggedright\arraybackslash}p{0.20\columnwidth}>{\raggedright\arraybackslash}p{0.20\columnwidth}@{}}
 \toprule
 Model & Transition & Parallel form & Decode step \\
 \midrule
@@ -422,6 +425,7 @@ memory (MiB), batch 8, by sequence length. Spilled points ran past free GPU
 memory and were paged to system memory by the display driver.}
 \label{tab:eff}
 \scriptsize
+\setlength{\tabcolsep}{3pt}
 \input{tables/efficiency_fp32.tex}
 \medskip
 \input{tables/efficiency_bf16.tex}
@@ -434,8 +438,12 @@ marks a point that spilled to system memory; its memory value is what the
 allocator reported, not resident VRAM.}
 \label{fig:eff}
 \end{figure*}
-Among the models that fit in memory, the Transformer with the
-memory-efficient kernel and S4D are the fastest (Table~\ref{tab:eff}).
+The benchmark models have equal width (256, two layers), not equal size:
+the Transformer has 1{,}579{,}520 backbone parameters, S4D 182{,}784 and the
+\mamba{} variants 875{,}808 to 877{,}872 (Table~\ref{tab:eff}), so the
+sweep shows how each model's cost grows with length, and no ratio between
+architectures is like for like. Among the models that fit in memory, the
+Transformer with the memory-efficient kernel and S4D are the fastest.
 In fp32 the Transformer step grows from 32.2\,ms at 1K to 903\,ms at 8K, and
 S4D from 23.4 to 180\,ms, close to linear. The math and naive attention
 references need about 2.9\,GiB at 2K and spill at 4K. \mamba{}-2's chunked

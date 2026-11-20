@@ -1,28 +1,14 @@
 """Run the sequence-length efficiency benchmark.
 
+Same as the ssmbench-efficiency console script (see
+src/ssmbench/benchmarks/efficiency.py); kept so existing commands keep working.
+Needs the package installed, for example with `pip install -e .`.
+
 Usage:
-    python scripts/run_efficiency.py --config configs/efficiency.yaml
+    python scripts/run_efficiency.py --config configs/efficiency_fp32.yaml [--force]
 """
 
-from __future__ import annotations
-
-import argparse
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from ssmbench.benchmarks import run_efficiency  # noqa: E402
-from ssmbench.utils import load_config  # noqa: E402
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--config", required=True)
-    args = ap.parse_args()
-    cfg = load_config(args.config)
-    run_efficiency(cfg)
-
+from ssmbench.benchmarks.efficiency import main
 
 if __name__ == "__main__":
     main()

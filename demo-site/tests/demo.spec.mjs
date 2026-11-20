@@ -1,4 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+// The bf16 sweep is what demo-site/build.py renders (docs/adr/0006).
+const SWEEP = JSON.parse(readFileSync(new globalThis.URL("../../results/efficiency/sweep_bf16.json", import.meta.url), "utf8"));
 
 const URL = "/index.html";
 
@@ -18,7 +22,7 @@ test("page loads with committed data and charts, no page errors", async ({ page 
     efficiency: window.DATA.efficiency.length,
     parity: Object.keys(window.DATA.parity).length,
   }));
-  expect(data.efficiency).toBe(24);
+  expect(data.efficiency).toBe(SWEEP.entries.length);
   expect(data.parity).toBeGreaterThanOrEqual(3);
   expect(errors).toEqual([]);
 });
@@ -66,11 +70,12 @@ test("efficiency scrubber snaps to a measured length and highlights charts", asy
   await page.goto(URL);
   await page.locator("#eff-slider").fill("5");
   await expect(page.locator("#eff-slider")).toHaveAttribute("aria-valuetext", "32768 tokens");
-  await expect(page.locator("#eff-read")).toContainText("measured OOM");
+  await expect(page.locator("#eff-read")).toContainText("ran over GPU memory (spill)");
   const highlighted = await page.locator('#chart-latency svg line[stroke-dasharray="3 3"]').count();
   expect(highlighted).toBe(1);
   // a measured readout, not an interpolated one
-  await expect(page.locator("#eff-read")).toContainText("186");
+  // Transformer, mem.-efficient attention: 3025.5 ms in results/efficiency/sweep_bf16.json
+  await expect(page.locator("#eff-read")).toContainText("3k ms train");
   expect(errors).toEqual([]);
 });
 

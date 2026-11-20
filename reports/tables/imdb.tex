@@ -1,0 +1,12 @@
+\begin{tabular}{lrr}
+\toprule
+Model & Parameters & test \\
+\midrule
+Transformer (sinusoidal) & 3,353,602 & 81.6 $\pm$ 0.2 \\
+Transformer (RoPE) & 3,353,602 & 81.9 $\pm$ 0.6 \\
+S4D & 3,367,682 & 83.7 $\pm$ 0.2 \\
+Mamba-2 & 3,034,786 & 84.5 $\pm$ 0.1 \\
+Mamba-3 & 3,036,850 & 82.5 $\pm$ 1.2 \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize test accuracy in percent, mean $\pm$ sample std over n = 3 run seeds; chance 50.0; the single test set is the 25k IMDb test split.}

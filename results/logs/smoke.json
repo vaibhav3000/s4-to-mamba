@@ -1,0 +1,294 @@
+{
+  "attention": {
+    "bf16": {
+      "cudnn": {
+        "ok": true,
+        "precision": "bf16",
+        "ran": [
+          "cudnn"
+        ]
+      },
+      "efficient": {
+        "ok": true,
+        "precision": "bf16",
+        "ran": [
+          "efficient"
+        ]
+      },
+      "flash": {
+        "error": "No available kernel. Aborting execution.",
+        "ok": false,
+        "precision": "bf16",
+        "unsupported": true
+      }
+    },
+    "fp32": {
+      "efficient": {
+        "ok": true,
+        "precision": "fp32",
+        "ran": [
+          "efficient"
+        ]
+      },
+      "math": {
+        "ok": true,
+        "precision": "fp32",
+        "ran": [
+          "math"
+        ]
+      }
+    }
+  },
+  "training": {
+    "exact_copy": {
+      "mamba": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.5008530616760254,
+          3.4324212074279785
+        ]
+      },
+      "mamba2": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.6028785705566406,
+          3.493112325668335
+        ]
+      },
+      "mamba3": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.7006618976593018,
+          3.53668212890625
+        ]
+      },
+      "s4d": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.5741183757781982,
+          3.375328779220581
+        ]
+      },
+      "transformer": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.629328727722168,
+          3.378793239593506
+        ]
+      },
+      "transformer_rope": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.615818738937378,
+          3.372241973876953
+        ]
+      }
+    },
+    "exact_copy_varlen": {
+      "mamba": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.5037384033203125,
+          3.445669174194336
+        ]
+      },
+      "mamba2": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.5862693786621094,
+          3.481888771057129
+        ]
+      },
+      "mamba3": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.6661462783813477,
+          3.541036605834961
+        ]
+      },
+      "s4d": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.5612919330596924,
+          3.3603456020355225
+        ]
+      },
+      "transformer": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.622375249862671,
+          3.387615919113159
+        ]
+      },
+      "transformer_rope": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.636115074157715,
+          3.371767282485962
+        ]
+      }
+    },
+    "imdb": {
+      "mamba2": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.6887147426605225,
+          0.6923278570175171
+        ]
+      },
+      "mamba3": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.6958204507827759,
+          0.6883330345153809
+        ]
+      },
+      "s4d": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.6991768479347229,
+          0.6871315240859985
+        ]
+      },
+      "transformer": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.7163838148117065,
+          1.7039132118225098
+        ]
+      },
+      "transformer_rope": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.7056459784507751,
+          1.1352651119232178
+        ]
+      }
+    },
+    "parity": {
+      "mamba": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.8245832920074463,
+          0.7814739942550659
+        ]
+      },
+      "mamba2": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.7059425711631775,
+          0.6951000094413757
+        ]
+      },
+      "mamba3": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.8113157749176025,
+          0.7588313817977905
+        ]
+      },
+      "mamba3_no_rotation": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.8113337159156799,
+          0.7597399950027466
+        ]
+      },
+      "s4d": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.726752758026123,
+          0.6944068670272827
+        ]
+      },
+      "transformer": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.7377957105636597,
+          0.7265852093696594
+        ]
+      },
+      "transformer_rope": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          0.7422081232070923,
+          0.7317798137664795
+        ]
+      }
+    },
+    "selective_copy": {
+      "mamba": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.2354485988616943,
+          3.07973313331604
+        ]
+      },
+      "mamba2": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.2560622692108154,
+          3.095113515853882
+        ]
+      },
+      "mamba3": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.1780147552490234,
+          3.071096420288086
+        ]
+      },
+      "s4d": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.2499678134918213,
+          2.9683921337127686
+        ]
+      },
+      "transformer": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.1990301609039307,
+          3.033869981765747
+        ]
+      },
+      "transformer_rope": {
+        "deterministic": true,
+        "finite": true,
+        "losses": [
+          3.1245667934417725,
+          2.9745519161224365
+        ]
+      }
+    }
+  }
+}

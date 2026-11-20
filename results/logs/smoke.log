@@ -1,0 +1,96 @@
+
+=== 2026-11-20 02:33:37 .venv\Scripts\python.exe scripts\gpu_smoke.py --device cuda
+parity: 7 variants checked
+selective_copy: 6 variants checked
+exact_copy: 6 variants checked
+exact_copy_varlen: 6 variants checked
+Traceback (most recent call last):
+  File "scripts\gpu_smoke.py", line 170, in <module>
+    main()
+    ~~~~^^
+  File "scripts\gpu_smoke.py", line 147, in main
+    rows = smoke_training(cfg, args.device, args.steps)
+  File "scripts\gpu_smoke.py", line 82, in smoke_training
+    attempts.append(_two_steps(run_cfg, steps, dev))
+                    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "scripts\gpu_smoke.py", line 45, in _two_steps
+    loaders = get_loaders(run_cfg)
+  File "src\ssmbench\train\trainer.py", line 158, in get_loaders
+    loaders, _vocab = get_imdb_loaders(
+                      ~~~~~~~~~~~~~~~~^
+        max_features=dcfg.get("max_features", 20000),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        seed=dcfg.get("seed", 42),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "src\ssmbench\data\imdb.py", line 96, in get_imdb_loaders
+    ds = load_dataset("imdb", cache_dir=str(cache_dir) if cache_dir else None)
+  File ".venv\Lib\site-packages\datasets\load.py", line 1667, in load_dataset
+    builder_instance = load_dataset_builder(
+        path=path,
+    ...<10 lines>...
+        **config_kwargs,
+    )
+  File ".venv\Lib\site-packages\datasets\load.py", line 1290, in load_dataset_builder
+    dataset_module = dataset_module_factory(
+        path,
+    ...<5 lines>...
+        cache_dir=cache_dir,
+    )
+  File ".venv\Lib\site-packages\datasets\load.py", line 1182, in dataset_module_factory
+    raise e1 from None
+  File ".venv\Lib\site-packages\datasets\load.py", line 1157, in dataset_module_factory
+    ).get_module()
+      ~~~~~~~~~~^^
+  File ".venv\Lib\site-packages\datasets\load.py", line 600, in get_module
+    standalone_yaml_path = cached_path(
+        hf_dataset_url(self.name, config.REPOYAML_FILENAME, revision=self.commit_hash),
+        download_config=download_config,
+    )
+  File ".venv\Lib\site-packages\datasets\utils\file_utils.py", line 175, in cached_path
+    ).resolve_path(url_or_filename)
+      ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File ".venv\Lib\site-packages\huggingface_hub\hf_file_system.py", line 549, in resolve_path
+    parsed = parse_hf_uri(f"{constants.HF_PROTOCOL}{path}")
+  File ".venv\Lib\site-packages\huggingface_hub\utils\_hf_uris.py", line 319, in parse_hf_uri
+    return _parse_repo_body(location, type_, raw=raw)
+  File ".venv\Lib\site-packages\huggingface_hub\utils\_hf_uris.py", line 617, in _parse_repo_body
+    raise HfUriError(uri=raw, msg=f"Repository id must be 'namespace/name', got '{repo_id}'.")
+huggingface_hub.errors.HfUriError: Invalid HF URI 'hf://datasets/imdb@e6281661ce1c48d982bc483cf8a173c1bbeb5d31/.huggingface.yaml'. Repository id must be 'namespace/name', got 'imdb'.
+
+=== 2026-11-20 02:38:21 .venv\Scripts\python.exe scripts\gpu_smoke.py --device cuda
+parity: 7 variants checked
+selective_copy: 6 variants checked
+exact_copy: 6 variants checked
+exact_copy_varlen: 6 variants checked
+imdb: 5 variants checked
+USDT:2026-11-20 02:41:54 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:41:54 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:41:55 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:41:55 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:41:55 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+src\ssmbench\models\attention.py:72: UserWarning: Memory efficient kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:1240.)
+  return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+src\ssmbench\models\attention.py:72: UserWarning: Memory Efficient attention has been runtime disabled. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen/native/transformers/sdp_utils_cpp.h:600.)
+  return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+src\ssmbench\models\attention.py:72: UserWarning: Flash attention kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:1242.)
+  return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+src\ssmbench\models\attention.py:72: UserWarning: Torch was not compiled with flash attention. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:1050.)
+  return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+src\ssmbench\models\attention.py:72: UserWarning: cuDNN attention kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:1244.)
+  return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+src\ssmbench\models\attention.py:72: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:922.)
+  return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+USDT:2026-11-20 02:41:55 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:41:55 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:41:58 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:41:58 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:41:58 12936:28428 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+attention fp32 efficient: ok ['efficient']
+attention fp32 math: ok ['math']
+attention bf16 flash: refused
+attention bf16 cudnn: ok ['cudnn']
+attention bf16 efficient: ok ['efficient']
+smoke check passed

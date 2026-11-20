@@ -1,0 +1,34 @@
+
+=== 2026-11-20 11:22:55 .venv\Scripts\python.exe -m ssmbench.benchmarks.compile_check --config configs/compile.yaml
+compile check transformer ...
+W1120 11:23:02.246000 13280 .venv\Lib\site-packages\torch\utils\flop_counter.py:113] triton not found; flop counting will not work for triton kernels
+src\ssmbench\benchmarks\compile_check.py:67: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  "max_abs_output_diff": float((y_comp - y_eager).abs().max()),
+compile check transformer_rope ...
+compile check s4d ...
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0] Graph break from `Tensor.item()`, consider setting:
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]     torch._dynamo.config.capture_scalar_outputs = True
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0] or:
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]     env TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS=1
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0] to include these operations in the captured graph.
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0] 
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0] Graph break: from user code at:
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]   File "src\ssmbench\benchmarks\compile_check.py", line 106, in forward
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]     return self.backbone.step(emb_t, state)
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]            ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]   File ".venv\Lib\site-packages\torch\utils\_contextlib.py", line 124, in decorate_context
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]     return func(*args, **kwargs)
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]   File "src\ssmbench\models\blocks.py", line 262, in step
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]     x = block.step(x, block_state)
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]   File "src\ssmbench\models\s4_minimal.py", line 295, in step
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]     self._check_cache(state)
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]     ~~~~~~~~~~~~~~~~~^^^^^^^
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]   File "src\ssmbench\models\s4_minimal.py", line 277, in _check_cache
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]     or int(versions) != self._param_version_sum()
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0]        ~~~^^^^^^^^^^
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0] 
+W1120 11:23:24.175000 13280 .venv\Lib\site-packages\torch\_dynamo\variables\tensor.py:1841] [0/0] 
+compile check mamba ...
+compile check mamba2 ...
+compile check mamba3 ...

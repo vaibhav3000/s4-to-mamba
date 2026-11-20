@@ -1,0 +1,101 @@
+{
+  "attention_backend": [
+    "efficient"
+  ],
+  "config": "imdb",
+  "data_config": {
+    "batch_size": 64,
+    "max_features": 20000,
+    "max_len": 512,
+    "name": "imdb",
+    "seed": 42,
+    "test_subset": null,
+    "train_subset": 12500,
+    "val_size": 2500
+  },
+  "device_total_mb": 6140.5,
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.1+cu130"
+  },
+  "final_evals": {
+    "test": {
+      "accuracy": 0.8182,
+      "auc": 0.8992049088,
+      "loss": 0.40800701535266376
+    }
+  },
+  "gpu_available_at_start_mb": 5048.0,
+  "gpu_free_at_end_mb": 3714.0,
+  "gpu_memory_spilled": false,
+  "history": [
+    {
+      "epoch": 1,
+      "epoch_seconds": 21.89,
+      "train_loss": 0.5925177145673304,
+      "val_accuracy": 0.7964,
+      "val_auc": 0.8914562111602281,
+      "val_loss": 0.44902177825570105
+    },
+    {
+      "epoch": 2,
+      "epoch_seconds": 23.28,
+      "train_loss": 0.3892226929263193,
+      "val_accuracy": 0.8408,
+      "val_auc": 0.9192959190210774,
+      "val_loss": 0.3713689878582954
+    },
+    {
+      "epoch": 3,
+      "epoch_seconds": 20.81,
+      "train_loss": 0.30229276395878013,
+      "val_accuracy": 0.8436,
+      "val_auc": 0.9213255173297455,
+      "val_loss": 0.36938426420092585
+    }
+  ],
+  "label": "transformer",
+  "model": {
+    "kwargs": {
+      "attn_backend": "efficient",
+      "d_model": 128,
+      "n_heads": 4,
+      "n_layers": 4
+    },
+    "name": "transformer"
+  },
+  "n_parameters": 3353602,
+  "name": "imdb_transformer",
+  "peak_gpu_mb": 1258.9,
+  "peak_gpu_reserved_mb": 1334.0,
+  "provenance": {
+    "config_sha256": "c1f5f35c60b632f18dbba570bca7aad968e7ae01ba9ddb1d407eb703551f74ac",
+    "cuda": "13.0",
+    "device": "cuda",
+    "git_dirty": false,
+    "git_sha": "c4c111bc1ff7cb17a6f735e9ecfc45362c25712f",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "nvidia_driver": "610.74",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.13.7",
+    "source_sha256": "c4adb70bef57070208d93db64718231c7da57f76523c7b7c2f4dc8aaa629da41",
+    "timestamp_utc": "2026-11-20T03:26:38+00:00",
+    "torch": "2.14.1+cu130"
+  },
+  "resumed_from_epoch": null,
+  "seed": 2,
+  "task": "classification",
+  "train_config": {
+    "deterministic": true,
+    "epochs": 3,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 2,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 78.1
+}

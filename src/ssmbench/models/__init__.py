@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-import torch.nn as nn
-
+from .blocks import Backbone
 from .mamba2_minimal import Mamba2Backbone
 from .mamba3_minimal import Mamba3Backbone
 from .mamba_minimal import MambaBackbone
 from .s4_minimal import S4DBackbone
 from .transformer_minimal import TransformerBackbone
 
-BACKBONES: dict[str, type[nn.Module]] = {
+BACKBONES: dict[str, type[Backbone]] = {
     "transformer": TransformerBackbone,
     "s4d": S4DBackbone,
     "mamba": MambaBackbone,
@@ -23,18 +22,43 @@ BACKBONES: dict[str, type[nn.Module]] = {
 # Constructor argument allow-list per backbone, so configs can share a schema
 # without leaking another model's kwargs.
 _KWARGS: dict[str, set[str]] = {
-    "transformer": {"d_model", "n_layers", "n_heads", "d_mlp", "dropout", "max_len"},
+    "transformer": {
+        "d_model",
+        "n_layers",
+        "n_heads",
+        "d_mlp",
+        "dropout",
+        "max_len",
+        "pos_encoding",
+        "attn_backend",
+    },
     "s4d": {"d_model", "n_layers", "d_state", "dropout", "init"},
     "mamba": {"d_model", "n_layers", "d_state", "d_conv", "expand"},
     "mamba2": {
-        "d_model", "n_layers", "d_state", "headdim", "expand", "n_groups",
-        "chunk_size", "scan_mode",
+        "d_model",
+        "n_layers",
+        "d_state",
+        "headdim",
+        "expand",
+        "n_groups",
+        "chunk_size",
+        "scan_mode",
     },
-    "mamba3": {"d_model", "n_layers", "d_state", "headdim", "expand", "n_groups"},
+    "mamba3": {
+        "d_model",
+        "n_layers",
+        "d_state",
+        "headdim",
+        "expand",
+        "n_groups",
+        "chunk_size",
+        "scan_mode",
+        "rotation",
+    },
 }
 
 
-def build_backbone(name: str, cfg: dict[str, Any]) -> nn.Module:
+def build_backbone(name: str, cfg: dict[str, Any]) -> Backbone:
     """Instantiate backbone `name` with the allowed subset of `cfg`."""
     if name not in BACKBONES:
         raise KeyError(f"Unknown backbone '{name}'. Available: {sorted(BACKBONES)}")

@@ -1,319 +1,304 @@
-"""Generate all figures from committed experiment results.
+"""Generate every figure from the committed results (docs/adr/0006).
 
 Usage:
-    python scripts/make_figures.py [--results results] [--out figures]
+    .venv/Scripts/python.exe scripts/make_figures.py [--results results] [--out figures]
+                                                     [--report-out reports/figures]
 
-Every plot reads the committed JSON outputs (results/*.json and
-results/efficiency_gpu.json); nothing is hand-typed. Model colors and styles
-are consistent across all figures. Missing/None measurements (OOM, capped
-lengths) are skipped gracefully.
+Reads only the files listed in ssmbench/analysis/results.py. Writes PNG and PDF to
+--out (README, demo) and the PDFs again to --report-out (the LaTeX report). A figure
+whose results are missing is not drawn. Conventions in every figure:
+
+- one fixed color and marker per model variant (validated categorical palette), and a
+  line style per attention backend for Transformer benchmark rows;
+- training results: mean over run seeds with error bars of one sample std; the chance
+  level as a dashed gray line;
+- benchmarks: medians; points that spilled to system memory are ringed; points with no
+  timing (out of memory, skipped, unsupported kernel) are not drawn and are listed in
+  the generated tables.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
-import sys
-from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
+import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from ssmbench.analysis.results import (
+    BACKEND_STYLES,
+    COLORS,
+    LABELS,
+    MARKERS,
+    PRIMARY,
+    eval_order,
+    load_summary,
+    load_sweep,
+    point_status,
+    style_key,
+    variants_in,
+)
 
-MODELS = ["transformer", "s4d", "mamba", "mamba2", "mamba3"]
-LABELS = {
-    "transformer": "Transformer",
-    "s4d": "S4D",
-    "mamba": "Mamba-1",
-    "mamba2": "Mamba-2 (SSD)",
-    "mamba3": "Mamba-3",
-}
-COLORS = {
-    "transformer": "#0072B2",
-    "s4d": "#E69F00",
-    "mamba": "#009E73",
-    "mamba2": "#CC79A7",
-    "mamba3": "#D55E00",
-}
+ROOT = Path(__file__).resolve().parents[1]
+INK, MUTED, GRID = "#0b0b0b", "#52514e", "#d9d8d4"
+
+plt.rcParams.update(
+    {
+        "font.size": 8,
+        "axes.edgecolor": MUTED,
+        "axes.labelcolor": INK,
+        "xtick.color": MUTED,
+        "ytick.color": MUTED,
+        "axes.titlesize": 9,
+        "legend.fontsize": 7,
+        "lines.linewidth": 2.0,
+        "lines.markersize": 5,
+        "savefig.facecolor": "#fcfcfb",
+        "figure.facecolor": "#fcfcfb",
+        "axes.facecolor": "#fcfcfb",
+        "figure.constrained_layout.use": True,
+    }
+)
 
 
-def _style(ax: plt.Axes) -> None:
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.grid(True, alpha=0.3)
-    ax.legend(frameon=False, fontsize=9)
+def _style(ax: Axes) -> None:
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(True, color=GRID, linewidth=0.6)
+    ax.set_axisbelow(True)
 
 
-def _save(fig: plt.Figure, out: Path, name: str) -> None:
+def _save(fig: Figure, out: Path, report_out: Path | None, name: str) -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out / f"{name}.png", dpi=200, bbox_inches="tight")
-    fig.savefig(out / f"{name}.pdf", bbox_inches="tight")
+    written = [out / f"{name}.png", out / f"{name}.pdf"]
+    fig.savefig(written[0], dpi=200, bbox_inches="tight")
+    # No CreationDate, so re-running on unchanged JSON gives identical PDFs.
+    fig.savefig(written[1], bbox_inches="tight", metadata={"CreationDate": None})
+    if report_out is not None:
+        report_out.mkdir(parents=True, exist_ok=True)
+        fig.savefig(
+            report_out / f"{name}.pdf", bbox_inches="tight", metadata={"CreationDate": None}
+        )
+        written.append(report_out / f"{name}.pdf")
     plt.close(fig)
-    print(f"wrote {out / name}.png")
+    return written
 
 
-def _load_runs(results: Path) -> dict[str, dict]:
-    runs = {}
-    for path in results.glob("*.json"):
-        if path.name.startswith("efficiency"):
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
-        if "name" in data and "history" in data:
-            runs[data["name"]] = data
-    return runs
+def _chance(ax: Axes, value: float | None, scale: float = 100.0) -> None:
+    """Dashed chance line, labelled just outside the right edge of the axes."""
+    if value is not None:
+        ax.axhline(value * scale, color=MUTED, linestyle=(0, (4, 3)), linewidth=1.0, zorder=0)
+        ax.annotate(
+            "chance",
+            (1.0, value * scale),
+            xycoords=("axes fraction", "data"),
+            xytext=(3, 0),
+            textcoords="offset points",
+            ha="left",
+            va="center",
+            color=MUTED,
+            fontsize=7,
+            annotation_clip=False,
+        )
 
 
-def _final(run: dict, key: str):
-    hist = run.get("history") or []
-    for entry in reversed(hist):
-        if entry.get(key) is not None:
-            return entry[key]
-    return None
-
-
-def _model_of(run_name: str) -> str:
-    for m in MODELS:
-        if run_name.endswith(m):
-            return m
-    return run_name
-
-
-def efficiency_figures(results: Path, out: Path) -> None:
-    path = results / "efficiency_gpu.json"
-    if not path.exists():
-        print("efficiency_gpu.json not found; skipping efficiency figures")
-        return
-    entries = json.loads(path.read_text(encoding="utf-8"))["entries"]
-    series: dict[str, dict[str, list[tuple[float, float]]]] = defaultdict(lambda: defaultdict(list))
-    ooms: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
-    for e in entries:
-        model = e.get("model")
-        L = e.get("seq_len")
-        for key, target in [
-            ("train_step_ms", "latency"),
-            ("peak_train_mb", "memory"),
-            ("train_tokens_per_s", "throughput"),
-            ("decode_per_token_ms", "decode"),
-        ]:
-            v = e.get(key)
-            if v is not None:
-                series[target][model].append((L, v))
-            elif e.get("oom_train") or e.get("oom") or e.get("oom_infer"):
-                # Measured hardware limit: plot as an explicit marker, never
-                # as a line across an unmeasured value.
-                ooms[target][model].append(L)
-
-    specs = [
-        ("latency", "Training step time vs sequence length", "train step time (ms)", "fig_efficiency_latency", True),
-        ("memory", "Peak GPU memory vs sequence length", "peak memory (MB)", "fig_efficiency_memory", False),
-        ("throughput", "Training throughput vs sequence length", "tokens / s", "fig_efficiency_throughput", True),
-        ("decode", "Decode cost per token vs sequence length", "per-token cost (ms)", "fig_efficiency_decode", True),
-    ]
-    for key, title, ylabel, name, loglog in specs:
-        fig, ax = plt.subplots(figsize=(6, 4))
-        for model in MODELS:
-            pts = sorted(series[key].get(model, []))
-            if pts:
-                xs, ys = zip(*pts)
-                ax.plot(xs, ys, marker="o", ms=4, color=COLORS[model], label=LABELS[model])
-            # measured hardware limits get their own marker + annotation
-            for L in sorted(set(ooms[key].get(model, []))):
-                ax.annotate("OOM", (L, ax.get_ylim()[1] * 0.02), rotation=90,
-                            fontsize=7, color=COLORS[model], ha="right", va="bottom")
-                ax.plot([L], [ax.get_ylim()[1] * 0.02], marker="x", ms=6,
-                        color=COLORS[model])
-            if loglog:
-                ax.set_xscale("log")
-                ax.set_yscale("log")
-            else:
-                ax.set_xscale("log")
-        ax.set_xlabel("sequence length")
-        ax.set_ylabel(ylabel)
+def _lengths_figure(summaries: list[tuple[str, dict[str, Any]]], ylabel: str) -> Figure:
+    """Accuracy versus evaluation length, one panel per summary (shared y axis)."""
+    fig, axes = plt.subplots(
+        1, len(summaries), figsize=(3.4 * len(summaries), 2.8), sharey=True, squeeze=False
+    )
+    for ax, (title, summary) in zip(axes[0], summaries, strict=True):
+        metric = "token_accuracy"
+        sets = eval_order(summary)
+        xs = [int(s.split("=")[1]) for s in sets]
+        for label in variants_in(summary):
+            evals = summary["variants"][label]["evals"]
+            means = [evals[s][metric]["mean"] * 100 for s in sets]
+            stds = [(evals[s][metric]["std"] or 0.0) * 100 for s in sets]
+            ax.errorbar(
+                xs,
+                means,
+                yerr=stds,
+                color=COLORS.get(label),
+                marker=MARKERS.get(label),
+                label=LABELS.get(label, label),
+                capsize=2,
+                elinewidth=1.0,
+            )
+        _chance(ax, summary.get("chance", {}).get(metric))
+        ax.set_xscale("log", base=2)
+        ax.set_xticks(xs, [str(x) for x in xs])
         ax.set_title(title)
+        ax.set_xlabel(title.split(":")[0] if ":" in title else "evaluation length")
         _style(ax)
-        _save(fig, out, name)
+    axes[0][0].set_ylabel(ylabel)
+    axes[0][-1].legend(frameon=False, loc="upper left", bbox_to_anchor=(1.01, 1.0))
+    return fig
 
 
-def training_figures(results: Path, out: Path) -> None:
-    runs = _load_runs(results)
-    if not runs:
-        print("no training results found")
-        return
+def _bars(ax: Axes, summary: dict[str, Any], eval_name: str, metric: str) -> None:
+    labels = variants_in(summary)
+    for i, label in enumerate(labels):
+        stats = summary["variants"][label]["evals"][eval_name][metric]
+        ax.bar(
+            i,
+            stats["mean"] * 100,
+            width=0.72,
+            color=COLORS.get(label),
+            yerr=(stats["std"] or 0.0) * 100,
+            capsize=2,
+            error_kw={"elinewidth": 1.0, "ecolor": INK},
+            label=LABELS.get(label, label),
+        )
+    ax.set_xticks(range(len(labels)), [LABELS.get(v, v) for v in labels], rotation=30, ha="right")
+    _chance(ax, summary.get("chance", {}).get(metric))
+    _style(ax)
 
-    # quality bars per task
-    task_specs = [
-        ("imdb", "IMDb sentiment (final epoch)", [("accuracy", "accuracy"), ("auc", "AUC")], "fig_imdb_quality"),
-        ("selective_copy", "Selective copying (final epoch)", [("sequence_success", "sequence success"), ("token_accuracy", "token accuracy")], "fig_selective_copy"),
-        ("parity", "Parity / state tracking (final epoch)", [("token_accuracy", "token accuracy")], "fig_parity"),
-    ]
-    for prefix, title, metrics, name in task_specs:
-        task_runs = {rn: r for rn, r in runs.items() if rn.startswith(prefix)}
-        if not task_runs:
-            continue
-        models_present = sorted({_model_of(rn) for rn in task_runs}, key=MODELS.index)
-        width = 0.8 / len(metrics)
-        fig, ax = plt.subplots(figsize=(6, 4))
-        for mi, (key, label) in enumerate(metrics):
-            xs, ys = [], []
-            for pos, model in enumerate(models_present):
-                run = task_runs.get(f"{prefix}_{model}")
-                if run is None:
-                    continue
-                v = _final(run, key)
-                if v is not None:
-                    xs.append(pos + mi * width)
-                    ys.append(v)
-            ax.bar(xs, ys, width=width * 0.9, label=label,
-                   color=plt.cm.viridis(mi / max(len(metrics) - 1, 1)))
-        ax.set_xticks([i + width * (len(metrics) - 1) / 2 for i in range(len(models_present))])
-        ax.set_xticklabels([LABELS.get(m, m) for m in models_present], fontsize=9)
-        ax.set_title(title)
-        ax.set_ylim(0, 1.05)
-        ax.grid(True, axis="y", alpha=0.3)
-        ax.legend(frameon=False, fontsize=9)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        if prefix == "parity":
-            ax.axhline(0.5, ls="--", lw=1, color="gray")
-            ax.text(len(models_present) - 0.5, 0.505, "chance", fontsize=8, color="gray")
-        _save(fig, out, name)
 
-    # learning curves 2x2
-    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+def training_figures(root: Path, out: Path, report_out: Path | None) -> list[Path]:
+    written: list[Path] = []
+    parity = load_summary(root, "parity")
+    if parity is not None:
+        fig = _lengths_figure(
+            [("Parity: sequence length (trained at 128)", parity)], "token accuracy (%)"
+        )
+        written += _save(fig, out, report_out, "fig_parity")
+    sel = load_summary(root, "selective_copy")
+    if sel is not None:
+        fig, axes = plt.subplots(1, 2, figsize=(6.8, 2.8), sharey=True)
+        for ax, name, title in zip(
+            axes, ("id", "ood"), ("in distribution", "out of distribution"), strict=True
+        ):
+            _bars(ax, sel, name, "token_accuracy")
+            ax.set_title(f"Selective copy, {title}")
+        axes[0].set_ylabel("answer-token accuracy (%)")
+        written += _save(fig, out, report_out, "fig_selective_copy")
+    fixed, varlen = load_summary(root, "exact_copy"), load_summary(root, "exact_copy_varlen")
     panels = [
-        ("imdb", "accuracy", "IMDb accuracy"),
-        ("selective_copy", "sequence_success", "Selective copy: sequence success"),
-        ("parity", "token_accuracy", "Parity: token accuracy"),
-        ("imdb", "train_loss", "IMDb train loss"),
+        (t, s)
+        for t, s in (
+            ("String length: trained at 32", fixed),
+            ("String length: trained on 1 to 32", varlen),
+        )
+        if s
     ]
-    for ax, (prefix, key, title) in zip(axes.flat, panels):
-        for run_name, run in sorted(runs.items()):
-            if not run_name.startswith(prefix):
-                continue
-            model = _model_of(run_name)
-            xs = [e.get("epoch") for e in run["history"]]
-            ys = [e.get(key) for e in run["history"]]
-            if any(y is None for y in ys):
-                continue
-            ax.plot(xs, ys, marker="o", ms=3, color=COLORS[model], label=LABELS[model])
-        ax.set_title(title, fontsize=10)
-        _style(ax)
-    handles, labels = axes.flat[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=5, frameon=False, fontsize=9)
-    fig.tight_layout(rect=(0, 0.05, 1, 1))
-    _save(fig, out, "fig_learning_curves")
+    if panels:
+        fig = _lengths_figure(panels, "token accuracy (%)")
+        written += _save(fig, out, report_out, "fig_exact_copy")
+    imdb = load_summary(root, "imdb")
+    if imdb is not None:
+        fig, ax = plt.subplots(figsize=(3.4, 2.8))
+        _bars(ax, imdb, "test", PRIMARY["imdb"][0])
+        ax.set_ylabel("test accuracy (%)")
+        ax.set_title("IMDb sentiment")
+        written += _save(fig, out, report_out, "fig_imdb")
+    return written
+
+
+def _series(entries: list[dict[str, Any]], key: str) -> dict[str, list[tuple[int, float, bool]]]:
+    out: dict[str, list[tuple[int, float, bool]]] = {}
+    for e in entries:
+        if point_status(e) is not None or key not in e:
+            continue
+        spilled = bool(e.get("spilled_train") or e.get("spilled"))
+        out.setdefault(e["model"], []).append((int(e["seq_len"]), float(e[key]), spilled))
+    return {m: sorted(v) for m, v in out.items()}
+
+
+def _plot_series(ax: Axes, series: dict[str, list[tuple[int, float, bool]]]) -> None:
+    for model, points in series.items():
+        key = style_key(model)
+        xs, ys = [p[0] for p in points], [p[1] for p in points]
+        ax.plot(
+            xs,
+            ys,
+            color=COLORS.get(key, INK),
+            marker=MARKERS.get(key, "o"),
+            linestyle=BACKEND_STYLES.get(model, "-"),
+            label=LABELS.get(model, model),
+        )
+        ringed = [(x, y) for x, y, s in points if s]
+        if ringed:
+            ax.scatter(
+                *zip(*ringed, strict=True),
+                s=110,
+                facecolors="none",
+                edgecolors=INK,
+                linewidths=1.0,
+                zorder=5,
+            )
+    ax.set_xscale("log", base=2)
+    ax.set_yscale("log")
+    _style(ax)
+
+
+def benchmark_figures(root: Path, out: Path, report_out: Path | None) -> list[Path]:
+    written: list[Path] = []
+    sweeps = {p: load_sweep(root, "efficiency", p) for p in ("fp32", "bf16")}
+    present = [(p, s) for p, s in sweeps.items() if s]
+    if present:
+        fig, axes = plt.subplots(len(present), 2, figsize=(7.0, 2.7 * len(present)), squeeze=False)
+        for row, (precision, sweep) in enumerate(present):
+            for col, (key, ylabel) in enumerate(
+                (
+                    ("train_step_ms_median", "training step (ms)"),
+                    ("peak_train_mb", "peak allocated (MiB)"),
+                )
+            ):
+                ax = axes[row][col]
+                _plot_series(ax, _series(sweep["entries"], key))
+                ax.set_ylabel(ylabel)
+                ax.set_title(f"{precision}, batch 8")
+                ax.set_xlabel("sequence length T")
+            axes[row][1].legend(frameon=False, loc="upper left", bbox_to_anchor=(1.01, 1.0))
+        written += _save(fig, out, report_out, "fig_efficiency")
+    decode = load_sweep(root, "inference", "bf16") or load_sweep(root, "inference", "fp32")
+    if decode is not None:
+        precision = "bf16" if load_sweep(root, "inference", "bf16") else "fp32"
+        fig, axes = plt.subplots(1, 3, figsize=(10.2, 2.8))
+        entries = decode["entries"]
+        state = [
+            dict(e, decode_state_mib=e["decode_state_bytes"] / 1024**2)
+            for e in entries
+            if "decode_state_bytes" in e
+        ]
+        panels = (
+            (_series(entries, "ttft_ms_median"), "time to first token (ms)"),
+            (_series(entries, "decode_ms_per_token_median"), "decode latency per token (ms)"),
+            (_series(state, "decode_state_mib"), "decode state (MiB)"),
+        )
+        for ax, (series, ylabel) in zip(axes, panels, strict=True):
+            _plot_series(ax, series)
+            ax.set_ylabel(ylabel)
+            ax.set_xlabel("prompt length")
+            ax.set_title(f"{precision}, batch 1")
+        axes[-1].legend(frameon=False, loc="upper left", bbox_to_anchor=(1.01, 1.0))
+        written += _save(fig, out, report_out, "fig_inference")
+    return written
+
+
+def make_all(root: Path, out: Path, report_out: Path | None = None) -> list[Path]:
+    return training_figures(root, out, report_out) + benchmark_figures(root, out, report_out)
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--results", default="results")
-    ap.add_argument("--out", default="figures")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument("--results", default=str(ROOT / "results"))
+    ap.add_argument("--out", default=str(ROOT / "figures"))
+    ap.add_argument("--report-out", default=str(ROOT / "reports" / "figures"))
     args = ap.parse_args()
-    results, out = Path(args.results), Path(args.out)
-    if not results.exists():
-        print(f"results directory '{results}' not found; nothing to do")
-        return
-    training_figures(results, out)
-    efficiency_figures(results, out)
-    exact_copy_figures(results, out)
-    task_formulation_figure(results, out)
-
-
-
-
-
-def exact_copy_figures(results: Path, out: Path) -> None:
-    """Repeat-After-Me reproduction figures: metrics vs string length per model."""
-    runs = {}
-    for model in MODELS:
-        p = results / f"exact_copy_{model}.json"
-        if p.exists():
-            runs[model] = json.loads(p.read_text(encoding="utf-8"))
-    if not runs:
-        print("no exact_copy results; skipping")
-        return
-
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
-    for ax, key, title, ylabel in [
-        (axes[0], "token_accuracy", "Exact copy: token accuracy vs string length", "token accuracy"),
-        (axes[1], "sequence_success", "Exact copy: full-sequence success vs length", "sequence success"),
-    ]:
-        chance = 1 / 30
-        for model, run in runs.items():
-            fb = run.get("final_by_length") or {}
-            pts = sorted((int(L), v[key]) for L, v in fb.items() if v.get(key) is not None)
-            if pts:
-                xs, ys = zip(*pts)
-                ax.plot(xs, ys, marker="o", ms=5, color=COLORS[model], label=LABELS[model])
-        ax.axhline(chance, ls="--", lw=1, color="gray")
-        ax.text(0.98, chance + 0.02, "chance", transform=ax.get_yaxis_transform(),
-                ha="right", fontsize=8, color="gray")
-        ax.set_xscale("log", base=2)
-        ax.set_xticks([32, 64, 128])
-        ax.set_xticklabels(["32", "64", "128"])
-        ax.set_xlabel("string length (train: 5 to 32)")
-        ax.set_ylabel(ylabel)
-        ax.set_ylim(-0.02, 1.05)
-        ax.set_title(title, fontsize=10)
-        _style(ax)
-    fig.tight_layout()
-    _save(fig, out, "fig_exact_copy")
-
-
-def task_formulation_figure(results: Path, out: Path) -> None:
-    """The ranking flips with task formulation: selective copy vs exact copy."""
-    sel, exact = {}, {}
-    for model in MODELS:
-        p1 = results / f"selective_copy_{model}.json"
-        p2 = results / f"exact_copy_{model}.json"
-        if p1.exists():
-            r = json.loads(p1.read_text(encoding="utf-8"))
-            v = _final(r, "sequence_success")
-            if v is not None:
-                sel[model] = v
-        p3 = (results / f"exact_copy_{model}.json")
-        if p3.exists():
-            fb = json.loads(p3.read_text(encoding="utf-8")).get("final_by_length") or {}
-            v = fb.get("32", {}).get("sequence_success")
-            if v is not None:
-                exact[model] = v
-    if not sel or not exact:
-        print("missing task results; skipping formulation figure")
-        return
-    models_present = [m for m in MODELS if m in sel or m in exact]
-    x = np.arange(len(models_present))
-    w = 0.38
-    fig, ax = plt.subplots(figsize=(7.5, 4))
-    ax.bar(x - w / 2, [sel.get(m, 0) for m in models_present], w,
-           label="selective copy (test L=128)", color="#0a7d33")
-    ax.bar(x + w / 2, [exact.get(m, 0) for m in models_present], w,
-           label="exact copy (in-dist L=32)", color="#0a5aa0")
-    # mark genuinely-not-measured cells so a missing bar is not read as 0.0
-    for xi, m in zip(x, models_present):
-        if m not in sel:
-            ax.text(xi - w / 2, 0.02, "not run", rotation=90, fontsize=7,
-                    ha="center", va="bottom", color="#0a7d33")
-        if m not in exact:
-            ax.text(xi + w / 2, 0.02, "not run", rotation=90, fontsize=7,
-                    ha="center", va="bottom", color="#0a5aa0")
-    ax.set_xticks(x)
-    ax.set_xticklabels([LABELS.get(m, m) for m in models_present], fontsize=9)
-    ax.set_ylabel("full-sequence success")
-    ax.set_title("The ranking flips with the copy-task formulation", fontsize=11)
-    ax.set_ylim(0, 1.08)
-    ax.grid(True, axis="y", alpha=0.3)
-    ax.legend(frameon=False, fontsize=9)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    _save(fig, out, "fig_task_formulation")
+    written = make_all(Path(args.results), Path(args.out), Path(args.report_out))
+    if not written:
+        print("no results found; no figures written")
+    for path in written:
+        print(f"wrote {path}")
 
 
 if __name__ == "__main__":

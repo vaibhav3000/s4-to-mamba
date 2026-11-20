@@ -1,0 +1,102 @@
+{
+  "attention_backend": [
+    "efficient"
+  ],
+  "config": "imdb",
+  "data_config": {
+    "batch_size": 64,
+    "max_features": 20000,
+    "max_len": 512,
+    "name": "imdb",
+    "seed": 42,
+    "test_subset": null,
+    "train_subset": 12500,
+    "val_size": 2500
+  },
+  "device_total_mb": 6140.5,
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.1+cu130"
+  },
+  "final_evals": {
+    "test": {
+      "accuracy": 0.82256,
+      "auc": 0.9016941599999999,
+      "loss": 0.40389851696046114
+    }
+  },
+  "gpu_available_at_start_mb": 5048.0,
+  "gpu_free_at_end_mb": 3614.0,
+  "gpu_memory_spilled": false,
+  "history": [
+    {
+      "epoch": 1,
+      "epoch_seconds": 23.18,
+      "train_loss": 0.5577285507199715,
+      "val_accuracy": 0.8196,
+      "val_auc": 0.9051630469600871,
+      "val_loss": 0.4183759540319443
+    },
+    {
+      "epoch": 2,
+      "epoch_seconds": 23.29,
+      "train_loss": 0.3720739383478554,
+      "val_accuracy": 0.846,
+      "val_auc": 0.9270734832468448,
+      "val_loss": 0.35273724496364595
+    },
+    {
+      "epoch": 3,
+      "epoch_seconds": 23.42,
+      "train_loss": 0.2958596248407753,
+      "val_accuracy": 0.8488,
+      "val_auc": 0.9275072073803574,
+      "val_loss": 0.3533489864319563
+    }
+  ],
+  "label": "transformer_rope",
+  "model": {
+    "kwargs": {
+      "attn_backend": "efficient",
+      "d_model": 128,
+      "n_heads": 4,
+      "n_layers": 4,
+      "pos_encoding": "rope"
+    },
+    "name": "transformer"
+  },
+  "n_parameters": 3353602,
+  "name": "imdb_transformer_rope",
+  "peak_gpu_mb": 1355.0,
+  "peak_gpu_reserved_mb": 1434.0,
+  "provenance": {
+    "config_sha256": "10350c41ad37b1e2ec8bf46e07bf354fd3ab58b3ee92fdacd47953dca6b73b2b",
+    "cuda": "13.0",
+    "device": "cuda",
+    "git_dirty": false,
+    "git_sha": "c4c111bc1ff7cb17a6f735e9ecfc45362c25712f",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "nvidia_driver": "610.74",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.13.7",
+    "source_sha256": "c4adb70bef57070208d93db64718231c7da57f76523c7b7c2f4dc8aaa629da41",
+    "timestamp_utc": "2026-11-20T03:31:34+00:00",
+    "torch": "2.14.1+cu130"
+  },
+  "resumed_from_epoch": null,
+  "seed": 2,
+  "task": "classification",
+  "train_config": {
+    "deterministic": true,
+    "epochs": 3,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 2,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 84.8
+}

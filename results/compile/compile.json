@@ -1,0 +1,236 @@
+{
+  "config": {
+    "device": "auto",
+    "models": [
+      "transformer",
+      "transformer_rope",
+      "s4d",
+      "mamba",
+      "mamba2",
+      "mamba3"
+    ],
+    "out_path": "results/compile/compile.json",
+    "seq_len": 128,
+    "variants": {
+      "mamba": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "mamba2": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "mamba3": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "s4d": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "transformer": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "transformer_rope": {
+        "backbone": "transformer",
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      }
+    }
+  },
+  "entries": [
+    {
+      "aot_eager": {
+        "max_abs_grad_diff": 0.0,
+        "max_abs_output_diff": 0.0
+      },
+      "architecture": "transformer",
+      "forward": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      },
+      "inductor": {
+        "status": "not run: Triton is not installed in this environment"
+      },
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "seq_len": 128,
+      "step": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      }
+    },
+    {
+      "aot_eager": {
+        "max_abs_grad_diff": 0.0,
+        "max_abs_output_diff": 0.0
+      },
+      "architecture": "transformer",
+      "forward": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      },
+      "inductor": {
+        "status": "not run: Triton is not installed in this environment"
+      },
+      "model": "transformer_rope",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      },
+      "seq_len": 128,
+      "step": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      }
+    },
+    {
+      "aot_eager": {
+        "max_abs_grad_diff": 0.0,
+        "max_abs_output_diff": 0.0
+      },
+      "architecture": "s4d",
+      "forward": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      },
+      "inductor": {
+        "status": "not run: Triton is not installed in this environment"
+      },
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seq_len": 128,
+      "step": {
+        "break_reasons": [
+          "Unsupported Tensor.item() call with capture_scalar_outputs=False",
+          "generic_jump SymNodeVariable()",
+          "Unsupported Tensor.item() call with capture_scalar_outputs=False"
+        ],
+        "graph_break_count": 4,
+        "graph_count": 5
+      }
+    },
+    {
+      "aot_eager": {
+        "max_abs_grad_diff": 0.0,
+        "max_abs_output_diff": 0.0
+      },
+      "architecture": "mamba",
+      "forward": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      },
+      "inductor": {
+        "status": "not run: Triton is not installed in this environment"
+      },
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seq_len": 128,
+      "step": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      }
+    },
+    {
+      "aot_eager": {
+        "max_abs_grad_diff": 0.0,
+        "max_abs_output_diff": 0.0
+      },
+      "architecture": "mamba2",
+      "forward": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      },
+      "inductor": {
+        "status": "not run: Triton is not installed in this environment"
+      },
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seq_len": 128,
+      "step": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      }
+    },
+    {
+      "aot_eager": {
+        "max_abs_grad_diff": 0.0,
+        "max_abs_output_diff": 0.0
+      },
+      "architecture": "mamba3",
+      "forward": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      },
+      "inductor": {
+        "status": "not run: Triton is not installed in this environment"
+      },
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seq_len": 128,
+      "step": {
+        "break_reasons": [],
+        "graph_break_count": 0,
+        "graph_count": 1
+      }
+    }
+  ],
+  "environment": {
+    "cuda": "13.0",
+    "date": "2026-11-20",
+    "device": "cuda",
+    "git_dirty": false,
+    "git_sha": "c4c111bc1ff7cb17a6f735e9ecfc45362c25712f",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "nvidia_driver": "610.74",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.13.7",
+    "source_sha256": "c4adb70bef57070208d93db64718231c7da57f76523c7b7c2f4dc8aaa629da41",
+    "timestamp_utc": "2026-11-20T05:53:00+00:00",
+    "torch": "2.14.1+cu130"
+  }
+}

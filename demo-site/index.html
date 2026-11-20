@@ -103,6 +103,8 @@
   .readchip{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:5px 10px;font-size:.82rem}
   .readchip.bad{border-color:var(--bad);color:var(--bad)}
   .readchip.best{border-color:var(--good);color:var(--good);font-weight:600}
+  .readchip.warn{border-color:var(--warn)}
+  .stale{border:1px solid var(--warn);background:#fbf4e0;border-radius:8px;padding:10px 14px;margin:0 0 14px;max-width:56rem;font-size:.92rem}
 
   /* ---- measurement stepper ---- */
   #msteps{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
@@ -131,18 +133,18 @@
     <p class="lead">Pure-PyTorch implementations of <span class="term" tabindex="0" data-tip="Diagonal state space model (Gu et al. 2022): complex diagonal A, trained as an FFT convolution, decoded as an O(1)-state recurrence.">S4D</span>,
       <span class="term" tabindex="0" data-tip="Selective state space model (Gu &amp; Dao 2023): the transition, input and output matrices become functions of the input.">Mamba</span>,
       <span class="term" tabindex="0" data-tip="Mamba-2 (Dao &amp; Gu 2024): scalar-identity transitions turn the selective scan into chunked block matmuls - State-Space Duality.">Mamba-2</span>,
-      <span class="term" tabindex="0" data-tip="Mamba-3 (2026): complex-valued diagonal transitions add rotation, restoring state-tracking abilities like parity.">Mamba-3 (complex)</span>
-      and a Transformer baseline. Parallel and recurrent forms are proven equivalent by tests; every number below is a committed measurement, not a paper claim.</p>
+      <span class="term" tabindex="0" data-tip="Mamba-3 (2026): input-dependent complex-valued transitions add rotation, which the paper credits for state tracking such as parity. S4D's transitions are complex too, but fixed (LTI).">Mamba-3 (complex)</span>
+      and a Transformer baseline. Every backbone has a parallel form for training and an O(1) decode step (a KV cache for the Transformer), and tests check the two against each other in float64. Every number below is a committed measurement, a mean over three run seeds where training is involved, not a paper claim.</p>
     <div class="chips">
-      <span class="chip">Parity tracking: <b>98.3%</b> (Mamba-3) vs &le;<b>56.3%</b> for all real-transition baselines</span>
-      <span class="chip">Selective copying: S4D collapses to <b>6.4%</b>; Mamba-1/2 reach <b>65&ndash;67%</b></span>
-      <span class="chip">Efficiency: 1K&ndash;32K tokens on a 6&nbsp;GB RTX&nbsp;4050, CUDA-event timed</span>
+      <span class="chip">Parity, five seeds: Mamba-3 <b>72.6%</b> mean (two seeds at 89.2 and 99.0%) vs &le;<b>57.3%</b> for every other model; none extrapolates to longer sequences</span>
+      <span class="chip">Selective copying out of distribution: Mamba-1/2 about <b>50%</b>, Mamba-3 <b>14.4%</b>, S4D <b>17.6%</b>, Transformers <b>7.5 to 12.1%</b> token accuracy</span>
+      <span class="chip">Decode state after a 32K prompt: <b>0.14 to 0.39&nbsp;MiB</b> for the SSMs vs a <b>64&nbsp;MiB</b> bf16 KV cache (6&nbsp;GB RTX&nbsp;4050)</span>
     </div>
   </div>
 
   <section id="mechanism" aria-labelledby="mech-h">
     <h2 id="mech-h">How each model reads a stream</h2>
-    <p class="sub">A simplified walkthrough of what each architecture <em>does</em> as tokens arrive &mdash;
+    <p class="sub">A simplified walkthrough of what each architecture <em>does</em> as tokens arrive:
       <span class="badge badge-schematic">teaching schematic</span>, not a simulation of the real kernels.
       Pick a model, then play or step through. The interesting differences: what the model <b>keeps</b> (state),
       what it <b>filters</b> (selectivity), and how much compute each step costs.</p>
@@ -166,33 +168,36 @@
 
   <section id="capability" aria-labelledby="cap-h">
     <h2 id="cap-h">Capability: where each architecture wins</h2>
-    <p class="sub">Cumulative-parity tracking needs <em>rotation</em>; only complex, input-dependent transitions can
-      represent it. Selective copying needs <em>gating</em>; LTI models cannot filter noise. Exact copying needs
-      <em>memory that grows with length</em>, where attention dominates. The ranking flips with the task - that is the point.</p>
+    <p class="sub">Cumulative parity needs the state to <em>rotate</em> in response to each input. Of these models only Mamba-3
+      has input-dependent complex transitions, and only Mamba-3 had runs that learned the task (two of five seeds); with the
+      rotation switched off it falls back to the level of Mamba-1/2. Selective copying rewards <em>gating</em>: the LTI S4D
+      fails even in distribution, and the chart shows the harder out-of-distribution test. Exact copying at the trained length
+      of 32 is a fixed shift, which the Transformers, the LTI S4D and Mamba-3 solve and Mamba-1/2 do not.</p>
     <div class="grid">
       <div class="card" id="card-parity"><h3>Parity / state tracking (token accuracy)</h3>
-        <p class="note">Cumulative XOR, L=128, 20 epochs, matched budgets. Dashed line = chance (0.5).</p>
+        <p class="note">Cumulative XOR, train and test L=128, 20 epochs, mean of five run seeds. Parameter counts are matched within 10% (99,902 to 102,642). Dashed line = chance (0.5).</p>
         <div id="chart-parity"></div>
         <div class="seg" id="parity-pick" role="group" aria-label="focus one model"></div>
         <div id="parity-read"></div>
         <button id="parity-why" type="button" class="chip" style="cursor:pointer;margin-top:8px">Explain this result</button>
       </div>
       <div class="card"><h3>Selective copying</h3>
-        <p class="note">Marker-value pairs in noise; train L=64 (3&ndash;5 pairs), test L=128 (5&ndash;10 pairs). Two bars per model: full-sequence success and token accuracy. Mamba-3 trades recall sharpness for state tracking at this budget - reported as measured.</p>
+        <p class="note">Marker-value pairs in noise; trained at L=64 with 3 to 5 pairs, scored here at L=128 with 5 to 10 pairs (out of distribution; in distribution the selective SSMs and the Transformers reach 98 to 100% token accuracy and S4D 28.4%). Two bars per model: full-sequence success and token accuracy, mean of three seeds. The Mamba-1/2 seeds range from 28.6 to 65.9% token accuracy.</p>
         <div id="chart-selcopy"></div></div>
       <div class="card"><h3>Exact copying (in-distribution L=32)</h3>
-        <p class="note">Reproduce a 32-token string (Jelassi et al., ICML 2024 formulation). The Transformer-vs-SSM ranking from the paper reproduces; the same models flip ranking on selective copying above.</p>
+        <p class="note">Reproduce a 32-token string (task adapted from Jelassi et al., ICML 2024), trained at the single length 32, mean of three seeds. The answer is a fixed shift of the prompt, which the LTI S4D also learns perfectly; Mamba-1/2 do not learn it, and every model fails at lengths 64 and 128. Trained on lengths 1 to 32 instead, the Transformers lead and Mamba-3 is the best SSM (see the README).</p>
         <div id="chart-exact"></div></div>
       <div class="card"><h3>IMDb sentiment (accuracy / AUC)</h3>
-        <p class="note">12.5k train samples (fixed seed), max length 512, 3 epochs. Mamba-1/3 are intentionally not trained here: their python-loop scans are wall-clock-prohibitive (see efficiency charts); Mamba-2 shares their recurrence.</p>
+        <p class="note">12.5k training reviews (fixed by the data seed), max length 512, 3 epochs, scored on the 25k test split, mean of three seeds. Mamba-1 is not trained here: its python-loop scan is too slow at 512 tokens on this GPU.</p>
         <div id="chart-imdb"></div></div>
     </div>
   </section>
 
   <section id="task-flip" aria-labelledby="flip-h">
     <h2 id="flip-h">Same models, different task: the ranking flips</h2>
-    <p class="sub">One of the study's central results. Switch the task and watch the ordering change &mdash;
-      no architecture dominates; the bottleneck (rotation / gating / linear memory) decides. <span class="badge badge-measured">measured result</span></p>
+    <p class="sub">Switch the task and watch the ordering change. Read it with care: selective copy is scored out of
+      distribution and exact copy at the trained length, where the LTI S4D ties the Transformers. The reordering is measured
+      over three seeds, but it does not isolate which bottleneck (rotation, gating or memory) decides. <span class="badge badge-measured">measured result</span></p>
     <div class="card">
       <div class="seg" id="task-tabs" role="group" aria-label="choose the task"></div>
       <div id="taskchart" aria-live="polite"></div>
@@ -201,10 +206,15 @@
   </section>
 
   <section id="efficiency" aria-labelledby="eff-h">
-    <h2 id="eff-h">Efficiency vs sequence length (1K&ndash;32K)</h2>
-    <p class="sub">Measured on this machine's 6&nbsp;GB RTX&nbsp;4050 (fp32, batch 8 for train-step charts, CUDA events, 5 repeats).
-      Drag the slider to jump between <b>measured</b> lengths &mdash; every readout snaps to a committed data point; nothing in between is interpolated.
-      &times; markers are <em>measured out-of-memory limits</em>, not missing data.</p>
+    <h2 id="eff-h">Efficiency vs sequence length (1K to 32K)</h2>
+    <p class="sub">Measured on this machine's 6&nbsp;GB RTX&nbsp;4050 (bf16 autocast, batch 8 for the training charts, CUDA events, median of 5 timed repeats; decode at batch 1, median over 10 sessions of 64 tokens).
+      Drag the slider to jump between <b>measured</b> lengths; every readout snaps to a committed data point and nothing in between is interpolated.
+      Missing points were skipped after a shorter length spilled, or are outside a model's configured range.</p>
+    <p class="sub">Open circles mark points whose training step needed more than the free GPU memory. Windows let them run by
+      spilling into system memory, so their time, memory and throughput are not VRAM-only results. Every benchmark model has
+      width 256 and two layers, so the sizes differ (Transformer 1,579,520 parameters, S4D 182,784, Mamba-1/2/3 875,808 to
+      877,872) and no speed or memory ratio between architectures is like for like. FlashAttention is not built into the Windows torch wheel,
+      so its rows are recorded as unsupported.</p>
     <div class="legend" id="eff-legend" role="group" aria-label="toggle models on efficiency charts"></div>
     <div class="card" style="margin-bottom:18px">
       <label for="eff-slider" style="font-size:.9rem">Scrub the measured sequence lengths:</label>
@@ -218,7 +228,7 @@
       <div class="card"><h3>Peak training memory (MB)</h3><div id="chart-memory"></div></div>
       <div class="card"><h3>Training throughput (tokens/s)</h3><div id="chart-throughput"></div></div>
       <div class="card"><h3>Decode cost per token (ms)</h3>
-        <p class="note">Decode modes are labeled per model: Mamba-1/S4D use true O(1)-state stepwise decode; Mamba-2/3 report sequential-scan cost; the Transformer has no KV cache and recomputes the full prefix per token.</p>
+        <p class="note">Median latency of one step() after a prefill of the given length, batch 1, bf16. The SSMs carry an O(1) state, the Transformers a KV cache that grows with the prompt. At batch 1 an SSM step is bound by kernel launches from Python, so its latency varies without a trend in length; these are not fused-kernel numbers.</p>
         <div id="chart-decode"></div></div>
     </div>
   </section>
@@ -238,9 +248,9 @@
     </div>
     <div class="card" style="margin-top:18px">
       <ul style="margin:8px 0;padding-left:20px">
-        <li>Correctness is tested, not asserted: S4D's FFT-convolution form equals its recurrent step form; Mamba-2's chunked SSD equals its sequential reference scan; Mamba-3 reduces to the Mamba-1/2 update when &lambda;=1 and rotation frequency is zero; decode paths equal parallel paths. Run: <code>python -m pytest tests/ -q</code></li>
-        <li>Every figure on this page regenerates from committed JSON: <code>results/*.json</code>, <code>python demo-site/build.py</code>.</li>
-        <li>Theoretical O(T) and wall-clock are different claims; the python-loop scans are O(T) in operations but 10&ndash;100&times; slower in wall-clock - exactly why fused kernels and Mamba-2's matmul form exist.</li>
+        <li>Equivalence tests compare alternative computation paths in float64: prefill plus single decode steps against the full forward pass for every backbone, S4D's FFT convolution against its recurrence, the chunked Mamba-2 and Mamba-3 scans against their sequential forms (values and gradients, plus gradcheck), and the Mamba-2/3 blocks against naive per-head references. Run: <code>uv run pytest -q</code></li>
+        <li>Every chart on this page regenerates from the committed results under <code>results/</code>: <code>python demo-site/build.py</code>.</li>
+        <li>Theoretical O(T) and wall-clock are different claims; Mamba-1's python-loop scan is O(T) in operations but takes 4.1&nbsp;s per training step at 1K tokens, against 62&nbsp;ms for Mamba-2's chunked matmul form, which is why fused kernels and the SSD form exist.</li>
         <li>Full methodology, result tables and literature reproductions: <a href="https://github.com/vaibhav3000/s4-to-mamba/blob/main/reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf">technical report (PDF)</a> and the <a href="https://github.com/vaibhav3000/s4-to-mamba#readme">README</a>.</li>
       </ul>
     </div>
@@ -250,6 +260,7 @@
     <div>Data: committed measurements from <span class="mono">results/</span> in
       <a href="https://github.com/vaibhav3000/s4-to-mamba">github.com/vaibhav3000/s4-to-mamba</a>,
       rendered by <span class="mono">demo-site/build.py</span> (regenerate after re-running experiments).
+      Where each result file came from: <span class="mono">results/PROVENANCE.md</span>.
       Charts and mechanism schematics are the only non-measured visuals; schematics are labeled as such.
       Environment: <span id="env-line" class="mono"></span>.</div>
   </footer>
@@ -354,7 +365,7 @@ function logLogChart(id, key, unit, highlightLen){
   const pts = {}; const ooms = {};
   DATA.efficiency.forEach(e => {
     if (!active[e.model]) return;
-    if (e[key] != null){ (pts[e.model] = pts[e.model] || []).push([e.seq_len, e[key]]); }
+    if (e[key] != null){ (pts[e.model] = pts[e.model] || []).push([e.seq_len, e[key], key !== "decode_per_token_ms" && e.spill === true]); }
     else if (e.oom && (key==="train_step_ms" || key==="peak_train_mb")){ (ooms[e.model] = ooms[e.model] || []).push(e.seq_len); }
   });
   const allVals = Object.values(pts).flat().map(p => p[1]).filter(v => v>0);
@@ -384,7 +395,7 @@ function logLogChart(id, key, unit, highlightLen){
     if (p.length){
       const d = p.map((pt,i)=>(i?"L":"M")+X(pt[0]).toFixed(1)+" "+Y(pt[1]).toFixed(1)).join(" ");
       el("path",{d,fill:"none",stroke:COLORS[m.id],"stroke-width":1.8},svg);
-      p.forEach(pt => el("circle",{cx:X(pt[0]),cy:Y(pt[1]),r:2.6,fill:COLORS[m.id]},svg));
+      p.forEach(pt => el("circle",{cx:X(pt[0]),cy:Y(pt[1]),r:pt[2]?3.4:2.6,fill:pt[2]?"#fff":COLORS[m.id],stroke:COLORS[m.id],"stroke-width":pt[2]?1.6:0},svg));
     }
     (ooms[m.id]||[]).forEach(T => {
       const y = mT+plotH-8;
@@ -497,7 +508,7 @@ const SCHEM = {
       "Token n arrives.",
       "<b>Processing</b>: like Mamba-1/2, but the transition is complex-valued - the state can <i>rotate</i>, not just decay.",
       "<b>State</b>: the state cell is a phasor: magnitude decays (<1, stable) while the phase rotates by an input-dependent angle.",
-      "<b>Output</b>: rotations encode state tracking - this is exactly the mechanism that solves parity (98.3% measured).",
+      "<b>Output</b>: rotations can encode state tracking, the mechanism the Mamba-3 paper credits for parity (two of five Mamba-3 seeds learned it here; none did with the rotation off).",
     ],
     draw: (svg, step) => {
       schematicBase(svg);
@@ -633,11 +644,11 @@ function renderParity(){
   if (!v){ box.innerHTML = "<p class='note' style='margin:8px 0 0'>Click a model to focus its measured bar and read the interpretation.</p>"; return; }
   const gap = (v.token_accuracy - 0.5);
   const interp = {
-    mamba3: "Complex, input-dependent transitions rotate the state - the operation cumulative parity requires. <b>Only</b> this model clears chance, reproducing the Mamba-3 paper's capability claim.",
+    mamba3: "Complex, input-dependent transitions let the state rotate, the operation cumulative parity requires. It is the only model with runs far above chance (two of five seeds, 89.2 and 99.0%), and with the rotation switched off it stays near the others, consistent with the Mamba-3 paper's claim.",
     mamba2: "Scalar real transitions can only decay the state - they cannot rotate it, so parity is out of reach at this budget.",
     mamba:  "Same story as Mamba-2: real non-negative transitions = decay-only dynamics.",
     s4d:    "Complex but <i>LTI</i> transitions: the rotation is fixed, not input-dependent - it cannot respond to each bit, so it stays at chance.",
-    transformer: "Attention re-reads the prefix, but at this matched budget it does not induce the parity circuit - measured at chance.",
+    transformer: "Attention re-reads the prefix, but with this training budget (20 epochs, five seeds) it did not learn parity: measured near chance.",
   }[parityFocus];
   box.innerHTML = `
     <div class="chips" style="margin:8px 0 0">
@@ -653,11 +664,11 @@ document.getElementById("parity-why").addEventListener("click", () => {
 /* ================= D. task formulation switcher ================= */
 const TASKS = {
   parity:   { label: "Parity (state tracking)", metric: "token accuracy",
-              get: id => (DATA.parity[id]||{}).token_accuracy, note: "Cumulative XOR, test L=128. Rotation wins." },
+              get: id => (DATA.parity[id]||{}).token_accuracy, note: "Cumulative XOR, test L=128. Mamba-3 (input-dependent rotation) leads on the mean of five seeds, carried by two runs." },
   selcopy:  { label: "Selective copy", metric: "full-sequence success (test L=128)",
-              get: id => (DATA.selective_copy[id]||{}).sequence_success, note: "Keep k pairs, filter noise. Selective gating wins; LTI collapses." },
+              get: id => (DATA.selective_copy[id]||{}).sequence_success, note: "Keep k pairs, filter noise. Scored out of distribution, on a longer test with more pairs than training. Mamba-1/2 lead." },
   exact:    { label: "Exact copy (in-dist L=32)", metric: "full-sequence success (in-dist L=32)",
-              get: id => (DATA.exact_copy_in_dist[id]||{}).sequence_success, note: "Reproduce every token. Attention's re-reading wins; fixed-state SSMs collapse." },
+              get: id => (DATA.exact_copy_in_dist[id]||{}).sequence_success, note: "Reproduce every token at the trained length. The Transformers, the LTI S4D and Mamba-3 solve it; Mamba-1/2 do not." },
 };
 let curTask = "parity";
 function renderTaskChart(){
@@ -716,19 +727,27 @@ function sliderLen(){ return +LEN_KEYS[+document.getElementById("eff-slider").va
 function renderEffRead(len){
   const byModel = {};
   DATA.efficiency.forEach(e => { if (+e.seq_len === len) byModel[e.model] = e; });
+  const short = (m) => m.label.replace(" (SSD)","").replace(" (complex)","").replace(" (LTI)","");
   const chip = (m) => {
     const e = byModel[m.id];
     if (!e) return "";
     const oom = e.oom || e.oom_train;
-    return `<span class="readchip ${oom ? "bad" : ""}"><b style="color:${COLORS[m.id]}">${m.label.replace(" (SSD)","").replace(" (complex)","").replace(" (LTI)","")}</b>: ` +
+    const spill = !oom && e.spill === true;
+    return `<span class="readchip ${oom ? "bad" : (spill ? "warn" : "")}"><b style="color:${COLORS[m.id]}">${short(m)}</b>: ` +
       (oom ? "measured OOM at this configuration"
-           : `${fmt(e.train_step_ms)} ms train &middot; ${fmt(e.peak_train_mb)} MB &middot; ${fmt(e.train_tokens_per_s)} tok/s`) + `</span>`;
+           : `${fmt(e.train_step_ms)} ms train &middot; ${fmt(e.peak_train_mb)} MB &middot; ${fmt(e.train_tokens_per_s)} tok/s` +
+             (spill ? " &middot; ran over GPU memory (spill)" : "")) + `</span>`;
   };
+  // decode values are shown as recorded (fmt would print 0.0015 as "0"), with what each one measures
+  const decodes = DATA.models.map(m => {
+    const e = byModel[m.id];
+    if (!e || e.decode_per_token_ms == null) return null;
+    const v = e.decode_per_token_ms, how = e.decode_label || e.decode_mode;
+    return `${short(m)} ${v < 1 ? String(v) : fmt(v)} ms${how ? ", " + how : ""}`;
+  }).filter(Boolean);
   document.getElementById("eff-read").innerHTML =
     DATA.models.map(chip).join("") +
-    `<span class="readchip">decode/token: ${DATA.models.map(m => {
-       const e = byModel[m.id]; return e && e.decode_per_token_ms != null ? `${fmt(e.decode_per_token_ms)} ms` : null;
-     }).filter(Boolean).join(" / ") || "-"}</span>`;
+    `<span class="readchip">decode per token: ${decodes.join(" &middot; ") || "-"}</span>`;
   const s = document.getElementById("eff-slider");
   s.setAttribute("aria-valuetext", len + " tokens");
   drawEfficiency(len);
@@ -743,9 +762,9 @@ document.getElementById("eff-slider").addEventListener("input", () => renderEffR
 const MSTEPS = [
   ["Warm-up", "Each (model, length) configuration runs untouched first - the first executions pay one-time costs (kernel compilation, caching) that would poison the numbers. They are discarded."],
   ["CUDA events", "Timing uses CUDA events recorded on the GPU around the measured region - not host wall-clock - so kernel-launch jitter on the CPU side does not pollute the measurement."],
-  ["Repeats", "Every measurement is repeated 5 times; the reported number is the mean (std is kept in the committed JSON). One lucky run is not a benchmark."],
-  ["Peak-memory reset", "Before each training-step measurement, peak-memory stats are reset, then the true allocation peak of that step is read back - memory is measured, not estimated."],
-  ["Aggregation & limits", "Means land in results/efficiency_gpu.json with the GPU identifier and date. Configurations that exceed the 6 GB card are recorded as oom:true - a measured hardware limit is data, not missing data."],
+  ["Repeats", "Training steps are timed 5 times and reported as the median; generation runs 10 timed sessions of 64 tokens after 2 warm-up sessions and reports the median per-token latency. Each configuration was measured once on a laptop GPU, so there are no run-to-run error bars."],
+  ["Peak-memory reset", "Before each training-step measurement, peak-memory stats are reset and the allocation peak is read back afterwards, so memory is measured, not estimated. Every point records peak allocated and reserved memory and the free memory before it ran; a point that needed more than was free is flagged as spilled, because on Windows the driver pages it into system memory instead of failing."],
+  ["Aggregation & limits", "Results land in results/efficiency/ and results/inference/, with the code revision, source hash, environment and GPU clock state in every entry; the benchmark refuses to merge entries from different code unless forced. After a length spills, longer lengths of that model are skipped; a pinned attention kernel that cannot run is recorded as unsupported."],
 ];
 let mStep = 0;
 function renderMStep(){
@@ -814,19 +833,19 @@ document.getElementById("tour-speed").addEventListener("change", e => { tourSpee
 
 const TOURS = {
   main: { steps: [
-    { title: "What this page is", el: ".hero", html: "Five sequence architectures, implemented from first principles in pure PyTorch, tested for mathematical equivalence, and benchmarked on one machine. Every chart is committed measurement - the tour shows the mechanisms behind the numbers." },
+    { title: "What this page is", el: ".hero", html: "Five sequence architectures, implemented from first principles in pure PyTorch, with equivalence tests between computation paths, and benchmarked on one machine. Every chart is a committed measurement, averaged over three run seeds for the tasks; the tour shows the mechanisms behind them." },
     { title: "The mechanism, one token at a time", el: "#schem-wrap", html: "This schematic walks a token through each architecture: what is input, what is kept in state, what is filtered. Switch models to feel the difference between attention, fixed (LTI) recurrence, selective recurrence, chunked SSD and complex rotation. <span class='badge badge-schematic'>teaching schematic</span>" },
-    { title: "Capability: parity", el: "#card-parity", html: "Cumulative parity needs the state to <i>rotate</i>. Click a model under the chart, then 'Explain this result' for a step-by-step interpretation of the measured 98.3% vs the chance-level rest." },
-    { title: "Capability: the ranking flips", el: "#task-flip", html: "Switch between Parity / Selective copy / Exact copy and watch the same five models reorder. The lesson: no architecture dominates - the task's bottleneck does." },
-    { title: "Efficiency, scrubbed", el: "#efficiency", html: "Drag the slider to jump between the six <b>measured</b> lengths (1K-32K). Every chart highlights the same point; OOM entries read as 'measured OOM at this configuration'. Nothing between points is interpolated." },
-    { title: "How the number was made", el: "#method", html: "Warm-up, CUDA events, 5 repeats, peak-memory reset, aggregation - step through the protocol in the 'How was this measured?' card. Then it's yours to explore; keyboard: Space play/pause, arrows step, R resets an active player." },
+    { title: "Capability: parity", el: "#card-parity", html: "Cumulative parity needs the state to <i>rotate</i>. Click a model under the chart, then 'Explain this result' for a step-by-step interpretation of the measured means (five seeds)." },
+    { title: "Capability: the ranking flips", el: "#task-flip", html: "Switch between Parity, Selective copy and Exact copy and watch the models reorder. The tasks are not scored on equal terms (selective copy out of distribution, exact copy at the trained length), so read the flip as suggestive rather than as proof that each task's bottleneck decides." },
+    { title: "Efficiency, scrubbed", el: "#efficiency", html: "Drag the slider to jump between the six <b>measured</b> lengths (1K to 32K). Every chart highlights the same point, and open circles mark points that ran over the card's memory through system-memory fallback. Nothing between points is interpolated." },
+    { title: "How the number was made", el: "#method", html: "Warm-up, CUDA events, repeats, peak-memory reset, aggregation: step through the protocol in the 'How was this measured?' card. Then it's yours to explore; keyboard: Space play/pause, arrows step, R resets an active player." },
   ]},
   parity: { steps: [
     { title: "1. The task", el: "#card-parity", html: "<b>Cumulative parity:</b> at every position t, output the XOR of all bits so far. One flipped bit flips the answer - the state must encode exact parity, not an average." },
-    { title: "2. What the mechanism needs", el: "#schem-wrap", html: "Encoding parity = the state must rotate by \u03c0 on every 1-bit and hold still on 0. Real decaying transitions cannot do that; a complex transition can. This is the mechanism the measured result hinges on. <span class='badge badge-schematic'>teaching schematic</span>" },
-    { title: "3. Prediction behavior", el: "#card-parity", html: "Four of five models sit at the 0.5 chance line - their predictions carry no information about parity. Only the complex-transition model learned the function." },
-    { title: "4. The measurement", el: "#card-parity", html: "Mamba-3: <b>98.3%</b> token accuracy (measured, 20 epochs, matched budget). Mamba-2 56.3%, Mamba-1 55.9%, Transformer 53.3%, S4D 50.6% - all chance-level." },
-    { title: "5. Interpretation", el: "#card-parity", html: "This reproduces the Mamba-3 paper's capability claim from first principles: complex-valued, input-dependent transitions restore state tracking that real-transition SSMs provably lack. Note S4D is complex too but <i>LTI</i> - the rotation must respond to each bit." },
+    { title: "2. What the mechanism needs", el: "#schem-wrap", html: "Encoding parity = the state must rotate by \u03c0 on every 1-bit and hold still on 0. Real decaying transitions cannot do that, and neither can a fixed (LTI) rotation like S4D's; an input-dependent complex transition can. The Mamba-3 paper credits this mechanism, and the ablation here that switches the rotation off loses it. <span class='badge badge-schematic'>teaching schematic</span>" },
+    { title: "3. Prediction behavior", el: "#card-parity", html: "Every model's mean stays between 50.9% and 57.3% except Mamba-3's. Only Mamba-3, the model with input-dependent complex transitions, has runs that learned the function, two of its five." },
+    { title: "4. The measurement", el: "#card-parity", html: "Mamba-3: <b>72.6 &plusmn; 20.5%</b> token accuracy (seeds at 52.7, 89.2, 56.2, 65.9 and 99.0%; 20 epochs, matched parameters). Without rotation 55.4%, Mamba-1 57.3%, Mamba-2 56.8%, Transformer 52.5%, S4D 50.9%." },
+    { title: "5. Interpretation", el: "#card-parity", html: "This is consistent with the Mamba-3 paper's claim that input-dependent complex transitions restore state tracking that real-transition SSMs lack. It is not a clean reproduction: only two of five seeds learned the task, no model extrapolates to longer sequences, and this Mamba-3 also differs from Mamba-2 in other ways (per-state decay, trapezoidal update, gating). S4D is complex too but <i>LTI</i>: its rotation cannot respond to each bit." },
   ]},
 };
 
@@ -872,8 +891,10 @@ buildTaskTabs(); renderTaskChart();
 schemBuildTabs(); schemRender();
 renderEffRead(1024);
 renderMStep();
+const preFix = DATA.results_status && DATA.results_status.pre_fix;
 document.getElementById("env-line").textContent =
-  `${DATA.environment.gpu || "cpu"}, torch ${DATA.environment.torch}, measured ${DATA.environment.date}`;
+  `${DATA.environment.gpu || "cpu"}, torch ${DATA.environment.torch}, efficiency file last written ${DATA.environment.date}` +
+  (preFix ? " (pre-fix results merged from several runs; see results/PROVENANCE.md)" : "");
 </script>
 </body>
 </html>

@@ -1,0 +1,40 @@
+
+=== 2026-11-20 11:24:14 .venv\Scripts\python.exe scripts\make_figures.py
+wrote figures\fig_parity.png
+wrote figures\fig_parity.pdf
+wrote reports\figures\fig_parity.pdf
+wrote figures\fig_selective_copy.png
+wrote figures\fig_selective_copy.pdf
+wrote reports\figures\fig_selective_copy.pdf
+wrote figures\fig_exact_copy.png
+wrote figures\fig_exact_copy.pdf
+wrote reports\figures\fig_exact_copy.pdf
+wrote figures\fig_imdb.png
+wrote figures\fig_imdb.pdf
+wrote reports\figures\fig_imdb.pdf
+wrote figures\fig_efficiency.png
+wrote figures\fig_efficiency.pdf
+wrote reports\figures\fig_efficiency.pdf
+wrote figures\fig_inference.png
+wrote figures\fig_inference.pdf
+wrote reports\figures\fig_inference.pdf
+
+=== 2026-11-20 12:30:59 .venv\Scripts\python.exe scripts\make_figures.py
+wrote figures\fig_parity.png
+wrote figures\fig_parity.pdf
+wrote reports\figures\fig_parity.pdf
+wrote figures\fig_selective_copy.png
+wrote figures\fig_selective_copy.pdf
+wrote reports\figures\fig_selective_copy.pdf
+wrote figures\fig_exact_copy.png
+wrote figures\fig_exact_copy.pdf
+wrote reports\figures\fig_exact_copy.pdf
+wrote figures\fig_imdb.png
+wrote figures\fig_imdb.pdf
+wrote reports\figures\fig_imdb.pdf
+wrote figures\fig_efficiency.png
+wrote figures\fig_efficiency.pdf
+wrote reports\figures\fig_efficiency.pdf
+wrote figures\fig_inference.png
+wrote figures\fig_inference.pdf
+wrote reports\figures\fig_inference.pdf

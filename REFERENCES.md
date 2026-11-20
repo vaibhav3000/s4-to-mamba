@@ -47,10 +47,25 @@ entry, and the originality statement at the end applies to all of them.
   [arXiv:2603.15569](https://arxiv.org/abs/2603.15569)
   The three changes implemented or described in `src/ssmbench/models/mamba3_minimal.py`:
   exponential-trapezoidal discretization (its Table 1 also names the exponential-Euler rule
-  used retroactively for Mamba-1/2), complex-valued transitions, and the MIMO formulation
-  (described only; this repository keeps SISO per head). Its expressivity discussion, drawing
-  on Grazzi et al. and Merrill et al., is the background for the parity result in
-  `results/parity_*.json`.
+  used retroactively for Mamba-1/2), complex-valued transitions (here with a static learned
+  rotation parameter `theta`, so the per-step rotation depends on the input only through the
+  step size `delta`, and with real `B` and `C` and a real readout; the module docstring lists
+  these details), and the MIMO formulation (described only; this repository keeps SISO per
+  head). The chunked parallel form in the same file (complex SSD with a two-band
+  correction) is derived in docs/design/step2.md. Its expressivity discussion, drawing
+  on Grazzi et al. and Merrill et al., is the background for the parity results in
+  `results/train/parity/`.
+
+- **Repeat After Me: Transformers are Better than State Space Models at Copying.**
+  Jelassi, Brandfonbrener, Kakade, Malach (2024).
+  [arXiv:2402.01032](https://arxiv.org/abs/2402.01032)
+  The exact-copy task in `src/ssmbench/data/synthetic.py`, trained at a fixed length and
+  on variable lengths.
+
+- **RoFormer: Enhanced Transformer with Rotary Position Embedding.** Su, Lu, Pan,
+  Murtadha, Wen, Liu (2021).
+  [arXiv:2104.09864](https://arxiv.org/abs/2104.09864)
+  The RoPE variant of the Transformer baseline in `src/ssmbench/models/attention.py`.
 
 ## Code
 
@@ -73,7 +88,12 @@ No code was copied from the official repositories or from any other source. Idea
 and initialization conventions are cited to the papers above, and the official repositories
 were used as reading material for conventions, not as code to transplant. Every file in
 `src/ssmbench/models/` is an original educational implementation written from first
-principles; correctness is established by the equivalence tests in `tests/test_models.py`
-(parallel versus recurrent forms, chunked versus sequential scans, and reduction of Mamba-3
-to the Mamba-1/2 rule), not by comparison against reference kernels. Benchmark numbers quoted
-in the documentation come exclusively from committed JSON files in `results/`.
+principles. Correctness is checked by the tests in `tests/test_models.py` (parallel versus
+recurrent forms, chunked versus sequential scans, and reduction of Mamba-3 to the Mamba-1/2
+rule) and in `tests/test_references.py` (independent float64 and complex128 references
+written from the equations, ZOH through the matrix exponential, and float64 gradchecks), not
+by comparison against the official kernels. The first group alone passed while two real bugs
+were present (the S4D ZOH input matrix and the way Mamba-2/3 heads read `B` and `C`), which is
+why the second group exists. Benchmark numbers quoted in the README and the report come
+exclusively from committed result files in `results/`, generated into tables by
+`scripts/make_tables.py` (see `results/PROVENANCE.md`).

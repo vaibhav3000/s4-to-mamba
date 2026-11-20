@@ -1,0 +1,140 @@
+
+=== 2026-11-20 04:27:56 .venv\Scripts\python.exe -m ssmbench.train.cli --config configs/exact_copy.yaml --out results/train --seeds 0 1 2 --checkpoints checkpoints --device cuda
+=== running exact_copy_transformer seed 0 ===
+USDT:2026-11-20 04:28:41 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 04:28:41 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+[exact_copy_transformer seed 0] epoch 1/6 loss=2.1522 val={'loss': 0.0134, 'token_accuracy': 0.9998, 'sequence_success': 0.9922}
+[exact_copy_transformer seed 0] epoch 2/6 loss=0.0036 val={'loss': 0.002, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 0] epoch 3/6 loss=0.0017 val={'loss': 0.0014, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 0] epoch 4/6 loss=0.0012 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 0] epoch 5/6 loss=0.0011 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 0] epoch 6/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_transformer seed 1 ===
+USDT:2026-11-20 04:29:25 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 04:29:25 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+[exact_copy_transformer seed 1] epoch 1/6 loss=2.0852 val={'loss': 0.0066, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 1] epoch 2/6 loss=0.0030 val={'loss': 0.0019, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 1] epoch 3/6 loss=0.0016 val={'loss': 0.0013, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 1] epoch 4/6 loss=0.0012 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 1] epoch 5/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 1] epoch 6/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_transformer seed 2 ===
+USDT:2026-11-20 04:30:06 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 04:30:06 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+[exact_copy_transformer seed 2] epoch 1/6 loss=2.1435 val={'loss': 0.0126, 'token_accuracy': 0.9995, 'sequence_success': 0.9844}
+[exact_copy_transformer seed 2] epoch 2/6 loss=0.0036 val={'loss': 0.002, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 2] epoch 3/6 loss=0.0017 val={'loss': 0.0014, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 2] epoch 4/6 loss=0.0012 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 2] epoch 5/6 loss=0.0011 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer seed 2] epoch 6/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_transformer_rope seed 0 ===
+USDT:2026-11-20 04:30:46 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 04:30:46 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+[exact_copy_transformer_rope seed 0] epoch 1/6 loss=1.1432 val={'loss': 0.0041, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 0] epoch 2/6 loss=0.0028 val={'loss': 0.002, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 0] epoch 3/6 loss=0.0016 val={'loss': 0.0013, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 0] epoch 4/6 loss=0.0012 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 0] epoch 5/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 0] epoch 6/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_transformer_rope seed 1 ===
+USDT:2026-11-20 04:31:31 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 04:31:31 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+[exact_copy_transformer_rope seed 1] epoch 1/6 loss=1.0676 val={'loss': 0.0042, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 1] epoch 2/6 loss=0.0028 val={'loss': 0.002, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 1] epoch 3/6 loss=0.0016 val={'loss': 0.0013, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 1] epoch 4/6 loss=0.0012 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 1] epoch 5/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 1] epoch 6/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_transformer_rope seed 2 ===
+USDT:2026-11-20 04:32:14 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 04:32:14 33360:35564 C:\actions-runner\_work\pytorch\pytorch\third_party\kineto\libkineto\src\SyncActivityProfilerHandler.cpp:46] profiler_stop
+[exact_copy_transformer_rope seed 2] epoch 1/6 loss=1.0426 val={'loss': 0.004, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 2] epoch 2/6 loss=0.0028 val={'loss': 0.002, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 2] epoch 3/6 loss=0.0016 val={'loss': 0.0013, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 2] epoch 4/6 loss=0.0012 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 2] epoch 5/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_transformer_rope seed 2] epoch 6/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_s4d seed 0 ===
+[exact_copy_s4d seed 0] epoch 1/6 loss=2.0030 val={'loss': 0.0676, 'token_accuracy': 0.9912, 'sequence_success': 0.75}
+[exact_copy_s4d seed 0] epoch 2/6 loss=0.0145 val={'loss': 0.0035, 'token_accuracy': 0.9998, 'sequence_success': 0.9922}
+[exact_copy_s4d seed 0] epoch 3/6 loss=0.0018 val={'loss': 0.0015, 'token_accuracy': 0.9998, 'sequence_success': 0.9922}
+[exact_copy_s4d seed 0] epoch 4/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 0.9999, 'sequence_success': 0.9961}
+[exact_copy_s4d seed 0] epoch 5/6 loss=0.0007 val={'loss': 0.0009, 'token_accuracy': 0.9999, 'sequence_success': 0.9961}
+[exact_copy_s4d seed 0] epoch 6/6 loss=0.0007 val={'loss': 0.0009, 'token_accuracy': 0.9999, 'sequence_success': 0.9961}
+=== running exact_copy_s4d seed 1 ===
+[exact_copy_s4d seed 1] epoch 1/6 loss=2.0423 val={'loss': 0.088, 'token_accuracy': 0.9901, 'sequence_success': 0.6992}
+[exact_copy_s4d seed 1] epoch 2/6 loss=0.0184 val={'loss': 0.0044, 'token_accuracy': 0.9999, 'sequence_success': 0.9961}
+[exact_copy_s4d seed 1] epoch 3/6 loss=0.0026 val={'loss': 0.0018, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_s4d seed 1] epoch 4/6 loss=0.0013 val={'loss': 0.0012, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_s4d seed 1] epoch 5/6 loss=0.0010 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_s4d seed 1] epoch 6/6 loss=0.0009 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_s4d seed 2 ===
+[exact_copy_s4d seed 2] epoch 1/6 loss=2.0632 val={'loss': 0.0778, 'token_accuracy': 0.9927, 'sequence_success': 0.7852}
+[exact_copy_s4d seed 2] epoch 2/6 loss=0.0174 val={'loss': 0.0041, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_s4d seed 2] epoch 3/6 loss=0.0025 val={'loss': 0.0017, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_s4d seed 2] epoch 4/6 loss=0.0012 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_s4d seed 2] epoch 5/6 loss=0.0009 val={'loss': 0.0009, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_s4d seed 2] epoch 6/6 loss=0.0008 val={'loss': 0.0009, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_mamba seed 0 ===
+[exact_copy_mamba seed 0] epoch 1/6 loss=3.2780 val={'loss': 3.1993, 'token_accuracy': 0.0846, 'sequence_success': 0.0}
+[exact_copy_mamba seed 0] epoch 2/6 loss=2.9488 val={'loss': 2.6665, 'token_accuracy': 0.183, 'sequence_success': 0.0}
+[exact_copy_mamba seed 0] epoch 3/6 loss=2.5083 val={'loss': 2.3203, 'token_accuracy': 0.2525, 'sequence_success': 0.0}
+[exact_copy_mamba seed 0] epoch 4/6 loss=2.2777 val={'loss': 2.2229, 'token_accuracy': 0.2759, 'sequence_success': 0.0}
+[exact_copy_mamba seed 0] epoch 5/6 loss=2.1481 val={'loss': 2.0795, 'token_accuracy': 0.3054, 'sequence_success': 0.0}
+[exact_copy_mamba seed 0] epoch 6/6 loss=2.0554 val={'loss': 2.0611, 'token_accuracy': 0.3101, 'sequence_success': 0.0}
+=== running exact_copy_mamba seed 1 ===
+[exact_copy_mamba seed 1] epoch 1/6 loss=3.2779 val={'loss': 3.2187, 'token_accuracy': 0.0702, 'sequence_success': 0.0}
+[exact_copy_mamba seed 1] epoch 2/6 loss=3.1866 val={'loss': 3.1594, 'token_accuracy': 0.0926, 'sequence_success': 0.0}
+[exact_copy_mamba seed 1] epoch 3/6 loss=3.0679 val={'loss': 2.986, 'token_accuracy': 0.123, 'sequence_success': 0.0}
+[exact_copy_mamba seed 1] epoch 4/6 loss=2.9230 val={'loss': 2.8656, 'token_accuracy': 0.1478, 'sequence_success': 0.0}
+[exact_copy_mamba seed 1] epoch 5/6 loss=2.8037 val={'loss': 2.7542, 'token_accuracy': 0.168, 'sequence_success': 0.0}
+[exact_copy_mamba seed 1] epoch 6/6 loss=2.7244 val={'loss': 2.7204, 'token_accuracy': 0.1725, 'sequence_success': 0.0}
+=== running exact_copy_mamba seed 2 ===
+[exact_copy_mamba seed 2] epoch 1/6 loss=3.2972 val={'loss': 3.2012, 'token_accuracy': 0.0618, 'sequence_success': 0.0}
+[exact_copy_mamba seed 2] epoch 2/6 loss=3.2320 val={'loss': 3.193, 'token_accuracy': 0.0674, 'sequence_success': 0.0}
+[exact_copy_mamba seed 2] epoch 3/6 loss=3.1316 val={'loss': 3.0156, 'token_accuracy': 0.1229, 'sequence_success': 0.0}
+[exact_copy_mamba seed 2] epoch 4/6 loss=2.9345 val={'loss': 2.8314, 'token_accuracy': 0.1534, 'sequence_success': 0.0}
+[exact_copy_mamba seed 2] epoch 5/6 loss=2.7801 val={'loss': 2.7582, 'token_accuracy': 0.1645, 'sequence_success': 0.0}
+[exact_copy_mamba seed 2] epoch 6/6 loss=2.7408 val={'loss': 2.7479, 'token_accuracy': 0.1676, 'sequence_success': 0.0}
+=== running exact_copy_mamba2 seed 0 ===
+[exact_copy_mamba2 seed 0] epoch 1/6 loss=3.2898 val={'loss': 3.2641, 'token_accuracy': 0.0716, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 0] epoch 2/6 loss=3.0071 val={'loss': 2.9064, 'token_accuracy': 0.1366, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 0] epoch 3/6 loss=2.8722 val={'loss': 2.7966, 'token_accuracy': 0.1622, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 0] epoch 4/6 loss=2.6721 val={'loss': 2.5646, 'token_accuracy': 0.2037, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 0] epoch 5/6 loss=2.5199 val={'loss': 2.4871, 'token_accuracy': 0.2134, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 0] epoch 6/6 loss=2.4686 val={'loss': 2.4687, 'token_accuracy': 0.2171, 'sequence_success': 0.0}
+=== running exact_copy_mamba2 seed 1 ===
+[exact_copy_mamba2 seed 1] epoch 1/6 loss=3.2983 val={'loss': 3.334, 'token_accuracy': 0.0773, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 1] epoch 2/6 loss=3.0530 val={'loss': 2.9093, 'token_accuracy': 0.1375, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 1] epoch 3/6 loss=2.8158 val={'loss': 2.7093, 'token_accuracy': 0.1719, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 1] epoch 4/6 loss=2.5918 val={'loss': 2.5159, 'token_accuracy': 0.2143, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 1] epoch 5/6 loss=2.4044 val={'loss': 2.3324, 'token_accuracy': 0.253, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 1] epoch 6/6 loss=2.3075 val={'loss': 2.3081, 'token_accuracy': 0.2586, 'sequence_success': 0.0}
+=== running exact_copy_mamba2 seed 2 ===
+[exact_copy_mamba2 seed 2] epoch 1/6 loss=3.2831 val={'loss': 3.0924, 'token_accuracy': 0.1139, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 2] epoch 2/6 loss=2.9333 val={'loss': 2.8854, 'token_accuracy': 0.1436, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 2] epoch 3/6 loss=2.8312 val={'loss': 2.7499, 'token_accuracy': 0.1562, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 2] epoch 4/6 loss=2.6957 val={'loss': 2.6574, 'token_accuracy': 0.1947, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 2] epoch 5/6 loss=2.6258 val={'loss': 2.6062, 'token_accuracy': 0.2185, 'sequence_success': 0.0}
+[exact_copy_mamba2 seed 2] epoch 6/6 loss=2.5895 val={'loss': 2.5904, 'token_accuracy': 0.2238, 'sequence_success': 0.0}
+=== running exact_copy_mamba3 seed 0 ===
+[exact_copy_mamba3 seed 0] epoch 1/6 loss=3.2475 val={'loss': 2.6679, 'token_accuracy': 0.2437, 'sequence_success': 0.0}
+[exact_copy_mamba3 seed 0] epoch 2/6 loss=1.7156 val={'loss': 0.7666, 'token_accuracy': 0.8513, 'sequence_success': 0.0}
+[exact_copy_mamba3 seed 0] epoch 3/6 loss=0.4460 val={'loss': 0.1739, 'token_accuracy': 0.9865, 'sequence_success': 0.6523}
+[exact_copy_mamba3 seed 0] epoch 4/6 loss=0.0615 val={'loss': 0.0135, 'token_accuracy': 0.9999, 'sequence_success': 0.9961}
+[exact_copy_mamba3 seed 0] epoch 5/6 loss=0.0061 val={'loss': 0.0033, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_mamba3 seed 0] epoch 6/6 loss=0.0030 val={'loss': 0.0029, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_mamba3 seed 1 ===
+[exact_copy_mamba3 seed 1] epoch 1/6 loss=2.9606 val={'loss': 1.9418, 'token_accuracy': 0.4343, 'sequence_success': 0.0}
+[exact_copy_mamba3 seed 1] epoch 2/6 loss=0.9939 val={'loss': 0.3536, 'token_accuracy': 0.9528, 'sequence_success': 0.1914}
+[exact_copy_mamba3 seed 1] epoch 3/6 loss=0.0824 val={'loss': 0.0027, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_mamba3 seed 1] epoch 4/6 loss=0.0015 val={'loss': 0.0011, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_mamba3 seed 1] epoch 5/6 loss=0.0009 val={'loss': 0.0008, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_mamba3 seed 1] epoch 6/6 loss=0.0008 val={'loss': 0.0008, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+=== running exact_copy_mamba3 seed 2 ===
+[exact_copy_mamba3 seed 2] epoch 1/6 loss=2.8645 val={'loss': 1.3475, 'token_accuracy': 0.6068, 'sequence_success': 0.0}
+[exact_copy_mamba3 seed 2] epoch 2/6 loss=0.4961 val={'loss': 0.0664, 'token_accuracy': 0.9996, 'sequence_success': 0.9883}
+[exact_copy_mamba3 seed 2] epoch 3/6 loss=0.0169 val={'loss': 0.0022, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_mamba3 seed 2] epoch 4/6 loss=0.0014 val={'loss': 0.001, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_mamba3 seed 2] epoch 5/6 loss=0.0009 val={'loss': 0.0008, 'token_accuracy': 1.0, 'sequence_success': 1.0}
+[exact_copy_mamba3 seed 2] epoch 6/6 loss=0.0008 val={'loss': 0.0008, 'token_accuracy': 1.0, 'sequence_success': 1.0}

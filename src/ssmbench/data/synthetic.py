@@ -41,6 +41,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from .loaders import (
+    TEST_SEED_OFFSET,
+    VAL_SEED_OFFSET,
+    TaskLoaders,
+    eval_seed,
+)
+
 IGNORE_INDEX = -100
 PAD, MARKER, SEPARATOR = 0, 1, 2
 # Exact-copy vocabulary (separate namespace from selective copy).
@@ -105,7 +112,7 @@ class SelectiveCopyDataset(Dataset):
 
         targets = torch.full((self.seq_len,), IGNORE_INDEX, dtype=torch.long)
         answer_start = len(inputs) - k
-        targets[answer_start: answer_start + k] = torch.tensor(remembered, dtype=torch.long)
+        targets[answer_start : answer_start + k] = torch.tensor(remembered, dtype=torch.long)
         return {
             "input_ids": torch.tensor(inputs, dtype=torch.long),
             "targets": targets,
@@ -139,26 +146,53 @@ def collate_token_level(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch
     }
 
 
-def get_selective_copy_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, int]:
-    train = SelectiveCopyDataset(num_samples=cfg["train_samples"], seed=cfg.get("seed", 42), **cfg["train"])
-    test = SelectiveCopyDataset(num_samples=cfg["test_samples"], seed=cfg.get("seed", 42) + 1_000_000, **cfg["test"])
-    bs = cfg["batch_size"]
-    return (
-        DataLoader(train, batch_size=bs, shuffle=True, collate_fn=collate_token_level),
-        DataLoader(test, batch_size=bs, shuffle=False, collate_fn=collate_token_level),
-        cfg["train"]["vocab_size"],
+def _loader(dataset: Dataset, batch_size: int, shuffle: bool = False) -> DataLoader:
+    return DataLoader(
+        dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_token_level
     )
 
 
-def get_parity_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, int]:
-    train = ParityDataset(num_samples=cfg["train_samples"], seed=cfg.get("seed", 42), **cfg["train"])
-    test = ParityDataset(num_samples=cfg["test_samples"], seed=cfg.get("seed", 42) + 1_000_000, **cfg["test"])
-    bs = cfg["batch_size"]
-    return (
-        DataLoader(train, batch_size=bs, shuffle=True, collate_fn=collate_token_level),
-        DataLoader(test, batch_size=bs, shuffle=False, collate_fn=collate_token_level),
-        2,
+def get_selective_copy_loaders(cfg: dict) -> TaskLoaders:
+    """Training, validation (training distribution) and two test sets: "id" (training
+    distribution, its own data seed) and "ood" (cfg["test"]: longer, more pairs)."""
+    seed, bs = cfg.get("seed", 42), cfg["batch_size"]
+    n_test = cfg["test_samples"]
+    train = SelectiveCopyDataset(num_samples=cfg["train_samples"], seed=seed, **cfg["train"])
+    val = SelectiveCopyDataset(
+        num_samples=cfg.get("val_samples", n_test), seed=seed + VAL_SEED_OFFSET, **cfg["train"]
     )
+    ood = SelectiveCopyDataset(num_samples=n_test, seed=seed + TEST_SEED_OFFSET, **cfg["test"])
+    in_dist = SelectiveCopyDataset(
+        num_samples=n_test, seed=seed + 3 * TEST_SEED_OFFSET, **cfg["train"]
+    )
+    return TaskLoaders(
+        train=_loader(train, bs, shuffle=True),
+        val=_loader(val, bs),
+        tests={"id": _loader(in_dist, bs), "ood": _loader(ood, bs)},
+    )
+
+
+def get_parity_loaders(cfg: dict) -> TaskLoaders:
+    """Training, validation (training length) and test sets: one per length in
+    cfg["eval_lengths"] named "T=<length>", or the single cfg["test"] set named "test"."""
+    seed, bs = cfg.get("seed", 42), cfg["batch_size"]
+    n_test = cfg["test_samples"]
+    train = ParityDataset(num_samples=cfg["train_samples"], seed=seed, **cfg["train"])
+    val = ParityDataset(
+        num_samples=cfg.get("val_samples", n_test), seed=seed + VAL_SEED_OFFSET, **cfg["train"]
+    )
+    if "eval_lengths" in cfg:
+        tests = {
+            f"T={L}": _loader(ParityDataset(n_test, seq_len=L, seed=eval_seed(seed, L)), bs)
+            for L in cfg["eval_lengths"]
+        }
+    else:
+        tests = {
+            "test": _loader(
+                ParityDataset(num_samples=n_test, seed=seed + TEST_SEED_OFFSET, **cfg["test"]), bs
+            )
+        }
+    return TaskLoaders(train=_loader(train, bs, shuffle=True), val=_loader(val, bs), tests=tests)
 
 
 class ExactCopyDataset(Dataset):
@@ -172,6 +206,10 @@ class ExactCopyDataset(Dataset):
     Every string token must be reproduced, so the information to retain grows
     linearly with ``string_len`` (contrast SelectiveCopyDataset, where only
     ``k`` marker->value pairs matter regardless of noise length).
+
+    With ``min_len`` set, each example draws its string length uniformly from
+    [min_len, string_len] (variable-length training); otherwise every string has
+    exactly ``string_len`` letters, drawn exactly as before min_len existed.
     """
 
     def __init__(
@@ -181,18 +219,21 @@ class ExactCopyDataset(Dataset):
         seq_len: int,
         alphabet_size: int = 26,
         seed: int = 42,
+        min_len: int | None = None,
     ) -> None:
         if alphabet_size < 2 or alphabet_size > 26:
             raise ValueError("alphabet_size must be in [2, 26]")
+        if min_len is not None and not 1 <= min_len <= string_len:
+            raise ValueError(f"min_len must be in [1, {string_len}], got {min_len}")
         self.num_samples = num_samples
         self.string_len = string_len
+        self.min_len = min_len
         self.alphabet_size = alphabet_size
         self.seed = seed
         required = 2 + string_len + 1 + string_len + 1  # bos + s + sep + s + eos
         if seq_len < required:
             raise ValueError(
-                f"seq_len {seq_len} too small for string_len {string_len} "
-                f"(needs >= {required})"
+                f"seq_len {seq_len} too small for string_len {string_len} (needs >= {required})"
             )
         self.seq_len = seq_len
 
@@ -201,8 +242,10 @@ class ExactCopyDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         rng = np.random.RandomState(self.seed + idx)
-        letters = rng.randint(0, self.alphabet_size, size=self.string_len) + 4  # 4..3+V
         L = self.string_len
+        if self.min_len is not None:
+            L = int(rng.randint(self.min_len, self.string_len + 1))
+        letters = rng.randint(0, self.alphabet_size, size=L) + 4  # 4..3+V
         tokens = np.full(self.seq_len, EC_PAD, dtype=np.int64)
         tokens[0] = EC_BOS
         tokens[1 : 1 + L] = letters
@@ -217,32 +260,29 @@ class ExactCopyDataset(Dataset):
         }
 
 
-def get_exact_copy_loaders(cfg: dict) -> tuple[DataLoader, DataLoader, dict[int, DataLoader], int]:
-    """Train loader, in-distribution eval loader, eval loaders by string length.
+def get_exact_copy_loaders(cfg: dict) -> TaskLoaders:
+    """Training, validation (training distribution) and one test set per string length in
+    cfg["eval_lengths"], named "L=<length>".
 
-    All loaders share one fixed sequence length (``2 * max_eval_len + 8``) so
-    the same trained model is evaluated identically at every string length,
-    including lengths beyond the training distribution.
+    Training strings have exactly cfg["train"]["max_len"] letters, or, with
+    cfg["train"]["min_len"], lengths uniform in [min_len, max_len]. Every loader shares one
+    sequence length (2 * max(eval_lengths) + 8) so the same trained model is evaluated
+    identically at every string length, including lengths beyond the training range.
     """
-    max_eval = max(cfg["eval_lengths"])
-    seq_len = 2 * max_eval + 8
-    bs = cfg["batch_size"]
-    train = ExactCopyDataset(
-        num_samples=cfg["train_samples"], string_len=cfg["train"]["max_len"],
-        seq_len=seq_len, alphabet_size=cfg["alphabet_size"], seed=cfg.get("seed", 42),
-    )
-    eval_loaders: dict[int, DataLoader] = {}
-    for L in cfg["eval_lengths"]:
-        ds = ExactCopyDataset(
-            num_samples=cfg["eval_samples"], string_len=L, seq_len=seq_len,
-            alphabet_size=cfg["alphabet_size"], seed=cfg.get("seed", 42) + 1_000_000 + L,
+    seed, bs = cfg.get("seed", 42), cfg["batch_size"]
+    seq_len = 2 * max(cfg["eval_lengths"]) + 8
+    alphabet = cfg["alphabet_size"]
+    max_len, min_len = cfg["train"]["max_len"], cfg["train"].get("min_len")
+
+    def training_distribution(n: int, data_seed: int) -> ExactCopyDataset:
+        return ExactCopyDataset(n, max_len, seq_len, alphabet, data_seed, min_len=min_len)
+
+    train = training_distribution(cfg["train_samples"], seed)
+    val = training_distribution(cfg.get("val_samples", cfg["eval_samples"]), seed + VAL_SEED_OFFSET)
+    tests = {
+        f"L={L}": _loader(
+            ExactCopyDataset(cfg["eval_samples"], L, seq_len, alphabet, eval_seed(seed, L)), bs
         )
-        eval_loaders[L] = DataLoader(ds, batch_size=bs, shuffle=False, collate_fn=collate_token_level)
-    in_dist = eval_loaders[min(cfg["eval_lengths"])]
-    vocab_size = 4 + cfg["alphabet_size"]
-    return (
-        DataLoader(train, batch_size=bs, shuffle=True, collate_fn=collate_token_level),
-        in_dist,
-        eval_loaders,
-        vocab_size,
-    )
+        for L in cfg["eval_lengths"]
+    }
+    return TaskLoaders(train=_loader(train, bs, shuffle=True), val=_loader(val, bs), tests=tests)

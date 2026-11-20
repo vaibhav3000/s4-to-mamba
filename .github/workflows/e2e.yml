@@ -3,19 +3,27 @@ name: Demo E2E
 on:
   workflow_dispatch:
   push:
-    paths: ["demo-site/**"]
+    paths: ["demo-site/**", ".github/workflows/e2e.yml"]
+  pull_request:
+    paths: ["demo-site/**", ".github/workflows/e2e.yml"]
+
+permissions:
+  contents: read
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: demo-site
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
-      - run: npm install
+          node-version: 22
+          cache: npm
+          cache-dependency-path: demo-site/package-lock.json
+      - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test

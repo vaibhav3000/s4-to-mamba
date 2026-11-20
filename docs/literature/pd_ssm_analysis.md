@@ -11,8 +11,10 @@ Mamba-style SSMs use diagonal (or scalar-times-identity) transition matrices
 A_t: cheap, parallelizable, but provably weak at state tracking, because
 diagonal real transitions only scale/decay coordinates and cannot implement
 the rotations or permutations that finite-state automata need (the same
-expressivity gap our parity experiment demonstrates: Mamba-1/2 sit at chance
-while Mamba-3's complex transitions reach 98.3%). PD-SSM replaces the fully
+expressivity gap our parity experiment is consistent with: over five seeds Mamba-1/2
+average 56.8 to 57.3% token accuracy, near the 50% chance rate, while Mamba-3's
+input-dependent complex transitions learn the task in two of five seeds (89.2 and 99.0%),
+and none of the five Mamba-3 runs with theta = 0 exceeds 57.2%). PD-SSM replaces the fully
 diagonal transition with a **structured sparse** one:
 
     h_t = A(u_t) h_{t-1} + B(u_t) x_t,   A(u_t) = P(u_t) + D(u_t)
@@ -34,8 +36,11 @@ survives).
 
 Our repository's capability axis is exactly the one PD-SSM targets:
 
-- Mamba-1/2 (real diagonal): chance on parity (measured 0.559/0.563),
-- Mamba-3 (complex diagonal): parity solved (0.983) via rotation,
+- Mamba-1/2 (real diagonal): near chance on parity (57.3 and 56.8% token accuracy, five
+  seeds),
+- Mamba-3 (complex diagonal, input-dependent step): 72.6 +/- 20.5% token accuracy, with two
+  of five seeds learning the task; the theta = 0 ablation (55.4%) ties the gain to the
+  rotation,
 - S4D (complex LTI): chance (rotation not input-dependent),
 - PD-SSM would add a third mechanism: input-dependent *permutation*.
 
@@ -51,9 +56,9 @@ tasks plus the existing baseline grid would need only a new backbone file.
   algorithmic component: our educational chunked SSD does not cover it, and a
   naive sequential implementation would be too slow to train the comparison
   grid on this machine within the shared budget used by the other models.
-- A rushed implementation would fail the repository's equivalence-test
-  standard (we would need a verified parallel or dual form before benchmarking
-  alongside the others).
+- A rushed implementation would fail the repository's testing standard (we
+  would want an independent naive reference test, as tests/test_references.py has
+  for S4D, Mamba-2 and Mamba-3, before benchmarking it alongside the others).
 - The marginal interview value over the existing Mamba-3 complex-transition
   story is additive, not transformative: both address the same expressivity
   gap via different transition structures.

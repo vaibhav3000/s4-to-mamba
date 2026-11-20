@@ -1,0 +1,41 @@
+# Exact Copying (Repeat After Me formulation; Jelassi et al., ICML 2024), trained on
+# VARIABLE string lengths drawn uniformly from 1 to 32. Prompt: <bos> <string> <sep>;
+# target: <string> <eos> after the separator. Test sets: string lengths 16 and 32 (in
+# distribution), 64 and 128 (extrapolation). configs/exact_copy.yaml trains the same
+# models at the single length 32, with the same data seed and test sets.
+#
+# Run: ssmbench-train --config configs/exact_copy_varlen.yaml --out results/train --seeds 0 1 2
+# Variants are parameter-matched to the Transformer by width (scripts/match_params.py).
+name_prefix: exact_copy_varlen
+task:
+  type: token_classification
+  vocab_size: 30     # 0=pad, 1=bos, 2=sep, 3=eos, 4..29 = 26 letters
+  n_classes: 30
+data:
+  name: exact_copy
+  alphabet_size: 26
+  batch_size: 64
+  seed: 42
+  train_samples: 8000
+  val_samples: 256
+  eval_samples: 256
+  train:
+    min_len: 1       # string lengths drawn uniformly from [min_len, max_len]
+    max_len: 32
+  eval_lengths: [16, 32, 64, 128]
+train:
+  epochs: 6
+  lr: 1.0e-3
+  weight_decay: 0.05
+  grad_clip: 1.0
+  scheduler: cosine
+  warmup_frac: 0.05
+  seed: 42
+  deterministic: true
+models:
+  transformer:      {d_model: 128, n_layers: 3, n_heads: 4, attn_backend: efficient}
+  transformer_rope: {backbone: transformer, pos_encoding: rope, d_model: 128, n_layers: 3, n_heads: 4, attn_backend: efficient}
+  s4d:              {d_model: 392, n_layers: 3, d_state: 16}
+  mamba:            {d_model: 168, n_layers: 3, d_state: 16}
+  mamba2:           {d_model: 160, n_layers: 3, d_state: 32, headdim: 64}
+  mamba3:           {d_model: 160, n_layers: 3, d_state: 32, headdim: 64}

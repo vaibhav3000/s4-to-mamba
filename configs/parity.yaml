@@ -1,7 +1,11 @@
-# Parity (cumulative XOR): state tracking. Real non-negative transitions
-# (Mamba, Mamba-2) cannot represent the required rotation; Mamba-3's complex
-# transition can (paper Section 3.2). S4D has complex but input-INDEPENDENT
-# transitions (LTI), which also cannot encode input-dependent rotations.
+# Parity (cumulative XOR): state tracking. Real non-negative transitions (Mamba,
+# Mamba-2) cannot represent the required rotation; the complex transition of Mamba-3
+# can (paper Section 3.2). S4D has complex but input-INDEPENDENT transitions (LTI),
+# which also cannot encode input-dependent rotations. mamba3_no_rotation is the
+# ablation: Mamba-3 with theta fixed at zero, so its transition only decays.
+#
+# Run: ssmbench-train --config configs/parity.yaml --out results/train --seeds 0 1 2
+# Variants are parameter-matched to the Transformer by width (scripts/match_params.py).
 name_prefix: parity
 task:
   type: token_classification
@@ -10,11 +14,12 @@ task:
 data:
   name: parity
   batch_size: 64
-  seed: 42
+  seed: 42             # data seed: fixes every example (run seeds do not change data)
   train_samples: 2000
+  val_samples: 1000    # training distribution, own seed; scored every epoch
   test_samples: 1000
   train: {seq_len: 128}
-  test:  {seq_len: 128}
+  eval_lengths: [128, 256, 512, 1024, 2048]   # 128 in distribution; longer: extrapolation
 train:
   epochs: 20
   lr: 3.0e-3
@@ -23,9 +28,12 @@ train:
   scheduler: cosine
   warmup_frac: 0.05
   seed: 42
+  deterministic: true
 models:
-  transformer: {d_model: 64, n_layers: 2, n_heads: 4}
-  s4d:         {d_model: 64, n_layers: 2, d_state: 32}
-  mamba:       {d_model: 64, n_layers: 2, d_state: 32}
-  mamba2:      {d_model: 64, n_layers: 2, d_state: 32, headdim: 32}
-  mamba3:      {d_model: 64, n_layers: 2, d_state: 32, headdim: 32}
+  transformer:        {d_model: 64, n_layers: 2, n_heads: 4, attn_backend: efficient}
+  transformer_rope:   {backbone: transformer, pos_encoding: rope, d_model: 64, n_layers: 2, n_heads: 4, attn_backend: efficient}
+  s4d:                {d_model: 146, n_layers: 2, d_state: 32}
+  mamba:              {d_model: 74, n_layers: 2, d_state: 32}
+  mamba2:             {d_model: 80, n_layers: 2, d_state: 32, headdim: 32}
+  mamba3:             {d_model: 80, n_layers: 2, d_state: 32, headdim: 32}
+  mamba3_no_rotation: {backbone: mamba3, rotation: false, d_model: 80, n_layers: 2, d_state: 32, headdim: 32}

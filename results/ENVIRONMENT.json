@@ -1,0 +1,25 @@
+{
+  "cuda": "13.0",
+  "cudnn": 92400,
+  "git_dirty": false,
+  "git_sha": "c4c111bc1ff7cb17a6f735e9ecfc45362c25712f",
+  "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+  "gpu_total_mb": 6140.5,
+  "nvidia_driver": "610.74",
+  "packages": {
+    "datasets": "5.2.0",
+    "matplotlib": "3.11.2",
+    "numpy": "2.5.5",
+    "pyyaml": "6.0.3",
+    "scikit-learn": "1.9.1",
+    "scipy": "1.18.1",
+    "torch": "2.14.1+cu130",
+    "tqdm": "4.70.1"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.13.7",
+  "source_sha256": "c4adb70bef57070208d93db64718231c7da57f76523c7b7c2f4dc8aaa629da41",
+  "timestamp_utc": "2026-11-19T21:12:39+00:00",
+  "torch": "2.14.1+cu130",
+  "uv_lock_sha256": "c67a82f69221ab6f79f6074b4ff8c74d105a506f73058dda8716cbe4f8d8d5ef"
+}

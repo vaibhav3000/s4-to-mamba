@@ -1,0 +1,99 @@
+{
+  "attention_backend": null,
+  "config": "imdb",
+  "data_config": {
+    "batch_size": 64,
+    "max_features": 20000,
+    "max_len": 512,
+    "name": "imdb",
+    "seed": 42,
+    "test_subset": null,
+    "train_subset": 12500,
+    "val_size": 2500
+  },
+  "device_total_mb": 6140.5,
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.1+cu130"
+  },
+  "final_evals": {
+    "test": {
+      "accuracy": 0.8456,
+      "auc": 0.9228662367999999,
+      "loss": 0.4143801231480316
+    }
+  },
+  "gpu_available_at_start_mb": 5030.0,
+  "gpu_free_at_end_mb": 2204.0,
+  "gpu_memory_spilled": false,
+  "history": [
+    {
+      "epoch": 1,
+      "epoch_seconds": 47.68,
+      "train_loss": 0.538113566685696,
+      "val_accuracy": 0.7716,
+      "val_auc": 0.9096623742712537,
+      "val_loss": 0.4474844254553318
+    },
+    {
+      "epoch": 2,
+      "epoch_seconds": 47.78,
+      "train_loss": 0.25925329148921433,
+      "val_accuracy": 0.8548,
+      "val_auc": 0.9305894035492345,
+      "val_loss": 0.3514773078262806
+    },
+    {
+      "epoch": 3,
+      "epoch_seconds": 47.85,
+      "train_loss": 0.10586302199077849,
+      "val_accuracy": 0.8508,
+      "val_auc": 0.9284239861618298,
+      "val_loss": 0.40305976048111913
+    }
+  ],
+  "label": "mamba2",
+  "model": {
+    "kwargs": {
+      "d_model": 128,
+      "d_state": 32,
+      "headdim": 64,
+      "n_layers": 4
+    },
+    "name": "mamba2"
+  },
+  "n_parameters": 3034786,
+  "name": "imdb_mamba2",
+  "peak_gpu_mb": 2758.3,
+  "peak_gpu_reserved_mb": 2826.0,
+  "provenance": {
+    "config_sha256": "82ff08eb218bd52aa2fd1e50ae603a4cddd329eb8bdaadc25b7c0ca887a6513a",
+    "cuda": "13.0",
+    "device": "cuda",
+    "git_dirty": false,
+    "git_sha": "c4c111bc1ff7cb17a6f735e9ecfc45362c25712f",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "nvidia_driver": "610.74",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.13.7",
+    "source_sha256": "c4adb70bef57070208d93db64718231c7da57f76523c7b7c2f4dc8aaa629da41",
+    "timestamp_utc": "2026-11-20T03:38:41+00:00",
+    "torch": "2.14.1+cu130"
+  },
+  "resumed_from_epoch": null,
+  "seed": 0,
+  "task": "classification",
+  "train_config": {
+    "deterministic": true,
+    "epochs": 3,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 0,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 170.8
+}

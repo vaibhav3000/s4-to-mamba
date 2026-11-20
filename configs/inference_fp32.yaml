@@ -1,0 +1,21 @@
+# Inference benchmark in float32: time to first token, decode latency, tokens/s and
+# decode memory versus prompt length (src/ssmbench/benchmarks/inference.py).
+# Run: ssmbench-inference --config configs/inference_fp32.yaml
+device: auto
+out_path: results/inference/decode_fp32.json
+precision: fp32
+batch_size: 1
+repeats: 10
+warmup: 2
+new_tokens: 64
+seq_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
+models:
+  - transformer_efficient
+  - s4d
+  - mamba
+  - mamba2
+  - mamba3
+variants:
+  transformer_efficient: {backbone: transformer, attn_backend: efficient}
+model_length_limits:
+  mamba: 8192

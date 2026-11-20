@@ -17,3 +17,6 @@ Thumbs.db
 
 # demo-site e2e
 node_modules/
+
+# Per-epoch training checkpoints (ssmbench-train --checkpoints); results and logs are committed.
+/checkpoints/

@@ -1,0 +1,16 @@
+# Numerical stability: float32, bf16 and fp16 autocast against float64, forward and decode
+# drift (src/ssmbench/benchmarks/numerics.py).
+# Run: ssmbench-numerics --config configs/numerics.yaml
+device: auto
+out_path: results/numerics/numerics.json
+seq_lengths: [1024, 4096]
+seeds: [0, 1, 2]
+decode: {prompt_len: 1024, steps: 256}   # measured at the first sequence length
+models: [transformer, transformer_rope, s4d, mamba, mamba2, mamba3]
+variants:
+  transformer:      {d_model: 256, n_layers: 2, n_heads: 4}
+  transformer_rope: {backbone: transformer, pos_encoding: rope, d_model: 256, n_layers: 2, n_heads: 4}
+  s4d:              {d_model: 256, n_layers: 2, d_state: 16}
+  mamba:            {d_model: 256, n_layers: 2, d_state: 16}
+  mamba2:           {d_model: 256, n_layers: 2, d_state: 32, headdim: 64}
+  mamba3:           {d_model: 256, n_layers: 2, d_state: 32, headdim: 64}

@@ -1,0 +1,14 @@
+
+=== 2026-11-20 10:43:51 .venv\Scripts\python.exe -m ssmbench.analysis.summary results/train/parity results/train/selective_copy results/train/exact_copy results/train/exact_copy_varlen results/train/imdb
+results\train\parity: 7 variants summarized
+results\train\selective_copy: 6 variants summarized
+results\train\exact_copy: 6 variants summarized
+results\train\exact_copy_varlen: 6 variants summarized
+results\train\imdb: 5 variants summarized
+
+=== 2026-11-20 12:30:51 .venv\Scripts\python.exe -m ssmbench.analysis.summary results/train/parity results/train/selective_copy results/train/exact_copy results/train/exact_copy_varlen results/train/imdb
+results\train\parity: 7 variants summarized
+results\train\selective_copy: 6 variants summarized
+results\train\exact_copy: 6 variants summarized
+results\train\exact_copy_varlen: 6 variants summarized
+results\train\imdb: 5 variants summarized

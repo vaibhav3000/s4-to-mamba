@@ -1,10 +1,15 @@
 # Interview guide: state space models from S4 to Mamba-3
 
 Questions and answers tied to the actual code in `src/ssmbench/models/`, the tests in
-`tests/test_models.py`, and the committed results in `results/`. The answers are written to be
-said out loud in an interview: exact where the mathematics is exact, honest where the
-implementation is educational. See `docs/evolution.md` for the full narrative and
-`REFERENCES.md` for sources.
+`tests/test_models.py` and `tests/test_references.py`, and the committed results in
+`results/`. The answers are written to be said out loud in an interview: exact where the
+mathematics is exact, honest where the implementation is educational. See
+`docs/evolution.md` for the full narrative and `REFERENCES.md` for sources.
+
+A note on the numbers: every result quoted below comes from the committed result files in
+`results/` (summarized in `results/SUMMARY.md`): a mean and sample standard deviation over
+three run seeds, five for parity, with parameter-matched models. `results/PROVENANCE.md`
+describes how they were produced.
 
 ## A. The core abstraction
 
@@ -36,9 +41,10 @@ out. The same pattern with different `A` and different discretization weights ap
 
 The recurrence is order-sensitive by construction: `h_t` is computed from `h_{t-1}`, so
 shuffling the input changes every state. That is why `S4DBackbone` and the Mamba backbones
-have no positional table. Attention is permutation-equivariant without one, so
-`TransformerBackbone` adds a sinusoidal table (`sinusoidal_positions` in `blocks.py`) once
-before the blocks.
+have no positional table. Without a mask, attention is
+permutation-equivariant. The causal mask breaks that symmetry, since each position attends to a
+different prefix, but it gives position only indirectly, so `TransformerBackbone` adds a
+sinusoidal table (`sinusoidal_positions` in `blocks.py`) once before the blocks.
 
 ### 4. What does delta do, and why is it passed through a softplus?
 
@@ -93,18 +99,28 @@ constraint; everything is learnable afterwards.
 ### 9. How do you know your S4D training form and inference form are the same model?
 
 `tests/test_models.py::test_s4d_conv_equals_recurrent` runs the FFT-convolution forward and
-then `T` calls of `S4DLayer.step` on the same input and requires max error below 1e-3. The two
-paths are derived from the same discretized parameters, so they must agree to floating-point
-tolerance; a failure would mean the kernel constants or the ZOH factor are inconsistent with
-the recurrence.
+then `T` calls of `S4DLayer.step` on the same input (T = 64, inside one kernel chunk) and
+requires agreement to 1e-3. That shows the two forms are one model, but both paths call the
+same `zoh_discretization`, so an error inside the discretization changes both the same way
+and the test still passes. It did pass while the ZOH input matrix was wrong (question 10).
+The independent checks are in `tests/test_references.py`: `zoh_discretization` is compared
+with the ZOH computed from the matrix exponential of the augmented system, in both branches
+of the `(e^z - 1)/z` evaluation; the steady state under constant input must equal the
+continuous-time `-B/A`; the kernel is compared with a repeated-product reference at
+L = 2100, which spans three 1024-token chunks; and conv versus step is repeated at T = 2100,
+the multi-chunk path every long-context S4D run uses. Those run in float64 at 1e-9 to 1e-10.
 
 ### 10. What is the `(e^z - 1)/z` factor and what goes wrong without it?
 
 It is the exact ZOH input integral: `Bbar = A^{-1}(exp(delta A) - 1) B = delta B (e^z - 1)/z`.
-Dropping it and using `delta B` is a first-order approximation of the input contribution.
-For S4D that would make the kernel inconsistent with the recurrent `step()`, and our
-equivalence test would fail, because the training path and the decode path would no longer be
-the same system. It also matters at large `delta * A`, where the ratio is far from 1.
+Dropping it and using `delta B` is a first-order approximation of the input contribution,
+and it matters most at large `delta * A`, where the ratio is far from 1. A conv-versus-step
+test would not catch such a mistake, because `kernel()` and `step()` both take `Bbar` from
+`zoh_discretization`. This happened here: before the fix, the code divided by 1 instead of
+`z` outside the Taylor branch, so `Bbar` was `delta B (e^z - 1)`, off from the exact value by a
+factor of `z`, and the equivalence test kept passing. The matrix-exponential and `-B/A`
+steady-state tests in `tests/test_references.py` fail on that code. Every committed S4D result
+was produced before the fix.
 
 ## C. Mamba-1: selectivity
 
@@ -122,8 +138,8 @@ LTI means linear and time-invariant: the same operator acts at every step, which
 what makes the FFT convolution possible (question 7). Mamba is linear but time-varying. The
 practical consequences: no convolution form, so training runs a scan; and the model can
 finally filter by content, keeping relevant tokens and ignoring noise, which no LTI model can
-do regardless of how long it trains. Our selective-copying result shows the second point
-empirically (question 29).
+do regardless of how long it trains. Our selective-copying run is consistent with the second
+point, with caveats about how its test set differs from training (question 29).
 
 ### 13. Why does Mamba still have a short convolution if the SSM already mixes across time?
 
@@ -147,8 +163,9 @@ is O(1) per token with a fixed-size state. In wall-clock, no, not in this reposi
 scan is a python loop, so each step launches small eager-mode kernels and the per-step launch
 overhead dominates; asymptotic O(T) with a large constant is still slow. The official fused
 selective-scan kernels exist precisely to remove that overhead. Our length sweep measures the
-gap (`scripts/run_efficiency.py`, results in `results/efficiency_gpu.json`), and the per-epoch
-`wall_time_seconds` in every `results/*.json` shows it too. Being able to separate operation
+gap (`results/efficiency/`: 4.1 s per Mamba-1 training step at T = 1K against 62 ms for
+Mamba-2's chunked form), and the `wall_time_seconds` in every run file under `results/train/`
+shows it too. Being able to separate operation
 count from wall-clock is part of what this repository teaches.
 
 ### 16. How does incremental decoding work and what state does each block carry?
@@ -156,8 +173,10 @@ count from wall-clock is part of what this repository teaches.
 `S4DBlock.step` carries a complex `(B, D, N)` state and updates it with
 `new_h = Abar * h + Bbar * x_t`, O(1) per token. `MambaBlock.step` carries `(B, d_inner, N)`
 plus the last `d_conv - 1` conv inputs, so the short convolution can be computed from history
-instead of re-reading the prefix. Both are verified: `test_mamba_step_equals_forward` shows
-the step path reproduces the parallel forward to 1e-3. Mamba-2 and Mamba-3 have no implemented
+instead of re-reading the prefix. Both are tested: `test_mamba_step_equals_forward` shows
+Mamba-1's step path reproduces its full-sequence forward (itself a python-loop scan, not a
+parallel one) to 1e-3, and the S4D step path is checked against the FFT form at T = 64 and,
+in float64, at T = 2100. Mamba-2 and Mamba-3 have no implemented
 decode path in this repo (their conceptual state is the `(N, P)` matrix per head), which we
 state plainly in `docs/evolution.md`.
 
@@ -169,8 +188,9 @@ The observation, formalized in the Mamba-2 paper, that a scalar-decayed SSM laye
 equivalent algorithms: a recurrence over a small state, and an attention-like quadratic form.
 Within a chunk of tokens the output is a masked, decay-weighted matmul with scores
 `(C_t . B_s)`; across chunks, only the `(N, P)` state is carried. Same layer, two compute
-shapes. Our `Mamba2Block` implements both (`chunked_scan` and `sequential_scan`) and the test
-requires them to agree.
+shapes. Our `Mamba2Block` implements both (`chunked_scan` and `sequential_scan`). The tests
+require them to agree on random scan inputs and through `forward()`, and compare the whole
+block, outputs and parameter gradients, with a naive per-head float64 loop.
 
 ### 18. Why does Mamba-2 exist? What do tensor cores have to do with it?
 
@@ -180,7 +200,10 @@ identity per head, which is exactly the restriction that makes the recurrence al
 unrollable into matmuls within a chunk. The chunk loop then runs `T / chunk_size` iterations
 instead of `T`, each doing matmul-shaped work. The restriction trades a little expressive
 power (scalar decay, no per-entry transition) for hardware efficiency, and the paper argues
-the trade is favorable.
+the trade is favorable. Our educational version does not show the speed side: its chunk
+loop is plain PyTorch, and in the committed sweep it trains slower per step than the
+Transformer with fused memory-efficient attention at every length both ran (the models are
+equal in width, not in parameters: 875,808 against 1,579,520).
 
 ### 19. Write down the chunk equations.
 
@@ -201,7 +224,10 @@ carried-state read, and `S_partial` plus the chunk-end decay the state update.
 
 ### 20. How do you compute the decay matrix L without numerical problems?
 
-In log space. `log_alpha` is cumsum'd inside the chunk, differences `cs_t - cs_s` are formed,
+In log space. `log_alpha` is `delta * A` itself, passed straight from `_scan_inputs` (earlier
+code took the log of `exp(delta * A)` floored at 1e-12, which zeroed the gradient for very
+fast decays; `test_mamba2_chunked_gradient_survives_decay_underflow` now pins this). It is
+cumsum'd inside the chunk, differences `cs_t - cs_s` are formed,
 clamped to `max = 0` (lower-triangular entries are already non-positive; upper-triangular
 ones can grow to the chunk length in magnitude and overflow fp32 `exp`), then exponentiated
 and masked with a lower-triangular boolean. Padding handles lengths that are not multiples of
@@ -210,10 +236,15 @@ and masked with a lower-triangular boolean. Padding handles lengths that are not
 ### 21. Why are B and C shared across heads (`n_groups`)?
 
 Parameter and compute economy: with `n_groups = 1`, one `B_t` and one `C_t` vector serve all
-heads, so the `x_proj` output for `B` and `C` is much smaller and the score `(C_t . B_s)` is
-computed once per chunk pair. Heads keep private transitions (`a_h`, `delta_{h,t}`) and
-private values `x_{h,t}`. This is the Mamba-2 group-variant design; `n_groups > 1` buys
-per-group read/write vectors back.
+heads, so the `x_proj` output for `B` and `C` is much smaller, and the score `(C_t . B_s)`
+depends only on the group, so an optimized kernel can compute it once per group and chunk
+pair (this educational code folds `delta_t` into `B_t` and computes the score per head).
+Heads keep private transitions (`a_h`, `delta_{h,t}`) and private values `x_{h,t}`. This is
+the Mamba-2 group-variant design; `n_groups > 1` buys per-group read/write vectors back.
+The head expansion was wrong in earlier code: each head received only `N/H` entries of `B`
+and `C`, each repeated, instead of its group's full `N`-vector, which for Mamba-2 cut the
+effective state per head to `N/H`. Every committed Mamba-2 and Mamba-3 result comes from that
+code; `test_mamba2_heads_read_their_group_bc_in_full` now pins the correct expansion.
 
 ## E. Mamba-3
 
@@ -228,7 +259,11 @@ From arXiv:2603.15569, as implemented in `mamba3_minimal.py`:
    Mamba-1/2.
 2. Complex-valued transitions: `A = -exp(a_real) + i theta`, so `alpha_t` is contractive
    (`|alpha_t| < 1`) and rotating at the same time. This restores state-tracking ability that
-   real non-negative transitions provably lack.
+   real non-negative transitions provably lack. Three details of our version: `theta` is a
+   static learned parameter per (head, state), not computed from the input, so the rotation
+   per step (`delta_t * theta`) varies with the token only through `delta_t`; the real decay
+   is a vector per (head, state) rather than Mamba-2's scalar per head; and `B` and `C` are
+   real, with the readout `C^T Re(h)`.
 3. MIMO formulation: multiple input/output channels per state slot, improving quality without
    increasing decode latency. Described only; our implementation keeps SISO per head and the
    module docstring says so.
@@ -249,7 +284,14 @@ the factor.
 
 At `lambda = 1`: `beta = 0`, `gamma = delta`, which is exactly the Mamba-1/2
 exponential-Euler update; `test_mamba3_reduces_to_exp_euler` pins this by zeroing `theta` and
-forcing `lambda` to 1 and checks equality with a hand-written Mamba-1/2 reference to 1e-3. At
+forcing `lambda` to 1 and checks equality with a hand-written Mamba-1/2 reference to 1e-3.
+That test sits in the one corner where `beta` vanishes and nothing rotates, so it cannot
+detect an error in `beta` or in the complex transition. `tests/test_references.py` covers
+those: a naive complex128 loop at random `theta` and `lambda` in (0, 1) checks the block
+output and, in float64, every parameter gradient; `lambda = 1` with nonzero `theta` must
+equal the complex exponential-Euler update; and on `h' = a h + sin(t)` halving the step cuts
+the end-point error about 4x at `lambda = 1/2` and about 2x at `lambda = 1`, the signatures
+of second- and first-order rules. At
 `lambda = 1/2`: the classical trapezoidal rule, which is also our zero-initialized starting
 point (`lambda_proj` weights and bias start at zero, so `sigmoid(0) = 0.5`). At `lambda = 0`:
 the pure left-endpoint rule, all input injected as `delta_t alpha_t B_{t-1} x_{t-1}` and
@@ -261,9 +303,11 @@ projection), so the model can interpolate the rule per token and per head.
 Parity requires the hidden state to flip according to the input bit, which is a rotation-like
 operation, and a real non-negative matrix can only scale (decay or grow) the state, never
 rotate it; a complex phase `exp(i delta theta)` can. Our numbers: on cumulative XOR
-(L = 128, 20 epochs), mamba3 reaches 0.9834 token accuracy with 0.42 sequence success while
-mamba2, mamba, transformer, and s4d sit at 0.563, 0.559, 0.533, and 0.506 token accuracy with
-0.0 sequence success (`results/parity_*.json`).
+(trained and tested at L = 128, 20 epochs, five seeds, `results/train/parity/`), Mamba-3
+averages 72.6 ± 20.5% token accuracy, with two of five seeds learning the task (89.2 and
+99.0%), while Mamba-1, Mamba-2, the Transformers and S4D average 50.9 to 57.3% and never
+solve a full sequence. Mamba-3 with `theta = 0` averages 55.4 ± 1.2% and no seed exceeds
+57.2%.
 
 ### 26. S4D also has complex A. Why does it still fail parity?
 
@@ -271,9 +315,12 @@ Because rotation alone is not enough; the transition must be input-dependent. S4
 `A, B, C, delta` are constants shared across time, so the state evolves as a fixed linear
 system driven additively by the input. Parity needs the transition's effect to depend on the
 current bit, which no fixed linear system represents. Mamba-3 has both properties at once:
-selective (input-dependent `delta, B, C, lambda`) and rotating (complex `A`). Selectivity
-without rotation fails (Mamba-1/2), rotation without selectivity fails (S4D), the
-combination works (Mamba-3).
+selective (input-dependent `delta, B, C, lambda`) and rotating (complex `A`). In our run,
+selectivity without rotation stayed near chance (Mamba-1/2), rotation without selectivity
+stayed at chance (S4D), and the combination learned it in two of five seeds (Mamba-3).
+The `theta = 0` ablation isolates the rotation: the same Mamba-3, with its per-state decay,
+trapezoidal term and `lambda` gate intact, stays at 55.4% when the rotation is removed. No
+`lambda = 1` variant was trained.
 
 ## F. Expressivity and benchmarks
 
@@ -285,9 +332,11 @@ switches that parity (cumulative XOR) requires. The Mamba-3 paper's discussion o
 expressivity covers this, drawing on results by Grazzi et al. on what state-tracking problems
 recurrent and state space models can represent and by Merrill et al. on the limits of
 real-valued transitions; we cite it through that discussion rather than restating the theory.
-Empirically our benchmark agrees: all four real-transition baselines solve zero full parity
-sequences and sit at token accuracy 0.506 to 0.563, near the 0.5 chance rate, while the
-complex-transition model reaches 0.9834 with 0.42 full-sequence success.
+Empirically our benchmark is consistent with this: the four baselines (real selective
+Mamba-1/2, complex but LTI S4D, and the attention Transformer) solve zero full parity
+sequences and average 50.9 to 57.3% token accuracy, near the 50% chance rate, while
+Mamba-3, with input-dependent complex transitions, learns the task in two of five seeds
+(see question 25).
 
 ### 28. What breaks at 10x context, for each model?
 
@@ -298,48 +347,86 @@ O(T) activation memory. Mamba-1 and Mamba-3 scan with a python loop, so wall-clo
 linearly in T with a large per-step constant. Mamba-2's chunk loop is `T / chunk_size`
 iterations with quadratic-within-chunk cost, so total cost grows roughly linearly in T for
 fixed chunk size. Decode memory stays O(1) per SSM block at any context, which is the
-structural advantage the efficiency sweep is meant to show (`results/efficiency_gpu.json`).
+structural advantage the inference benchmark measures. Every backbone now has a `step()`
+path: after a 32K prompt the decode state is 0.25 MiB for S4D, 0.14 MiB for Mamba-2 and
+0.39 MiB for Mamba-3, against a 128.25 MiB fp32 (64.12 MiB bf16) KV cache for the
+Transformer (`results/inference/`).
 
 ### 29. Selective copying: why do the LTI models collapse, and how do you read the mamba3 number?
 
-The task: train on L = 64, test on L = 128, where a few marker-value pairs must be copied past
-noise. An LTI system mixes all positions with the same fixed kernel, so it cannot suppress the
-noise tokens; that is the selectivity argument of the Mamba paper, and our run reproduces it:
-s4d gets 0.0 sequence success and 0.064 token accuracy, the Transformer 0.0 and 0.205
-(`results/selective_copy_*.json`). The selective models generalize to the doubled length:
-mamba2 0.183 / 0.670, mamba 0.149 / 0.649 (sequence success / token accuracy). Mamba-3 is the
-honest exception: 0.129 / 0.215. Selective copying rewards content filtering, not rotation,
-and in our small educational setup the complex dynamics plus the trapezoidal rule were the
-hardest to optimize (its final loss is by far the highest). We report that as measured rather
-than tune it away; nothing in the Mamba-3 paper promises a win on this task at this scale.
+The task: train on L = 64 with 3 to 5 marker-value pairs; test in distribution, and out of
+distribution on L = 128 with 5 to 10 pairs, where the values must be copied past noise. An
+LTI system mixes all positions with the same fixed kernel, so it cannot suppress the noise
+tokens; that is the selectivity argument of the Mamba paper, and the runs are consistent with
+it: in distribution S4D reaches 28.4 ± 6.7% token accuracy, while Mamba-1, Mamba-2, Mamba-3
+and the Transformers reach 98.3 to 100% (`results/train/selective_copy/`, three seeds). Out
+of distribution, Mamba-1 and Mamba-2 keep 52.1 and 49.6% with a wide seed spread (four of
+their six seeds between 52.4 and 65.9%, close to the 66.7% that recalling exactly the first
+five answers would give). So they do not show that the selective models generalize to more
+pairs; they are consistent with recalling at most five. Mamba-3 falls to 14.4% and the
+Transformers to 12.1% (sinusoidal) and 7.5% (RoPE).
+Mamba-3 solves the task in distribution (99.1%) like the other selective models, so its
+out-of-distribution collapse is a length and pair-count generalization failure, not a failure
+to select. We report it as measured rather than tune it away; nothing in the Mamba-3 paper
+promises a win on this task at this scale.
 
 ### 30. What exactly do your tests verify, and what would a failure mean?
 
-`tests/test_models.py`, each against a 1e-3 tolerance where numerical:
+Two files. `tests/test_models.py` holds the original consistency tests, with the
+equivalence checks at a 1e-3 tolerance:
 
-- `test_s4d_conv_equals_recurrent`: FFT-convolution form equals recurrent step form. Failure
-  would mean kernel or ZOH math is inconsistent with the recurrence.
+- `test_s4d_conv_equals_recurrent`: FFT-convolution form equals recurrent step form at
+  T = 64. Both paths share `zoh_discretization`, so this shows they are one model, not that
+  the discretization is right.
 - `test_mamba2_chunked_equals_sequential`: chunked SSD equals the sequential scan for
-  `chunk_size = 32` and `64`, including a padded misaligned length. Failure would mean the
-  algebraic chunk unrolling is wrong.
+  `chunk_size = 32` and `64`, including a padded misaligned length. It feeds random per-head
+  inputs straight into the scans, so it checks the algebraic unrolling but not how
+  `forward()` builds those inputs.
 - `test_mamba3_reduces_to_exp_euler`: with `lambda = 1` and `theta = 0`, the Mamba-3 update
-  equals a hand-written Mamba-1/2 reference. Failure would mean the `beta`/`gamma` weights are
-  wrong.
+  equals a hand-written Mamba-1/2 reference. At `lambda = 1` the `beta` term is zero, so this
+  cannot detect a wrong `beta` or a wrong rotation.
 - `test_mamba3_alpha_is_contractive_with_rotation`: `|alpha| < 1` (stability) and nonzero
   phase (rotation present).
-- `test_mamba_step_equals_forward`: Mamba-1's incremental `step()` equals the parallel
-  forward. Failure would mean training and decode are different models.
-- `test_classifier_shapes_and_determinism` (all five backbones): correct output shapes and
-  bit-identical logits under a fixed seed.
-- `test_masked_mean_ignores_padding`, `test_selective_copy_dataset_contract`,
-  `test_parity_dataset_targets_are_cumulative_xor`: pooling and data-generator contracts.
+- `test_mamba_step_equals_forward`: Mamba-1's incremental `step()` equals its full-sequence
+  forward (itself a python-loop scan). Failure would mean training and decode are different
+  models.
+- `test_classifier_shapes_and_determinism` (all five backbones): correct output shapes, and
+  two calls on the same model instance give identical logits.
+- `test_right_padding_does_not_change_short_sequence_logits`, `test_masked_mean_ignores_padding`,
+  a Mamba-2 shape check, the dataset-contract tests and a figure smoke test.
+
+All of these passed while two real bugs were present (the S4D ZOH input matrix and the
+Mamba-2/3 head expansion of `B` and `C`): the S4D test compares two paths that share the
+faulty discretization, and the Mamba-2 test feeds its own `B` and `C` straight into the scans,
+bypassing the code that expanded them. `tests/test_references.py` adds independent checks
+against slow references written from the equations, with the tolerance stated in each test
+(float64 model against float64 reference at 1e-10, float32 model against float64 reference
+at 1e-4):
+
+- S4D: ZOH against the matrix exponential of the augmented system, the steady state against
+  `-B/A`, the kernel against a repeated-product reference across three 1024-token chunks,
+  chunk invariance, and conv versus step at T = 2100.
+- Mamba-2: every head reads its group's full `B` and `C`; the block in both scan modes
+  against a naive per-head loop, with matching parameter gradients in float64; chunked versus
+  sequential through `forward()`; and a chunked gradient that survives decay underflow.
+- Mamba-3: the block against a naive complex128 loop at random `theta` and `lambda` in (0, 1),
+  with matching gradients; `lambda = 1` with nonzero `theta`; and the convergence order of the
+  trapezoidal and exponential-Euler rules.
+- float64 gradchecks of the S4D layer and of the Mamba-1, Mamba-2 and Mamba-3 scans, and a
+  check that rebuilding any backbone from the same seed gives bitwise-identical outputs on CPU.
+
+Mamba-1 has no independent forward reference; its scan is covered by the gradcheck and by the
+step-versus-forward test.
 
 ### 31. What did you not implement, and what would production speed require?
 
 Not implemented: fused selective-scan CUDA kernels and Triton SSD chunk kernels (all scans are
 python or chunk-level loops), full S4 NPLR with the Woodbury-corrected kernel, the Mamba-3
-parallel dual and MIMO form, a parallel associative scan for Mamba-1, hardware-aware `dt`
-scaling, and incremental `step()` decode for Mamba-2/3. Production speed would require porting
+MIMO form, a parallel associative scan for Mamba-1 and hardware-aware `dt` scaling. (The
+Mamba-3 chunked parallel form, `step()` decode for every SSM and the Transformer's KV cache
+are implemented.)
+Mamba-3's rotation angle `theta` is also a static learned parameter here, not computed from
+the input. Production speed would require porting
 the scans to fused kernels (that is what the official repositories do), accumulating state in
 fp32 while running matmuls in bf16/fp16, and batching heads so the chunked form hits large
 enough matmuls for tensor cores. The mathematics would not change; only the compute shape
@@ -348,10 +435,13 @@ would.
 ### 32. Where do your numbers come from and how do I reproduce them?
 
 Every number in these docs is read from a committed JSON in `results/`, produced by
-`python scripts/run_training.py --config configs/<task>.yaml --out results/`; each JSON stores
-its data, train, and model config, environment, per-epoch history, parameter count, peak GPU
-memory, and wall time, so results are auditable. Parity is 20 epochs at L = 128, selective
-copying trains at L = 64 and tests at L = 128, IMDb is half-train at L = 512. At the time of
-writing the IMDb runs for the mamba family are still in flight: see `results/imdb_*.json`
-rather than any claim here (the completed ones are s4d 0.827 accuracy / 0.907 AUC and
-transformer 0.813 / 0.894).
+`ssmbench-train --config configs/<task>.yaml --out results/train --seeds 0 1 2`
+(`scripts/run_gpu_plan.py` runs every config and benchmark). Each run file stores its config
+and hash, the code revision and source hash, environment, validation history, final test
+evaluations, parameter count, per-run peak GPU memory, a spill flag and wall time. Every
+task has three run seeds and parity five. Parity is 20 epochs at L = 128, selective copying
+trains at L = 64 (3-5 pairs) and tests in and out of distribution, exact copying trains at
+the single length 32 or on lengths 1 to 32, and IMDb is half-train at L = 512. IMDb test
+accuracy / AUC: Mamba-2 84.5 / 92.3%, S4D 83.7 / 91.7%, Mamba-3 82.5 / 90.5%, Transformer
+81.6 / 89.8% and with RoPE 81.9 / 90.0%; Mamba-1 is not trained on IMDb because its
+python-loop scan is too slow at L = 512 on this GPU (`configs/imdb.yaml`).

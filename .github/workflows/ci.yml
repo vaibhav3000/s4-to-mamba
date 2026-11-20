@@ -5,20 +5,51 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.13"
+      # The locked environment with CPU torch (uv.lock, cpu extra) and the dev group.
+      - name: Sync the locked environment
+        run: uv sync --locked --extra cpu
+      - name: ruff check
+        run: uv run --locked ruff check .
+      - name: ruff format
+        run: uv run --locked ruff format --check .
+      - name: pyright
+        run: uv run --locked pyright
+
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install CPU torch
-        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - name: Install package
-        run: python -m pip install -e ".[dev]"
+      - name: Sync the locked environment
+        run: uv sync --locked --extra cpu
       - name: Run tests
-        run: python -m pytest tests/ -q
+        run: uv run --locked pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t ssmbench-test .
+      - name: Run tests in the image
+        run: docker run --rm ssmbench-test

@@ -10,18 +10,15 @@ mathematics, not just shapes:
 - Every backbone must be deterministic under a fixed seed and preserve shapes.
 """
 
-import sys
 from pathlib import Path
 
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from ssmbench.models import build_backbone  # noqa: E402
-from ssmbench.models.blocks import SequenceClassifier, masked_mean  # noqa: E402
-from ssmbench.models.mamba2_minimal import Mamba2Block  # noqa: E402
-from ssmbench.models.mamba3_minimal import Mamba3Block  # noqa: E402
+from ssmbench.models import build_backbone
+from ssmbench.models.blocks import SequenceClassifier, masked_mean
+from ssmbench.models.mamba2_minimal import Mamba2Block
+from ssmbench.models.mamba3_minimal import Mamba3Block
 
 torch.manual_seed(0)
 
@@ -48,9 +45,7 @@ def test_s4d_conv_equals_recurrent() -> None:
         ys.append(y_t)
     y_rec = torch.stack(ys, dim=1)
 
-    assert torch.allclose(y_conv, y_rec, atol=1e-3, rtol=1e-3), (
-        (y_conv - y_rec).abs().max().item()
-    )
+    assert torch.allclose(y_conv, y_rec, atol=1e-3, rtol=1e-3), (y_conv - y_rec).abs().max().item()
 
 
 # ---------------------------------------------------------------- mamba2
@@ -61,9 +56,7 @@ def test_mamba2_chunked_equals_sequential() -> None:
     torch.manual_seed(1)
     B, T, H, P, N = 2, 96, 3, 8, 12
     for chunk_size in (32, 64):  # aligned and misaligned (96 = 32*3, 96/64 pads)
-        block = Mamba2Block(
-            d_model=24, d_state=N, headdim=P, expand=1, chunk_size=chunk_size
-        )
+        block = Mamba2Block(d_model=24, d_state=N, headdim=P, expand=1, chunk_size=chunk_size)
         # expand=1 -> d_inner = 24 -> n_heads = 24 // 8 = 3 ✓
         x_h = torch.randn(B, T, H, P)
         alpha = torch.rand(B, T, H) * 0.9 + 0.05  # decays in (0.05, 0.95)
@@ -119,14 +112,16 @@ def test_mamba3_reduces_to_exp_euler() -> None:
     ys = []
     for t in range(T):
         alpha = torch.exp(delta[:, t].unsqueeze(-1) * A)  # (B, H, N)
-        inject = B_h[:, t].unsqueeze(-1) * delta[:, t].unsqueeze(-1).unsqueeze(-1) * x_h[:, t].unsqueeze(2)
+        inject = (
+            B_h[:, t].unsqueeze(-1)
+            * delta[:, t].unsqueeze(-1).unsqueeze(-1)
+            * x_h[:, t].unsqueeze(2)
+        )
         h = alpha.unsqueeze(-1) * h + inject
         ys.append(torch.einsum("bhnp,bhn->bhp", h, C_h[:, t]))
     y_ref = torch.stack(ys, dim=1)
 
-    assert torch.allclose(y_m3, y_ref, atol=1e-3, rtol=1e-3), (
-        (y_m3 - y_ref).abs().max().item()
-    )
+    assert torch.allclose(y_m3, y_ref, atol=1e-3, rtol=1e-3), (y_m3 - y_ref).abs().max().item()
 
 
 def test_mamba3_alpha_is_contractive_with_rotation() -> None:
@@ -163,6 +158,65 @@ def test_mamba_step_equals_forward() -> None:
     )
 
 
+def test_s4d_block_step_equals_forward_and_reuses_its_discretization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S4DBlock decode equals forward() (float64, rtol = atol = 1e-10), and the ZOH
+    discretization runs once per decode session (in init_state), not once per token."""
+    from ssmbench.models import s4_minimal
+
+    torch.manual_seed(22)
+    B, T, D = 2, 30, 8
+    block = s4_minimal.S4DBlock(d_model=D, d_state=4).double()
+    x = torch.randn(B, T, D, dtype=torch.float64)
+    with torch.no_grad():
+        y_full = block(x)
+
+    calls: list[int] = []
+    real_zoh = s4_minimal.zoh_discretization
+
+    def counting_zoh(
+        delta: torch.Tensor, a: torch.Tensor, b: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        calls.append(1)
+        return real_zoh(delta, a, b)
+
+    monkeypatch.setattr(s4_minimal, "zoh_discretization", counting_zoh)
+    state = block.init_state(B, x.device)
+    with torch.no_grad():
+        y_step = torch.cat([block.step(x[:, t : t + 1], state) for t in range(T)], dim=1)
+    assert len(calls) == 1
+    torch.testing.assert_close(y_step, y_full, rtol=1e-10, atol=1e-10)
+
+
+@pytest.mark.parametrize("change", ["in-place edit", "optimizer step", "to float64"])
+def test_s4d_step_refuses_a_cache_from_older_parameters(change: str) -> None:
+    """The cached discretization belongs to the parameters at init_state() time. After
+    any parameter update or a dtype/device move, step() must raise instead of decoding
+    with stale (a_bar, b_bar, c)."""
+    from ssmbench.models.s4_minimal import S4DBlock
+
+    torch.manual_seed(23)
+    block = S4DBlock(d_model=8, d_state=4)
+    state = block.init_state(2, torch.device("cpu"))
+    x = torch.randn(2, 1, 8)
+    block.step(x, state)  # fresh cache: fine
+    if change == "in-place edit":
+        with torch.no_grad():
+            block.layer.log_A_real.add_(0.1)
+    elif change == "optimizer step":
+        opt = torch.optim.SGD(block.parameters(), lr=0.1)
+        block(torch.randn(2, 5, 8)).sum().backward()
+        opt.step()
+    else:
+        block.double()
+        x = x.double()
+    with pytest.raises(RuntimeError, match="init_state"):
+        block.step(x, state)
+    fresh = block.init_state(2, torch.device("cpu"))
+    assert block.step(x, fresh).shape == (2, 1, 8)
+
+
 # ---------------------------------------------------------------- generic
 
 
@@ -170,11 +224,11 @@ def test_mamba_step_equals_forward() -> None:
 def test_classifier_shapes_and_determinism(name: str) -> None:
     torch.manual_seed(5)
     kwargs = {
-        "transformer": dict(d_model=32, n_layers=2, n_heads=4, max_len=128),
-        "s4d": dict(d_model=32, n_layers=2, d_state=8),
-        "mamba": dict(d_model=32, n_layers=2, d_state=8),
-        "mamba2": dict(d_model=32, n_layers=2, d_state=8, headdim=16, chunk_size=16),
-        "mamba3": dict(d_model=32, n_layers=2, d_state=8, headdim=16),
+        "transformer": {"d_model": 32, "n_layers": 2, "n_heads": 4, "max_len": 128},
+        "s4d": {"d_model": 32, "n_layers": 2, "d_state": 8},
+        "mamba": {"d_model": 32, "n_layers": 2, "d_state": 8},
+        "mamba2": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16, "chunk_size": 16},
+        "mamba3": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16},
     }[name]
     backbone = build_backbone(name, kwargs)
     model = SequenceClassifier(backbone, vocab_size=20, d_model=32, padding_idx=0)
@@ -199,11 +253,11 @@ def test_right_padding_does_not_change_short_sequence_logits(name: str) -> None:
     right-padded inside a longer batch."""
     torch.manual_seed(7)
     kwargs = {
-        "transformer": dict(d_model=32, n_layers=2, n_heads=4, max_len=128),
-        "s4d": dict(d_model=32, n_layers=2, d_state=8),
-        "mamba": dict(d_model=32, n_layers=2, d_state=8),
-        "mamba2": dict(d_model=32, n_layers=2, d_state=8, headdim=16, chunk_size=16),
-        "mamba3": dict(d_model=32, n_layers=2, d_state=8, headdim=16),
+        "transformer": {"d_model": 32, "n_layers": 2, "n_heads": 4, "max_len": 128},
+        "s4d": {"d_model": 32, "n_layers": 2, "d_state": 8},
+        "mamba": {"d_model": 32, "n_layers": 2, "d_state": 8},
+        "mamba2": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16, "chunk_size": 16},
+        "mamba3": {"d_model": 32, "n_layers": 2, "d_state": 8, "headdim": 16},
     }[name]
     backbone = build_backbone(name, kwargs)
     model = SequenceClassifier(backbone, vocab_size=20, d_model=32, padding_idx=0)
@@ -221,19 +275,28 @@ def test_right_padding_does_not_change_short_sequence_logits(name: str) -> None:
 
 
 def test_make_figures_smoke(tmp_path) -> None:
-    """Figure generation runs against the committed results and writes PNGs."""
+    """Figure generation runs against the committed results and draws every family present."""
     import importlib.util
 
     repo_root = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location("make_figures", repo_root / "scripts" / "make_figures.py")
+    spec = importlib.util.spec_from_file_location(
+        "make_figures", repo_root / "scripts" / "make_figures.py"
+    )
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
     results = repo_root / "results"
-    mod.efficiency_figures(results, tmp_path)
-    mod.training_figures(results, tmp_path)
-    written = list(tmp_path.glob("*.png"))
-    assert {p.name for p in written} >= {"fig_efficiency_latency.png", "fig_parity.png"}
+    written = {p.name for p in mod.make_all(results, tmp_path)}
+    # Every committed results family yields its figure (none before the GPU re-run).
+    expected = {
+        "fig_parity.png": results / "train" / "parity" / "summary.json",
+        "fig_imdb.png": results / "train" / "imdb" / "summary.json",
+        "fig_efficiency.png": results / "efficiency" / "sweep_fp32.json",
+        "fig_inference.png": results / "inference" / "decode_bf16.json",
+    }
+    for name, source in expected.items():
+        assert (name in written) == source.exists(), name
 
 
 def test_selective_copy_dataset_contract() -> None:
@@ -269,8 +332,7 @@ def test_exact_copy_dataset_contract() -> None:
     from ssmbench.data.synthetic import EC_BOS, EC_EOS, EC_SEP, ExactCopyDataset
 
     L, V = 12, 26
-    ds = ExactCopyDataset(num_samples=8, string_len=L, seq_len=2 * 128 + 8,
-                          alphabet_size=V, seed=0)
+    ds = ExactCopyDataset(num_samples=8, string_len=L, seq_len=2 * 128 + 8, alphabet_size=V, seed=0)
     s = ds[0]
     x, y = s["input_ids"], s["targets"]
     assert x.shape == (2 * 128 + 8,) and y.shape == x.shape

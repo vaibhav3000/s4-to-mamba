@@ -1,0 +1,13 @@
+\begin{tabular}{lrrrrr}
+\toprule
+Model & Parameters & L=16 & L=32 & L=64 & L=128 \\
+\midrule
+Transformer (sinusoidal) & 602,782 & 8.7 $\pm$ 3.7 & 100.0 $\pm$ 0.0 & 3.6 $\pm$ 0.5 & 3.6 $\pm$ 0.3 \\
+Transformer (RoPE) & 602,782 & 3.4 $\pm$ 0.4 & 100.0 $\pm$ 0.0 & 3.9 $\pm$ 0.2 & 3.5 $\pm$ 0.5 \\
+S4D & 604,102 & 3.0 $\pm$ 0.8 & 100.0 $\pm$ 0.0 & 4.6 $\pm$ 0.7 & 2.7 $\pm$ 0.3 \\
+Mamba-1 & 597,102 & 10.1 $\pm$ 1.7 & 21.8 $\pm$ 8.1 & 5.1 $\pm$ 0.4 & 1.6 $\pm$ 0.5 \\
+Mamba-2 & 548,690 & 16.8 $\pm$ 2.2 & 23.5 $\pm$ 2.0 & 7.1 $\pm$ 1.6 & 3.0 $\pm$ 0.9 \\
+Mamba-3 & 550,625 & 2.5 $\pm$ 0.3 & 100.0 $\pm$ 0.0 & 3.6 $\pm$ 0.5 & 2.8 $\pm$ 0.8 \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize token accuracy in percent, mean $\pm$ sample std over n = 3 run seeds; chance 3.8.}

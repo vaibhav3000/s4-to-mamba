@@ -1,0 +1,20 @@
+# Keep the build context to what the Dockerfile copies.
+.git
+.venv
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+.pytest_cache
+.ruff_cache
+build
+dist
+# The tests read demo-site/build.py and the generated report tables; nothing else
+# from these two directories goes into the image.
+demo-site/*
+!demo-site/build.py
+docs
+figures
+legacy
+reports/*
+!reports/tables
+experiments.log

@@ -1,0 +1,13 @@
+\begin{tabular}{lrrr}
+\toprule
+Model & Parameters & id & ood \\
+\midrule
+Transformer (sinusoidal) & 401,940 & 100.0 $\pm$ 0.0 & 12.1 $\pm$ 1.9 \\
+Transformer (RoPE) & 401,940 & 100.0 $\pm$ 0.0 & 7.5 $\pm$ 0.9 \\
+S4D & 402,996 & 28.4 $\pm$ 6.7 & 17.6 $\pm$ 3.4 \\
+Mamba-1 & 398,180 & 99.3 $\pm$ 1.3 & 52.1 $\pm$ 20.4 \\
+Mamba-2 & 365,900 & 98.3 $\pm$ 2.9 & 49.6 $\pm$ 17.9 \\
+Mamba-3 & 367,190 & 99.1 $\pm$ 1.6 & 14.4 $\pm$ 6.3 \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize answer-token accuracy in percent, mean $\pm$ sample std over n = 3 run seeds; chance 5.9.}

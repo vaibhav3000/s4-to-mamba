@@ -43,12 +43,37 @@ the decisions in [docs/adr/](docs/adr/).
 | `mamba2_minimal` | scalar per head, exponential Euler | chunked SSD | state plus conv history, O(1) |
 | `mamba3_minimal` | complex diagonal per head and state slot, exponential trapezoidal | chunked complex SSD with a two-band correction | complex state, boundary input and conv history, O(1) |
 
+```mermaid
+flowchart LR
+    S4D["S4D<br/>complex diagonal A, LTI<br/>FFT convolution"]
+    M1["Mamba-1<br/>delta, B, C depend on the input<br/>sequential selective scan"]
+    M2["Mamba-2<br/>scalar decay per head<br/>chunked SSD matmuls"]
+    M3["Mamba-3<br/>complex per-slot decay, trapezoidal rule<br/>chunked SSD with a two-band correction"]
+    S4D -- "selectivity" --> M1
+    M1 -- "restrict A for matmuls" --> M2
+    M2 -- "rotation and a better discretization" --> M3
+```
+
 Every backbone implements `init_state`, `prefill` (the parallel form, returning the
 state a recurrence would hold) and `step`. The Mamba-3 chunked form unrolls the
 trapezoidal recurrence into decayed products with two-band input weights; the
 derivation is in docs/design/step2.md section 3.4 and
 [docs/adr/0002](docs/adr/). The Mamba-3 here has static rotation frequencies, real
 B and C with a real-part readout, and no MIMO.
+
+```mermaid
+flowchart LR
+    P["prompt tokens"] --> PF["prefill: parallel form<br/>over the whole prompt"]
+    PF --> ST{"decode state"}
+    ST -- "Transformer" --> KV["KV cache<br/>grows with the prompt"]
+    ST -- "S4D, Mamba-1/2/3" --> RS["recurrent state<br/>fixed size"]
+    KV --> STEP["step: one token in,<br/>one token out"]
+    RS --> STEP
+    STEP -- "updates" --> ST
+```
+
+`prefill` returns exactly the state the recurrence would hold after the prompt, so
+`prefill` followed by `step` reproduces `forward` (tested in float64 for every backbone).
 
 The CPU test suite checks, among other things: prefill plus single steps against the
 full forward pass for every backbone in float64 at 1e-10; the chunked Mamba-3 against
@@ -164,8 +189,10 @@ test accuracy in percent, mean ± sample std over n = 3 run seeds; chance 50.0; 
 
 ### Training step (batch 8)
 
-Language-model wrappers of width 256 and two layers (equal width, not equal
-parameters). A spilled point ran past free GPU memory and was paged to system memory
+Language-model wrappers of width 256 and two layers: equal width, not equal parameters
+(Transformer 1,579,520, S4D 182,784, Mamba-1/2/3 875,808 to 877,872; the Parameters
+column), so compare each model's growth with length rather than ratios between models. A
+spilled point ran past free GPU memory and was paged to system memory
 by the Windows display driver, so its time is not a GPU-resident measurement.
 
 <!-- generated:efficiency_fp32 -->
@@ -198,8 +225,8 @@ bf16, batch 8: median training-step time in ms / peak allocated MiB. spilled: th
 
 ![Training step and memory](figures/fig_efficiency.png)
 
-Without fused kernels, Mamba-2's chunked SSD is slower than fused attention at every
-length it reaches, and Mamba-3's chunked form costs 5 to 11 times Mamba-2 because it
+Without fused kernels, Mamba-2's chunked SSD (875,808 parameters) is slower than fused
+attention (1,579,520 parameters) at every length it reaches, and Mamba-3's chunked form costs 5 to 11 times Mamba-2 because it
 builds a decay tensor per state slot. FlashAttention is not built into the Windows
 torch wheel, so it is reported as unsupported.
 
@@ -289,15 +316,74 @@ check; every other forward and step compiles to one graph.
 Recorded by scripts/write_environment.py at the start of the GPU runs.
 <!-- /generated:environment -->
 
+## Design and decisions
+
+- [docs/design/step2.md](docs/design/step2.md): the design of this version, including the
+  Mamba-3 chunked-form derivation.
+- [ADR 0001](docs/adr/0001-seeds-vary-training-not-data.md): run seeds vary training, not
+  the data.
+- [ADR 0002](docs/adr/0002-mamba3-chunked-form-uses-segment-sums.md): the Mamba-3 chunked
+  form uses direct segment sums.
+- [ADR 0003](docs/adr/0003-decode-is-prefill-then-step.md): decode is prefill, then step.
+- [ADR 0004](docs/adr/0004-attention-backend-pinned-and-detected.md): the attention backend
+  is pinned and detected.
+- [ADR 0005](docs/adr/0005-parameter-matching-by-width.md): parameter matching by width.
+- [ADR 0006](docs/adr/0006-numbers-come-from-generated-tables.md): numbers come from
+  generated tables.
+- [ADR 0007](docs/adr/0007-uv-lock-with-torch-2.14.1-extras.md): a uv lock with torch 2.14.1
+  extras.
+- [ADR 0008](docs/adr/0008-deterministic-training-runs.md): deterministic training runs.
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) defines the terms, and
+  [docs/evolution.md](docs/evolution.md) walks through the architectures from S4 to Mamba-3.
+
+## Limitations
+
+- **Parity rests on a minority of seeds.** Mamba-3 learns parity in two of five seeds
+  (89.2 and 99.0%); its mean of 72.6 ± 20.5% hides that split. Without rotation no seed
+  exceeds 57.2%.
+- **Nothing extrapolates in length.** Every model, the Transformers included, is at most
+  13.1% beyond the longest training length on exact copying, and every parity mean is 50.1
+  to 51.5% at length 2048.
+- **The benchmark sweeps are not parameter-matched.** Every benchmark model has width 256
+  and two layers, so the Transformer has 1,579,520 parameters, S4D 182,784 and the Mamba
+  variants about 876K (the tables list them). No speed or memory ratio between
+  architectures in those tables is like for like. The training tasks are matched.
+- **Timing is one initialization on one laptop GPU with unlocked clocks.** Each point is a
+  median over repeated timed runs within one session; run-to-run variation is not measured,
+  and the recorded GPU state shows the clocks dropping into low power states during
+  launch-bound decode.
+- **No fused kernels.** The scans are plain PyTorch; Inductor was not measured (Triton is
+  not available on Windows), and FlashAttention is not in the Windows torch wheel.
+- **Small scale.** The models have 0.1M to 3.4M parameters and train for a few epochs.
+- **Not implemented:** full S4 (NPLR with a Cauchy kernel), Mamba-3's MIMO formulation and
+  input-dependent rotation frequencies.
+
 ## Reproducing
 
-The environment is locked with uv (`uv.lock`); torch 2.14.1 comes from the PyTorch CPU
-or CUDA 13.0 index through the `cpu` or `cu130` extra (docs/adr/0007).
+The environment is locked with uv (`uv.lock`); torch 2.14.1 comes from the PyTorch CPU or
+CUDA 13.0 index through the `cpu` or `cu130` extra
+([ADR 0007](docs/adr/0007-uv-lock-with-torch-2.14.1-extras.md)).
 
 ```bash
-uv sync --locked --extra cu130        # or --extra cpu
-uv run --locked pytest -q             # CPU test suite
+uv sync --locked --extra cpu          # CPU only
+uv sync --locked --extra cu130        # CUDA 13.0
+make check                            # the CPU gate: ruff, pyright, pytest, tables, lock
 ```
+
+The Makefile works with GNU Make on Linux and from Git Bash on Windows; `make help` lists
+its targets (`setup TORCH=cpu|cu130`, `lint`, `typecheck`, `test`, `check`, `tables`,
+`figures`, `report`, `demo`, `gpu-plan`, `docker`).
+
+Entry points, each with `--config configs/<name>.yaml`:
+
+| Command | Does |
+|---|---|
+| `ssmbench-train` | train one config over `--seeds`, resumable per epoch with `--checkpoints` |
+| `ssmbench-summarize` | mean and sample std over seeds into `results/train/<config>/summary.json` |
+| `ssmbench-efficiency` | training-step and forward sweep by length, per precision and attention kernel |
+| `ssmbench-inference` | time to first token, decode latency, tokens/s and memory by prompt length |
+| `ssmbench-numerics` | bf16 and fp16 error against float32 and float64, and decode drift |
+| `ssmbench-compile` | `torch.compile` graph breaks and aot_eager equivalence |
 
 Every GPU result comes from one resumable plan; each job writes its log to
 `results/logs/<job>.log` and can be rerun on its own:
@@ -306,6 +392,7 @@ Every GPU result comes from one resumable plan; each job writes its log to
 uv run python scripts/run_gpu_plan.py --seeds 0 1 2 --dry-run   # list the jobs
 uv run python scripts/run_gpu_plan.py --seeds 0 1 2             # run them all
 uv run python scripts/run_gpu_plan.py --from summarize          # continue from a job
+uv run python scripts/run_gpu_plan.py --seeds 3 4 --only train-parity   # add seeds
 ```
 
 The jobs are: `environment` (results/ENVIRONMENT.json), `smoke` (two training steps per
@@ -316,6 +403,18 @@ per epoch), `summarize`, `efficiency-fp32/bf16`, `inference-fp32/bf16`, `numeric
 the report tables are regenerated by `scripts/make_tables.py`; `--check` fails if a
 committed table differs from the committed results. Where each result file came from
 is in [results/PROVENANCE.md](results/PROVENANCE.md).
+
+```mermaid
+flowchart LR
+    C["configs/*.yaml"] --> G["scripts/run_gpu_plan.py<br/>train, efficiency, inference,<br/>numerics, compile"]
+    G --> R["results/<br/>per-seed run files, sweeps,<br/>logs, ENVIRONMENT.json"]
+    R --> S["ssmbench-summarize<br/>mean and std over seeds"]
+    S --> T["scripts/make_tables.py<br/>README, SUMMARY.md, report tables"]
+    S --> F["scripts/make_figures.py<br/>figures/, reports/figures/"]
+    S --> D["demo-site/build.py<br/>demo data"]
+    T --> PDF["reports/*.pdf"]
+    F --> PDF
+```
 
 ## Project structure
 
@@ -333,13 +432,6 @@ docs/                     design (docs/design/step2.md), ADRs, glossary, notes
 tests/                    references, equivalence, gradient, decode and protocol tests
 legacy/                   the original project's scripts, preserved with notes
 ```
-
-## What is not implemented
-
-- Full S4 (NPLR parameterization with a Cauchy kernel); S4D keeps what this study needs.
-- Fused kernels: the official `mamba-ssm` needs Linux and CUDA compilation, and
-  Inductor needs Triton, which this Windows environment does not have.
-- Mamba-3's MIMO formulation and input-dependent rotation frequencies.
 
 ## Running the tests in Docker
 

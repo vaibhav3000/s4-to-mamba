@@ -69,57 +69,57 @@ test accuracy in percent, mean ± sample std over n = 3 run seeds; chance 50.0; 
 
 ## efficiency_fp32
 
-| Model | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
-|---|---|---|---|---|---|---|
-| Transformer, mem.-efficient attention | 32.2 / 349 | 85.4 / 649 | 259.0 / 1245 | 903.1 / 2440 | 3194.8 / 4830 (spilled) | skipped |
-| Transformer, math attention | 55.2 / 855 | 185.0 / 2953 | 7778.9 / 10990 (spilled) | - | - | - |
-| Transformer, naive attention (reference) | 62.8 / 857 | 214.4 / 2961 | 11031.4 / 11022 (spilled) | - | - | - |
-| S4D | 23.4 / 287 | 45.8 / 554 | 90.1 / 1089 | 179.6 / 2158 | 842.0 / 4808 (spilled) | skipped |
-| Mamba-1 | 4095.4 / 1993 | - | - | - | - | - |
-| Mamba-2 | 62.1 / 703 | 186.8 / 1375 | 616.3 / 2688 | 2240.8 / 5313 (spilled) | skipped | skipped |
-| Mamba-3 | 677.8 / 658 | 1418.2 / 1061 | 3061.9 / 1864 | 6963.8 / 3494 | 112812.1 / 6960 (spilled) | skipped |
+| Model | Parameters | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
+|---|---|---|---|---|---|---|---|
+| Transformer, mem.-efficient attention | 1,579,520 | 32.2 / 349 | 85.4 / 649 | 259.0 / 1245 | 903.1 / 2440 | 3194.8 / 4830 (spilled) | skipped |
+| Transformer, math attention | 1,579,520 | 55.2 / 855 | 185.0 / 2953 | 7778.9 / 10990 (spilled) | - | - | - |
+| Transformer, naive attention (reference) | 1,579,520 | 62.8 / 857 | 214.4 / 2961 | 11031.4 / 11022 (spilled) | - | - | - |
+| S4D | 182,784 | 23.4 / 287 | 45.8 / 554 | 90.1 / 1089 | 179.6 / 2158 | 842.0 / 4808 (spilled) | skipped |
+| Mamba-1 | 876,544 | 4095.4 / 1993 | - | - | - | - | - |
+| Mamba-2 | 875,808 | 62.1 / 703 | 186.8 / 1375 | 616.3 / 2688 | 2240.8 / 5313 (spilled) | skipped | skipped |
+| Mamba-3 | 877,872 | 677.8 / 658 | 1418.2 / 1061 | 3061.9 / 1864 | 6963.8 / 3494 | 112812.1 / 6960 (spilled) | skipped |
 
-fp32, batch 8: median training-step time in ms / peak allocated MiB. spilled: the step ran past free GPU memory (WDDM paging, not a VRAM number); skipped: not run after a shorter length spilled; unsupported: the pinned attention kernel refused the inputs; -: not in the sweep.
+fp32, batch 8: median training-step time in ms / peak allocated MiB. spilled: the step ran past free GPU memory (WDDM paging, not a VRAM number); skipped: not run after a shorter length spilled; unsupported: the pinned attention kernel refused the inputs; -: not in the sweep. Parameters: backbone only, every model at width 256 and two layers, so the counts are not matched and no ratio of timings is like for like.
 
 ## efficiency_bf16
 
-| Model | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
-|---|---|---|---|---|---|---|
-| Transformer, FlashAttention | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
-| Transformer, mem.-efficient attention | 11.6 / 227 | 29.2 / 401 | 79.3 / 750 | 239.4 / 1446 | 808.1 / 2840 | 3025.5 / 5642 (spilled) |
-| S4D | 25.0 / 283 | 43.9 / 546 | 88.3 / 1071 | 176.2 / 2122 | 770.9 / 4736 (spilled) | skipped |
-| Mamba-1 | 4235.9 / 1905 | - | - | - | - | - |
-| Mamba-2 | 60.7 / 616 | 176.9 / 1200 | 597.0 / 2337 | 2070.4 / 4610 (spilled) | skipped | skipped |
-| Mamba-3 | 676.3 / 578 | 1402.4 / 900 | 2986.1 / 1543 | 6674.0 / 2915 | 34101.2 / 5801 (spilled) | skipped |
-| Transformer, cuDNN attention | 9.8 / 227 | 32.7 / 401 | 61.7 / 750 | 170.6 / 1446 | 530.0 / 2840 | 15630.3 / 5642 (spilled) |
+| Model | Parameters | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
+|---|---|---|---|---|---|---|---|
+| Transformer, FlashAttention | - | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| Transformer, mem.-efficient attention | 1,579,520 | 11.6 / 227 | 29.2 / 401 | 79.3 / 750 | 239.4 / 1446 | 808.1 / 2840 | 3025.5 / 5642 (spilled) |
+| S4D | 182,784 | 25.0 / 283 | 43.9 / 546 | 88.3 / 1071 | 176.2 / 2122 | 770.9 / 4736 (spilled) | skipped |
+| Mamba-1 | 876,544 | 4235.9 / 1905 | - | - | - | - | - |
+| Mamba-2 | 875,808 | 60.7 / 616 | 176.9 / 1200 | 597.0 / 2337 | 2070.4 / 4610 (spilled) | skipped | skipped |
+| Mamba-3 | 877,872 | 676.3 / 578 | 1402.4 / 900 | 2986.1 / 1543 | 6674.0 / 2915 | 34101.2 / 5801 (spilled) | skipped |
+| Transformer, cuDNN attention | 1,579,520 | 9.8 / 227 | 32.7 / 401 | 61.7 / 750 | 170.6 / 1446 | 530.0 / 2840 | 15630.3 / 5642 (spilled) |
 
-bf16, batch 8: median training-step time in ms / peak allocated MiB. spilled: the step ran past free GPU memory (WDDM paging, not a VRAM number); skipped: not run after a shorter length spilled; unsupported: the pinned attention kernel refused the inputs; -: not in the sweep.
+bf16, batch 8: median training-step time in ms / peak allocated MiB. spilled: the step ran past free GPU memory (WDDM paging, not a VRAM number); skipped: not run after a shorter length spilled; unsupported: the pinned attention kernel refused the inputs; -: not in the sweep. Parameters: backbone only, every model at width 256 and two layers, so the counts are not matched and no ratio of timings is like for like.
 
 ## inference_fp32
 
-| Model | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
-|---|---|---|---|---|---|---|
-| Transformer, mem.-efficient attention | 1.5 / 0.98 | 3.2 / 0.96 | 8.7 / 1.32 | 27.0 / 2.46 | 93.4 / 4.61 | 364.2 / 9.26 |
-| S4D | 14.9 / 2.02 | 19.9 / 2.37 | 21.8 / 2.48 | 36.1 / 2.52 | 69.4 / 1.81 | 144.4 / 0.55 |
-| Mamba-1 | 857.6 / 3.28 | 1700.6 / 3.59 | 1429.5 / 1.32 | 3153.2 / 2.42 | - | - |
-| Mamba-2 | 27.0 / 6.22 | 49.1 / 5.88 | 99.1 / 6.77 | 96.5 / 3.67 | 171.9 / 3.60 | 345.1 / 3.46 |
-| Mamba-3 | 49.3 / 4.87 | 56.7 / 4.96 | 87.5 / 4.80 | 156.4 / 1.91 | 313.1 / 1.90 | 629.6 / 1.89 |
+| Model | Parameters | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
+|---|---|---|---|---|---|---|---|
+| Transformer, mem.-efficient attention | 1,579,520 | 1.5 / 0.98 | 3.2 / 0.96 | 8.7 / 1.32 | 27.0 / 2.46 | 93.4 / 4.61 | 364.2 / 9.26 |
+| S4D | 182,784 | 14.9 / 2.02 | 19.9 / 2.37 | 21.8 / 2.48 | 36.1 / 2.52 | 69.4 / 1.81 | 144.4 / 0.55 |
+| Mamba-1 | 876,544 | 857.6 / 3.28 | 1700.6 / 3.59 | 1429.5 / 1.32 | 3153.2 / 2.42 | - | - |
+| Mamba-2 | 875,808 | 27.0 / 6.22 | 49.1 / 5.88 | 99.1 / 6.77 | 96.5 / 3.67 | 171.9 / 3.60 | 345.1 / 3.46 |
+| Mamba-3 | 877,872 | 49.3 / 4.87 | 56.7 / 4.96 | 87.5 / 4.80 | 156.4 / 1.91 | 313.1 / 1.90 | 629.6 / 1.89 |
 
-fp32, batch 1: median time to first token in ms / median decode latency per token in ms, prompt length T, 64 new tokens. Decode state at the longest measured prompt: Transformer, mem.-efficient attention 128.25 MiB at T=32768; S4D 0.25 MiB at T=32768; Mamba-1 0.07 MiB at T=8192; Mamba-2 0.14 MiB at T=32768; Mamba-3 0.39 MiB at T=32768.
+fp32, batch 1: median time to first token in ms / median decode latency per token in ms, prompt length T, 64 new tokens. Decode state at the longest measured prompt: Transformer, mem.-efficient attention 128.25 MiB at T=32768; S4D 0.25 MiB at T=32768; Mamba-1 0.07 MiB at T=8192; Mamba-2 0.14 MiB at T=32768; Mamba-3 0.39 MiB at T=32768. Parameters: backbone only, every model at width 256 and two layers, so the counts are not matched and no ratio of timings is like for like.
 
 ## inference_bf16
 
-| Model | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
-|---|---|---|---|---|---|---|
-| Transformer, FlashAttention | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
-| Transformer, mem.-efficient attention | 1.4 / 1.01 | 1.3 / 0.98 | 2.6 / 0.96 | 6.5 / 0.93 | 20.3 / 1.43 | 68.1 / 2.65 |
-| Transformer, cuDNN attention | 2.7 / 1.02 | 1.6 / 1.10 | 11.8 / 1.00 | 7.1 / 1.04 | 20.4 / 0.97 | 64.1 / 0.63 |
-| S4D | 6.6 / 0.75 | 9.3 / 0.74 | 17.2 / 0.75 | 34.7 / 0.84 | 64.3 / 0.87 | 133.7 / 0.29 |
-| Mamba-1 | 572.7 / 2.95 | 656.9 / 1.55 | 1244.5 / 1.59 | 3878.3 / 1.78 | - | - |
-| Mamba-2 | 14.2 / 1.92 | 20.4 / 2.08 | 44.6 / 2.06 | 49.2 / 2.42 | 133.0 / 2.31 | 240.9 / 2.47 |
-| Mamba-3 | 40.0 / 3.04 | 59.8 / 2.79 | 80.0 / 2.88 | 156.1 / 2.67 | 317.0 / 2.83 | 628.0 / 3.86 |
+| Model | Parameters | T=1024 | T=2048 | T=4096 | T=8192 | T=16384 | T=32768 |
+|---|---|---|---|---|---|---|---|
+| Transformer, FlashAttention | - | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| Transformer, mem.-efficient attention | 1,579,520 | 1.4 / 1.01 | 1.3 / 0.98 | 2.6 / 0.96 | 6.5 / 0.93 | 20.3 / 1.43 | 68.1 / 2.65 |
+| Transformer, cuDNN attention | 1,579,520 | 2.7 / 1.02 | 1.6 / 1.10 | 11.8 / 1.00 | 7.1 / 1.04 | 20.4 / 0.97 | 64.1 / 0.63 |
+| S4D | 182,784 | 6.6 / 0.75 | 9.3 / 0.74 | 17.2 / 0.75 | 34.7 / 0.84 | 64.3 / 0.87 | 133.7 / 0.29 |
+| Mamba-1 | 876,544 | 572.7 / 2.95 | 656.9 / 1.55 | 1244.5 / 1.59 | 3878.3 / 1.78 | - | - |
+| Mamba-2 | 875,808 | 14.2 / 1.92 | 20.4 / 2.08 | 44.6 / 2.06 | 49.2 / 2.42 | 133.0 / 2.31 | 240.9 / 2.47 |
+| Mamba-3 | 877,872 | 40.0 / 3.04 | 59.8 / 2.79 | 80.0 / 2.88 | 156.1 / 2.67 | 317.0 / 2.83 | 628.0 / 3.86 |
 
-bf16, batch 1: median time to first token in ms / median decode latency per token in ms, prompt length T, 64 new tokens. Decode state at the longest measured prompt: Transformer, FlashAttention -; Transformer, mem.-efficient attention 64.12 MiB at T=32768; Transformer, cuDNN attention 64.12 MiB at T=32768; S4D 0.25 MiB at T=32768; Mamba-1 0.07 MiB at T=8192; Mamba-2 0.14 MiB at T=32768; Mamba-3 0.39 MiB at T=32768.
+bf16, batch 1: median time to first token in ms / median decode latency per token in ms, prompt length T, 64 new tokens. Decode state at the longest measured prompt: Transformer, FlashAttention -; Transformer, mem.-efficient attention 64.12 MiB at T=32768; Transformer, cuDNN attention 64.12 MiB at T=32768; S4D 0.25 MiB at T=32768; Mamba-1 0.07 MiB at T=8192; Mamba-2 0.14 MiB at T=32768; Mamba-3 0.39 MiB at T=32768. Parameters: backbone only, every model at width 256 and two layers, so the counts are not matched and no ratio of timings is like for like.
 
 ## numerics
 

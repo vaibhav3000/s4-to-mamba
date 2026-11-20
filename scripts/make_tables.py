@@ -92,14 +92,29 @@ def _sweep_table(kind: str, precision: str) -> Callable[[Path], Table | None]:
             else:
                 text = f"{e['ttft_ms_median']:.1f} / {e['decode_ms_per_token_median']:.2f}"
             cells[(e["model"], int(e["seq_len"]))] = text
-        header = ["Model", *(f"T={L}" for L in lengths)]
-        rows = [[LABELS.get(m, m), *(cells.get((m, L), "-") for L in lengths)] for m in labels]
+        params: dict[str, int] = {}
+        for e in entries:
+            if "n_parameters" in e:
+                params.setdefault(e["model"], int(e["n_parameters"]))
+        header = ["Model", "Parameters", *(f"T={L}" for L in lengths)]
+        rows = [
+            [
+                LABELS.get(m, m),
+                f"{params[m]:,}" if m in params else "-",
+                *(cells.get((m, L), "-") for L in lengths),
+            ]
+            for m in labels
+        ]
+        size_note = (
+            " Parameters: backbone only, every model at width 256 and two layers, so the "
+            "counts are not matched and no ratio of timings is like for like."
+        )
         if kind == "efficiency":
             note = (
                 f"{precision}, batch 8: median training-step time in ms / peak allocated MiB. "
                 "spilled: the step ran past free GPU memory (WDDM paging, not a VRAM number); "
                 "skipped: not run after a shorter length spilled; unsupported: the pinned "
-                "attention kernel refused the inputs; -: not in the sweep."
+                "attention kernel refused the inputs; -: not in the sweep." + size_note
             )
         else:
             note = (
@@ -108,6 +123,7 @@ def _sweep_table(kind: str, precision: str) -> Callable[[Path], Table | None]:
                 "longest measured prompt: "
                 + "; ".join(f"{LABELS.get(m, m)} {_state_mib(entries, m)}" for m in labels)
                 + "."
+                + size_note
             )
         return header, rows, note
 

@@ -65,6 +65,7 @@ def write_fake_results(root: Path) -> None:
                     {
                         "model": label,
                         "seq_len": T,
+                        "n_parameters": {"transformer_efficient": 2048, "s4d": 512}[label],
                         "train_step_ms_median": 10.0 * T / 1024,
                         "infer_ms_median": 1.0,
                         "peak_train_mb": 100.0 * T / 1024,
@@ -84,6 +85,7 @@ def write_fake_results(root: Path) -> None:
                     {
                         "model": label,
                         "seq_len": L,
+                        "n_parameters": {"transformer_efficient": 2048, "mamba3": 768}[label],
                         "ttft_ms_median": 5.0 * L / 1024,
                         "decode_ms_per_token_median": 0.5,
                         "tokens_per_s": 2000.0,

@@ -52,6 +52,18 @@ def test_benchmark_tables_mark_points_without_timings(tmp_path: Path) -> None:
     assert "Triton" in md["compile"]
 
 
+def test_benchmark_tables_state_parameter_counts(tmp_path: Path) -> None:
+    write_fake_results(tmp_path)
+    md = _script("make_tables").render_markdown(tmp_path)
+    eff = md["efficiency_fp32"]
+    assert eff.splitlines()[0].startswith("| Model | Parameters | T=1024")
+    assert "| Transformer, mem.-efficient attention | 2,048 |" in eff
+    assert "| S4D | 512 |" in eff
+    assert "not matched" in eff
+    inf = md["inference_bf16"]
+    assert "| Mamba-3 | 768 |" in inf and "not matched" in inf
+
+
 def test_latex_escapes_and_uses_booktabs(tmp_path: Path) -> None:
     write_fake_results(tmp_path)
     tex = _script("make_tables").render_latex(tmp_path)["parity"]

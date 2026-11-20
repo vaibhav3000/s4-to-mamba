@@ -55,51 +55,51 @@ window.DATA = {
  ],
  "parity": {
   "transformer": {
-   "token_accuracy": 0.5298489583333333,
-   "token_accuracy_std": 0.006934703182954308,
-   "n": 3,
+   "token_accuracy": 0.524625,
+   "token_accuracy_std": 0.008879508579162566,
+   "n": 5,
    "sequence_success": 0.0,
    "sequence_success_std": 0.0
   },
   "transformer_rope": {
-   "token_accuracy": 0.5164635416666666,
-   "token_accuracy_std": 0.0015338055312040248,
-   "n": 3,
+   "token_accuracy": 0.5173203125,
+   "token_accuracy_std": 0.001618215630307612,
+   "n": 5,
    "sequence_success": 0.0,
    "sequence_success_std": 0.0
   },
   "s4d": {
-   "token_accuracy": 0.5066901041666666,
-   "token_accuracy_std": 0.004365435508742476,
-   "n": 3,
+   "token_accuracy": 0.5086328124999999,
+   "token_accuracy_std": 0.005355276425704205,
+   "n": 5,
    "sequence_success": 0.0,
    "sequence_success_std": 0.0
   },
   "mamba": {
-   "token_accuracy": 0.5772499999999999,
-   "token_accuracy_std": 0.031023809334210846,
-   "n": 3,
+   "token_accuracy": 0.5734609374999999,
+   "token_accuracy_std": 0.02342569689777624,
+   "n": 5,
    "sequence_success": 0.0,
    "sequence_success_std": 0.0
   },
   "mamba2": {
-   "token_accuracy": 0.5667916666666667,
-   "token_accuracy_std": 0.03773789962619294,
-   "n": 3,
+   "token_accuracy": 0.56834375,
+   "token_accuracy_std": 0.02747743492270776,
+   "n": 5,
    "sequence_success": 0.0,
    "sequence_success_std": 0.0
   },
   "mamba3": {
-   "token_accuracy": 0.6604921874999999,
-   "token_accuracy_std": 0.20146184820391747,
-   "n": 3,
-   "sequence_success": 0.002,
-   "sequence_success_std": 0.0034641016151377548
+   "token_accuracy": 0.7262562499999999,
+   "token_accuracy_std": 0.20514119010973558,
+   "n": 5,
+   "sequence_success": 0.13240000000000002,
+   "sequence_success_std": 0.29271282855385755
   },
   "mamba3_no_rotation": {
-   "token_accuracy": 0.5579817708333333,
-   "token_accuracy_std": 0.015305176687349615,
-   "n": 3,
+   "token_accuracy": 0.5538749999999999,
+   "token_accuracy_std": 0.012380726115635987,
+   "n": 5,
    "sequence_success": 0.0,
    "sequence_success_std": 0.0
   }

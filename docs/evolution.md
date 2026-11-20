@@ -5,11 +5,11 @@ principles in pure PyTorch, each small enough to read top to bottom:
 
 | File | Model | Role in this study |
 |---|---|---|
-| `src/ssmbench/models/transformer_minimal.py` | Causal Transformer | Quality and scaling baseline: pre-norm blocks, `F.scaled_dot_product_attention`, sinusoidal positions |
+| `src/ssmbench/models/transformer_minimal.py` | Causal Transformer | Quality and scaling baseline: pre-norm blocks, pinned SDPA backends (or the naive reference), sinusoidal or RoPE positions, KV-cache decode |
 | `src/ssmbench/models/s4_minimal.py` | S4D | Diagonal restriction of S4: ZOH discretization, FFT-convolution training form, O(1)-state recurrent step form |
 | `src/ssmbench/models/mamba_minimal.py` | Mamba-1 | Selective SSM: sequential scan training form plus a verified incremental `step()` decode |
-| `src/ssmbench/models/mamba2_minimal.py` | Mamba-2 | Scalar-per-head transitions and the chunked SSD algorithm, verified against a sequential reference |
-| `src/ssmbench/models/mamba3_minimal.py` | Mamba-3 | Complex-valued transitions with exponential-trapezoidal discretization |
+| `src/ssmbench/models/mamba2_minimal.py` | Mamba-2 | Scalar-per-head transitions and the chunked SSD algorithm, verified against a sequential reference; O(1)-state `step()` |
+| `src/ssmbench/models/mamba3_minimal.py` | Mamba-3 | Complex-valued transitions with exponential-trapezoidal discretization; chunked parallel form (complex SSD with a two-band correction) and `step()`, both verified against the recurrence |
 
 The four SSMs share one skeleton (the Transformer baseline has no recurrence): a linear
 first-order recurrence over a fixed-size state,
@@ -23,10 +23,8 @@ converted to discrete time, and which equivalent computational form (convolution
 chunked matmul) runs on hardware. This document traces those choices in order. The equations
 implemented in each file are checked by tests in `tests/test_models.py` and
 `tests/test_references.py`, the second against independent float64 references written from
-the equations. Every benchmark number cited is read from a committed JSON in `results/`.
-Those runs predate several fixes (the S4D ZOH input matrix, how Mamba-2 and Mamba-3 heads
-read `B` and `C`, weight decay on SSM dynamics parameters, and the efficiency benchmark), so
-the numbers are stale until re-run, and each is a single seed; see `results/PROVENANCE.md`.
+the equations. Every number cited is read from a committed result file in `results/`
+(three run seeds per configuration; see `results/SUMMARY.md` and `results/PROVENANCE.md`).
 
 ```mermaid
 flowchart LR
@@ -65,7 +63,8 @@ The `(e^z - 1)/z` factor is the exact ZOH input integral, not an approximation. 
 `zoh_discretization` in `src/ssmbench/models/s4_minimal.py` computes it explicitly, with a
 Taylor fallback near `z = 0` so the ratio stays finite as `delta * A` goes to zero. Earlier
 code divided by 1 instead of `z` outside the Taylor branch, so `Bbar` came out as
-`delta * B * (e^z - 1)`; every committed S4D result was produced with that error.
+`delta * B * (e^z - 1)`; the earlier single-seed S4D results (now only in the git history)
+were produced with that error.
 
 After discretization there are two equivalent forms:
 
@@ -190,9 +189,9 @@ state `S`. The chunk loop runs `T / chunk_size` iterations instead of `T`, and e
 is small matmuls. This is why Mamba-2 exists: tensor cores execute matmuls efficiently, not
 long dependent chains of scalar operations, and the chunked form converts the scan into
 matmul-shaped work. In this repository the chunk loop is plain PyTorch in float32 with no
-fused kernel, and in the committed efficiency sweep (stale, see `results/PROVENANCE.md`)
-Mamba-2 trains slower per step than the float32 Transformer at every length both ran
-(`train_step_ms` in `results/efficiency_gpu.json`).
+fused kernel, and in the committed efficiency sweep Mamba-2 trains slower per step than
+the Transformer with the memory-efficient attention kernel at every length both ran
+(`results/efficiency/sweep_fp32.json` and `sweep_bf16.json`).
 
 Implementation notes that matter numerically: the decay matrix is built in log space
 from segment sums: for each pair (t, s) the sum of `log alpha` over (s, t] is accumulated
@@ -205,8 +204,8 @@ took the log of a clamped `exp(delta * A)`, which zeroed the gradient for very f
 `Bx = delta_t * B_t` is precomputed as the state input, matching the exponential-Euler
 input term. Each head reads its group's full `N`-vector of `B` and `C`
 (`expand_groups_to_heads` in `blocks.py`). Earlier code gave each head only `N/H` entries,
-each repeated, which cut Mamba-2's effective state per head to `N/H`; every committed Mamba-2
-and Mamba-3 result comes from that code.
+each repeated, which cut Mamba-2's effective state per head to `N/H`; the earlier
+single-seed Mamba-2 and Mamba-3 results (now only in the git history) came from that code.
 
 Correctness is not asserted, it is tested:
 `tests/test_models.py::test_mamba2_chunked_equals_sequential` runs `chunked_scan` and
@@ -294,29 +293,27 @@ al. on state tracking in recurrent models and Merrill et al. on the limits of re
 transitions) makes this argument formally; our parity benchmark is consistent with it, with the
 caveats listed below the table.
 
-On cumulative XOR (L = 128 for training and test, 20 epochs, one seed, code that predates the
-fixes listed in `results/PROVENANCE.md`, `results/parity_*.json`):
+On cumulative XOR (trained at L = 128 for 20 epochs, parameter-matched, three run seeds,
+`results/train/parity/`), token accuracy in percent:
 
-| Model | Token accuracy | Sequence success |
+| Model | L = 128 | L = 2048 |
 |---|---|---|
-| mamba3 | 0.9834 | 0.42 |
-| mamba2 | 0.563 | 0.0 |
-| mamba | 0.559 | 0.0 |
-| transformer | 0.533 | 0.0 |
-| s4d | 0.506 | 0.0 |
+| Mamba-3 | 66.0 ± 20.1 | 51.1 ± 1.3 |
+| Mamba-1 | 57.7 ± 3.1 | 50.6 ± 0.2 |
+| Mamba-2 | 56.7 ± 3.8 | 50.5 ± 0.2 |
+| Mamba-3, `theta = 0` | 55.8 ± 1.5 | 50.4 ± 0.1 |
+| Transformer (sinusoidal) | 53.0 ± 0.7 | 50.2 ± 0.1 |
+| Transformer (RoPE) | 51.6 ± 0.2 | 50.1 ± 0.0 |
+| S4D | 50.7 ± 0.4 | 50.0 ± 0.1 |
 
-All four baselines (real selective Mamba-1/2, complex but LTI S4D, and the attention
-Transformer) sit at or a little above the 0.5 token-level chance rate and solve zero full
-sequences. Mamba-3, the only model here whose rotation depends on the input, reaches 0.9834
-token accuracy and solves 42 percent of sequences fully. This is consistent with the Mamba-3
-paper's motivating claim but does not reproduce it: it is one seed, train and test share one
-length, no `theta = 0` or `lambda = 1` ablation was trained (Mamba-3 also differs from Mamba-2
-in its per-state decay, the trapezoidal term and the `lambda` gate), and the runs predate the
-fixes to the Mamba-2/3 head expansion, the S4D ZOH and weight decay on SSM dynamics
-parameters.
+Only Mamba-3 has a run that learns the task: one seed reaches 89.2%, the other two 52.7 and
+56.2%. With the rotation removed (`theta = 0`) it falls back to the level of Mamba-1 and
+Mamba-2, so the rotation is what made the successful run possible, but with three seeds the
+effect is not reliable. Nothing extrapolates: at L = 2048 every model is within 1.1 points of
+chance, including the successful Mamba-3 seed (52.6%).
 
 S4D deserves its own sentence here: it also has complex `A`, and it still fails parity
-(0.506, sequence success 0.0). Complexity of the transition is not sufficient; the transition
+(50.7%). Complexity of the transition is not sufficient; the transition
 must also be input-dependent. S4D is LTI: `A, B, C, delta` are constants, the rotation is
 fixed at initialization and training time, and the input only drives a fixed linear system
 additively. Parity requires multiplying the state by a factor that depends on the current
@@ -328,20 +325,24 @@ the task demands.
 The paper reformulates the layer so multiple input and output channels share each state slot
 (MIMO instead of SISO per head), improving quality without increasing decode latency. Our
 implementation keeps the SISO-per-head structure of Mamba-2's SSD and does not implement the
-MIMO dual form; the module docstring in `mamba3_minimal.py` says the same. The paper's
-parallel dual, a 1-semiseparable matrix composed with a 2-band matrix (a generalization of
-Mamba-2's SSD), is also not implemented: we run the sequential recurrent form only.
+MIMO formulation; the module docstring in `mamba3_minimal.py` says the same. The parallel form
+is implemented: unrolling the recurrence folds the complex `alpha` inside the `beta` term into
+the decay, leaving `h_t = sum_{s<=t} exp(A D_ts) (B_s x_s) W_ts` with real segment sums `D_ts`
+and two-band input weights `W_ts = lambda_s delta_s + [s < t] (1 - lambda_{s+1}) delta_{s+1}`,
+the paper's 1-semiseparable matrix composed with a 2-band matrix. `chunked_scan` computes it
+per chunk and carries the state and the boundary input `B x` of the chunk's last token; the
+derivation is in docs/design/step2.md section 3.4 and docs/adr/0002.
 
 ### Comparison at a glance
 
 | Model | Transition A | Discretization | Training form | Inference state | Capability notes |
 |---|---|---|---|---|---|
-| Transformer (`transformer_minimal.py`) | n/a, softmax attention weights | n/a | Attention over all pairs, O(T^2) score compute | KV cache in general, growing linearly with T (not implemented here: decode re-runs the full prefix per token) | fp32 baseline with absolute sinusoidal positions; no fixed-size state |
+| Transformer (`transformer_minimal.py`) | n/a, softmax attention weights | n/a | Attention over all pairs, O(T^2) score compute, SDPA backend pinned per variant | KV cache, preallocated, growing linearly with T | Sinusoidal or RoPE positions; no fixed-size state |
 | S4 (referenced, not reimplemented) | Dense structured (NPLR), HiPPO init | ZOH | FFT convolution with Woodbury-corrected kernel | O(DN) recurrent state | Long-range memory via HiPPO spectrum |
 | S4D (`s4_minimal.py`) | Complex diagonal, S4D-Lin init `A_n = -1/2 + i pi n` | ZOH with exact `(e^z - 1)/z` factor | FFT convolution, O(T log T) | Complex `(B, D, N)`, O(1) per token | LTI: one fixed kernel; rotates but cannot re-time or filter per token |
 | Mamba-1 (`mamba_minimal.py`) | Real negative diagonal `(d_inner, N)` | Exponential-Euler: `exp(delta A)` transition, `delta B` input | Sequential selective scan (python loop here) | `(B, d_inner, N)` plus conv history, O(1) per token | Selective: delta, B, C depend on the token; decay-only transitions |
-| Mamba-2 (`mamba2_minimal.py`) | Scalar per head times identity, `a_h < 0` | Exponential-Euler per head | Chunked SSD matmuls (sequential reference also provided) | `(N, P)` per head, O(1) per token (no `step()` implemented) | SSD duality; tensor-core friendly; decay-only transitions |
-| Mamba-3 (`mamba3_minimal.py`) | Complex diagonal per (head, state), `-exp(a) + i theta`, with `theta` a static parameter | Exponential-trapezoidal: `beta_t = (1 - lambda_t) delta_t alpha_t`, `gamma_t = lambda_t delta_t` | Sequential scan (paper's parallel dual not implemented) | Complex `(N, P)` per head, O(1) per token (no `step()` implemented) | Selective plus rotation: state tracking; second-order accurate rule |
+| Mamba-2 (`mamba2_minimal.py`) | Scalar per head times identity, `a_h < 0` | Exponential-Euler per head | Chunked SSD matmuls (sequential reference also provided) | `(N, P)` per head plus conv history, O(1) per token (`step()`) | SSD duality; tensor-core friendly; decay-only transitions |
+| Mamba-3 (`mamba3_minimal.py`) | Complex diagonal per (head, state), `-exp(a) + i theta`, with `theta` a static parameter | Exponential-trapezoidal: `beta_t = (1 - lambda_t) delta_t alpha_t`, `gamma_t = lambda_t delta_t` | Chunked complex SSD with a two-band correction (sequential reference also provided) | Complex `(N, P)` per head, the boundary input `B x` and conv history, O(1) per token (`step()`) | Selective plus rotation: state tracking; second-order accurate rule |
 
 ## 5. What we did and did not implement
 
@@ -363,62 +364,51 @@ Mamba-2's SSD), is also not implemented: we run the sequential recurrent form on
   kernel and conv-versus-step across several 1024-token chunks, naive per-head loops for the
   Mamba-2 and Mamba-3 blocks (outputs and parameter gradients), the convergence order of the
   Mamba-3 rule, float64 gradchecks of every scan, and a seeded-rebuild determinism check.
-- O(1)-state incremental decode paths for S4D (`S4DBlock.init_state` / `step`) and Mamba-1
-  (`MambaBlock.init_state` / `step`), carrying the exact recurrence state and the short-conv
-  history.
-- Benchmarks with committed JSON results: parity, selective copying, exact copying, IMDb
-  sentiment, and a length-efficiency sweep, driven by `ssmbench-train` and
-  `ssmbench-efficiency` (or the thin wrappers `scripts/run_training.py` and
-  `scripts/run_efficiency.py`) with configs in `configs/`. The committed results predate
-  the fixes listed in `results/PROVENANCE.md` and are stale until re-run.
+- One decode interface on every backbone (`init_state`, `prefill`, `step`): the parallel
+  form over a prompt returns the state a recurrence would hold, and `step` continues it with
+  O(1) state for the SSMs and a KV cache for the Transformer. tests/test_decode.py checks in
+  float64 that prefill plus steps reproduces `forward` for every backbone.
+- Three-seed results for parity (with a `theta = 0` ablation and length extrapolation),
+  selective copying in and out of distribution, exact copying at a fixed and at variable
+  lengths, and IMDb, with parameter-matched models; training, inference, numerics and
+  compile benchmarks. All of them come from `scripts/run_gpu_plan.py` and are summarized in
+  `results/SUMMARY.md`.
 
 ### Not implemented
 
 - Fused kernels. The official Mamba selective-scan CUDA kernel and the official Mamba-2
-  Triton chunk kernels are not used or reimplemented. All our scans are python loops over
-  time (Mamba-1, Mamba-3) or loops over chunks (Mamba-2).
+  Triton chunk kernels are not used or reimplemented. Mamba-1's scan is a python loop over
+  time; Mamba-2 and Mamba-3 loop over chunks (Mamba-3 keeps its sequential recurrence as the
+  tested reference).
 - Full S4. The NPLR parameterization and the Woodbury-corrected Cauchy kernel are referenced,
   not reimplemented; only the S4D diagonal restriction exists here.
-- Mamba-3 parallel dual and MIMO. We implement the sequential SISO recurrence exactly, with a
-  static rotation parameter `theta` (see 4.2); the paper's 1-semiseparable-times-2-band dual
-  and the MIMO formulation are described only.
+- Mamba-3 MIMO. We implement the SISO recurrence and its chunked parallel form, with a static
+  rotation parameter `theta` (see 4.2); the MIMO formulation is described only.
 - Parallel (associative) scan for Mamba-1 and the hardware-aware per-sequence `dt` scaling
   from the Mamba paper.
-- Incremental `step()` decode for Mamba-2 and Mamba-3. Their per-token state is conceptually
-  the `(N, P)` matrix per head, but no tested decode path is implemented in this repository.
 
 ### The cost of honesty
 
-Our sequential loops are O(T) in operations but slow in wall-clock: in eager-mode PyTorch,
-every python-loop iteration launches small kernels and the launch overhead dominates. The
-measured gap is visible in the `wall_time_seconds` field of every JSON in `results/` (the
-python-loop Mamba and Mamba-3 runs take several times to an order of magnitude longer than
-the chunked Mamba-2 runs on the same tasks; on parity, for example, 20.0 s for Mamba-2,
-174.5 s for Mamba-1 and 402.3 s for Mamba-3) and in the length sweep of
-`results/efficiency_gpu.json` produced by `scripts/run_efficiency.py` (that sweep predates the
-benchmark fixes and is stale). This is pedagogically
-the point: it makes the difference between asymptotic operation counts and wall-clock time
-tangible, and it is exactly why fused selective-scan kernels and the chunked SSD formulation
-exist.
+Our loops are O(T) in operations but slow in wall-clock: in eager-mode PyTorch, every
+loop iteration launches small kernels and the launch overhead dominates. The gap shows in
+the `wall_time_seconds` field of every run file: on parity, a run takes 26 to 50 s for the
+chunked Mamba-2, 208 to 442 s for the python-loop Mamba-1 and 302 to 341 s for the chunked
+Mamba-3, whose per-slot decay tensors make each chunk much heavier than Mamba-2's. The
+training sweep in `results/efficiency/` shows the same: Mamba-1 needs 4.1 s
+per step at T = 1K, Mamba-3 0.68 s and Mamba-2 62 ms. This is pedagogically the point: it
+makes the difference between asymptotic operation counts and wall-clock time tangible, and
+it is exactly why fused selective-scan kernels and the chunked SSD formulation exist.
 
 ### Reproducing the numbers
 
 ```
-ssmbench-train --config configs/parity.yaml --out results/
-ssmbench-train --config configs/selective_copy.yaml --out results/
-ssmbench-train --config configs/exact_copy.yaml --out results/
-ssmbench-train --config configs/imdb.yaml --out results/
-ssmbench-efficiency --config configs/efficiency.yaml
+uv run python scripts/run_gpu_plan.py --seeds 0 1 2
 ```
 
-`scripts/run_training.py` and `scripts/run_efficiency.py` are thin wrappers that take the
-same flags.
-
-Each run writes one JSON per model with its full data, train, and model config, the epoch
-history, parameter count, peak GPU memory, and wall time. In the committed JSONs,
-`peak_gpu_mb` is a running maximum over every model trained earlier in the same process, not a
-per-model peak; the trainer now resets it per model and also records reserved and total device
-memory. IMDb has committed results for transformer, s4d and mamba2 only; mamba and mamba3 were
-not trained on IMDb because their python-loop scans are too slow at L = 512 on this GPU
-(`configs/imdb.yaml`). Treat nothing as claimed that is not in a committed JSON, and treat the
-committed JSONs as stale until re-run with the fixed code (`results/PROVENANCE.md`).
+runs every training config with three seeds and every benchmark, logging each job to
+`results/logs/`; `ssmbench-train --config configs/<task>.yaml --out results/train --seeds 0 1 2`
+runs one config. Each run writes one file per seed with its full config and hash, the
+validation history, the final test evaluations, parameter count, per-run peak GPU memory, a
+spill flag and wall time. Mamba-1 is not trained on IMDb because its python-loop scan is too
+slow at L = 512 on this GPU (`configs/imdb.yaml`). Treat nothing as claimed that is not in a
+committed result file (`results/PROVENANCE.md`).

@@ -204,7 +204,11 @@ def _environment(root: Path) -> Table | None:
         ["Code", f"git {str(env.get('git_sha'))[:7]}"],
         ["uv.lock sha256", str(env.get("uv_lock_sha256"))[:12]],
     ]
-    return ["Item", "Value"], rows, "Recorded by scripts/write_environment.py at the start of the GPU runs."
+    return (
+        ["Item", "Value"],
+        rows,
+        "Recorded by scripts/write_environment.py at the start of the GPU runs.",
+    )
 
 
 TABLES: dict[str, Callable[[Path], Table | None]] = {

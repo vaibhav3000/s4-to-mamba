@@ -1,0 +1,9 @@
+
+=== 2026-11-20 02:33:33 .venv\Scripts\python.exe scripts\write_environment.py
+torch 2.14.1+cu130, CUDA 13.0, GPU NVIDIA GeForce RTX 4050 Laptop GPU
+
+=== 2026-11-20 02:38:17 .venv\Scripts\python.exe scripts\write_environment.py
+torch 2.14.1+cu130, CUDA 13.0, GPU NVIDIA GeForce RTX 4050 Laptop GPU
+
+=== 2026-11-20 02:42:32 .venv\Scripts\python.exe scripts\write_environment.py
+torch 2.14.1+cu130, CUDA 13.0, GPU NVIDIA GeForce RTX 4050 Laptop GPU

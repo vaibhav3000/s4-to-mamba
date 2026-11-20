@@ -1,0 +1,1897 @@
+{
+  "config": {
+    "decode": {
+      "prompt_len": 1024,
+      "steps": 256
+    },
+    "device": "auto",
+    "models": [
+      "transformer",
+      "transformer_rope",
+      "s4d",
+      "mamba",
+      "mamba2",
+      "mamba3"
+    ],
+    "out_path": "results/numerics/numerics.json",
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "seq_lengths": [
+      1024,
+      4096
+    ],
+    "variants": {
+      "mamba": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "mamba2": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "mamba3": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "s4d": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "transformer": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "transformer_rope": {
+        "backbone": "transformer",
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      }
+    }
+  },
+  "entries": [
+    {
+      "architecture": "transformer",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.001177015369774447,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0009875527832637222,
+            0.001010356774706049,
+            0.0010836082525707144,
+            0.0010369605279080918
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 1.0821870571738448e-07,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            1.028400523382325e-07,
+            1.0257889028554192e-07,
+            1.0430962037105428e-07,
+            9.634759704202423e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.008460640907287598,
+          "nonfinite": 0,
+          "rel_l2": 0.0010324485684838742
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.008460754665001291,
+          "nonfinite": 0,
+          "rel_l2": 0.0010324469550317334
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0010909006101300633,
+          "nonfinite": 0,
+          "rel_l2": 0.00012712754825126873
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 9.594147099001304e-07,
+          "nonfinite": 0,
+          "rel_l2": 1.2870391735607757e-07
+        }
+      },
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "transformer",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0011340870695922022,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.000979813597830521,
+            0.0010384629432127895,
+            0.0010595531919109903,
+            0.0010257256256836773
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 1.0415807918695572e-07,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            9.84999054257368e-08,
+            8.86736661780087e-08,
+            9.244085539187641e-08,
+            9.913416565216707e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.008695244789123535,
+          "nonfinite": 0,
+          "rel_l2": 0.0010365980123132694
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.00869502793945065,
+          "nonfinite": 0,
+          "rel_l2": 0.0010365977175991507
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0009310632913051009,
+          "nonfinite": 0,
+          "rel_l2": 0.00012721830603298038
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 1.184952085786506e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.2941565429691121e-07
+        }
+      },
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "transformer",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0011477703851760002,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0009900874115115288,
+            0.0009723903483074226,
+            0.0010817809463856062,
+            0.0010435618111286433
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 1.1059528965151523e-07,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            9.427207730696728e-08,
+            1.010135770524996e-07,
+            9.858253124886516e-08,
+            9.673244563941188e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.007319927215576172,
+          "nonfinite": 0,
+          "rel_l2": 0.001017952619098364
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.007320404991972396,
+          "nonfinite": 0,
+          "rel_l2": 0.0010179527921614123
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0010161992411014953,
+          "nonfinite": 0,
+          "rel_l2": 0.0001257506816281241
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 1.071388475715196e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.2855687920889533e-07
+        }
+      },
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "transformer",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.0068015456199646,
+          "nonfinite": 0,
+          "rel_l2": 0.0010073951649561554
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.006801616306985281,
+          "nonfinite": 0,
+          "rel_l2": 0.0010073949981882558
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0010909006101300633,
+          "nonfinite": 0,
+          "rel_l2": 0.00012352465647754045
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 1.478353928607845e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.369552967014571e-07
+        }
+      },
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "transformer",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.006875157356262207,
+          "nonfinite": 0,
+          "rel_l2": 0.0009993867740004218
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.00687539464408915,
+          "nonfinite": 0,
+          "rel_l2": 0.0009993863801078195
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0009310632913059891,
+          "nonfinite": 0,
+          "rel_l2": 0.00012332068231886504
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 1.2000522970900818e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.3517975148056488e-07
+        }
+      },
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "transformer",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.00670170783996582,
+          "nonfinite": 0,
+          "rel_l2": 0.0009973499473446736
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.006701666601309553,
+          "nonfinite": 0,
+          "rel_l2": 0.0009973496533853621
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0010161992411019116,
+          "nonfinite": 0,
+          "rel_l2": 0.00012314031329432174
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 1.257291835088381e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.3694595329790313e-07
+        }
+      },
+      "model": "transformer",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "transformer",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0013112462130342249,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0011447744984866195,
+            0.001209099207030012,
+            0.0011904643013652418,
+            0.001145296247467025
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 8.486477417651598e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            7.115184289135404e-08,
+            7.408800610651704e-08,
+            7.350675906293183e-08,
+            8.04475609419039e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.00720784068107605,
+          "nonfinite": 0,
+          "rel_l2": 0.001170680230304013
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.007207837386812632,
+          "nonfinite": 0,
+          "rel_l2": 0.0011706793828906057
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0008199396253181224,
+          "nonfinite": 0,
+          "rel_l2": 0.00014394144190173935
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 8.275160334747511e-07,
+          "nonfinite": 0,
+          "rel_l2": 1.2554788678907293e-07
+        }
+      },
+      "model": "transformer_rope",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      },
+      "seed": 0,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "transformer",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.001327630067954773,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.001150260959206965,
+            0.00108037828713193,
+            0.0011375794595413953,
+            0.001113528366129327
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 8.611417356636164e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            6.99096406940173e-08,
+            7.446103978292328e-08,
+            7.246983636850317e-08,
+            7.739725581368075e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.0080718994140625,
+          "nonfinite": 0,
+          "rel_l2": 0.0011674762559301074
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.008071728383094445,
+          "nonfinite": 0,
+          "rel_l2": 0.0011674758398523978
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0008900756025247425,
+          "nonfinite": 0,
+          "rel_l2": 0.00014347179064081643
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 8.29301950666661e-07,
+          "nonfinite": 0,
+          "rel_l2": 1.253448270061729e-07
+        }
+      },
+      "model": "transformer_rope",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      },
+      "seed": 1,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "transformer",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0013260313453131245,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0012089914850048394,
+            0.0011295442596836183,
+            0.0011941945619146808,
+            0.0011777672207115078
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 8.549749707323014e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            7.463407917507806e-08,
+            6.549533262667187e-08,
+            7.41119414605573e-08,
+            7.388926848217936e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.008030891418457031,
+          "nonfinite": 0,
+          "rel_l2": 0.0011677265464985344
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.008031025726223273,
+          "nonfinite": 0,
+          "rel_l2": 0.0011677260406493944
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0009659786059216802,
+          "nonfinite": 0,
+          "rel_l2": 0.00014370994424542103
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 7.525345407932704e-07,
+          "nonfinite": 0,
+          "rel_l2": 1.2511614788785562e-07
+        }
+      },
+      "model": "transformer_rope",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      },
+      "seed": 2,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "transformer",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.006931394338607788,
+          "nonfinite": 0,
+          "rel_l2": 0.0011608525057500618
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.006931597711495652,
+          "nonfinite": 0,
+          "rel_l2": 0.00116085200752227
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0008208840906593906,
+          "nonfinite": 0,
+          "rel_l2": 0.00014262057657541723
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 1.2078486762989726e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.40444331969949e-07
+        }
+      },
+      "model": "transformer_rope",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      },
+      "seed": 0,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "transformer",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.007324874401092529,
+          "nonfinite": 0,
+          "rel_l2": 0.0011555945250492697
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.007325011253543345,
+          "nonfinite": 0,
+          "rel_l2": 0.0011555942071801585
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0008937416883507687,
+          "nonfinite": 0,
+          "rel_l2": 0.00014194156201101238
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 1.1428002038016416e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.3964040488837973e-07
+        }
+      },
+      "model": "transformer_rope",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      },
+      "seed": 1,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "transformer",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.008031129837036133,
+          "nonfinite": 0,
+          "rel_l2": 0.0011578729203189735
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.008031025726223273,
+          "nonfinite": 0,
+          "rel_l2": 0.0011578727356877012
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0008304326067478662,
+          "nonfinite": 0,
+          "rel_l2": 0.0001426883600352769
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 9.627176466020515e-07,
+          "nonfinite": 0,
+          "rel_l2": 1.40110588612386e-07
+        }
+      },
+      "model": "transformer_rope",
+      "model_kwargs": {
+        "d_model": 256,
+        "n_heads": 4,
+        "n_layers": 2,
+        "pos_encoding": "rope"
+      },
+      "seed": 2,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "s4d",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0023121776831236144,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0012176985182804827,
+            0.0013355543418777974,
+            0.0012356835295672913,
+            0.001183158602255615
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 1.5666110809502696e-07,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            8.006795315387869e-08,
+            9.097182425875301e-08,
+            8.349710672804116e-08,
+            9.012688701268463e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.04020214080810547,
+          "nonfinite": 0,
+          "rel_l2": 0.0013506750815405442
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.04020153442650809,
+          "nonfinite": 0,
+          "rel_l2": 0.0013506762978210257
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.005185561112639903,
+          "nonfinite": 0,
+          "rel_l2": 0.00016440715942261358
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 3.906208865700478e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.0038654291847391e-07
+        }
+      },
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "s4d",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0017683599153026641,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0012622054853867217,
+            0.001323343137873715,
+            0.001327283169090975,
+            0.0012418990964107944
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 1.3175236692238993e-07,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            8.256117934959381e-08,
+            6.940279920130188e-08,
+            7.482953189474644e-08,
+            9.581490154108036e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.06116485595703125,
+          "nonfinite": 0,
+          "rel_l2": 0.0013465388443338687
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.061167303626071146,
+          "nonfinite": 0,
+          "rel_l2": 0.0013465390561327028
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.005536342087495427,
+          "nonfinite": 0,
+          "rel_l2": 0.00016642837900874202
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.657677230568424e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.0067577056404485e-07
+        }
+      },
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "s4d",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0019986543990267195,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0014705604673177235,
+            0.0015201353328949002,
+            0.0012000546055231627,
+            0.001284154933918457
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 1.4055155039078888e-07,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            7.578253629745323e-08,
+            7.281692057307771e-08,
+            8.056123441386438e-08,
+            9.304549751588654e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.04741668701171875,
+          "nonfinite": 0,
+          "rel_l2": 0.0013411952511352661
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.047415419034394723,
+          "nonfinite": 0,
+          "rel_l2": 0.0013411955245393326
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.005978762024556161,
+          "nonfinite": 0,
+          "rel_l2": 0.00016394219170177624
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 3.422953785303662e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.0070796249895763e-07
+        }
+      },
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "s4d",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.06681632995605469,
+          "nonfinite": 0,
+          "rel_l2": 0.0013498603995719368
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.06681467911836947,
+          "nonfinite": 0,
+          "rel_l2": 0.0013498607235719253
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.006469384879505213,
+          "nonfinite": 0,
+          "rel_l2": 0.0001648291751443072
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 5.8072830046995705e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.126563737109238e-07
+        }
+      },
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "s4d",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.061168670654296875,
+          "nonfinite": 0,
+          "rel_l2": 0.0013474395047126193
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.06116730362606404,
+          "nonfinite": 0,
+          "rel_l2": 0.001347439675626154
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0087930787449082,
+          "nonfinite": 0,
+          "rel_l2": 0.00016566813268002306
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 6.356864163947762e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.1252520318392226e-07
+        }
+      },
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "s4d",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.09350013732910156,
+          "nonfinite": 0,
+          "rel_l2": 0.0013378152743162555
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.09350310587413801,
+          "nonfinite": 0,
+          "rel_l2": 0.0013378159517298729
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0075641537523178926,
+          "nonfinite": 0,
+          "rel_l2": 0.00016468933920253258
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 6.010972549930216e-06,
+          "nonfinite": 0,
+          "rel_l2": 1.1214900947167383e-07
+        }
+      },
+      "model": "s4d",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.00044447500084728416,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0003381869098455261,
+            0.00035099855426346096,
+            0.0003503545609430406,
+            0.0003895532895510427
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.327593658570791e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            3.937297409822848e-08,
+            3.7956146484099644e-08,
+            3.327255892838992e-08,
+            3.8598589900007505e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.001859426498413086,
+          "nonfinite": 0,
+          "rel_l2": 0.0003488373408004796
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0018594394724988916,
+          "nonfinite": 0,
+          "rel_l2": 0.00034883743133117884
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0002388619104196632,
+          "nonfinite": 0,
+          "rel_l2": 4.473978874503842e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 3.722900174807364e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.53270059371953e-08
+        }
+      },
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0004941414907304277,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0003548290806137097,
+            0.0003189029285034725,
+            0.0003285872740841872,
+            0.00039013230639104785
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.303769614705483e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            3.8524001595962884e-08,
+            3.6202323254492395e-08,
+            3.487130395287363e-08,
+            3.849328894586747e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.0020139217376708984,
+          "nonfinite": 0,
+          "rel_l2": 0.0003436508869758154
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0020140170927289702,
+          "nonfinite": 0,
+          "rel_l2": 0.00034365072162638027
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00023014540199031708,
+          "nonfinite": 0,
+          "rel_l2": 4.437349277076542e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.166456983867306e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.509345602114108e-08
+        }
+      },
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0004783347588946048,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0003519658492365384,
+            0.00035098040209581165,
+            0.00034362164951413405,
+            0.0003809615100234807
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.337691714278225e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            3.444513994349696e-08,
+            3.8816127305739374e-08,
+            3.8243951807269345e-08,
+            3.5777786236200566e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.002009868621826172,
+          "nonfinite": 0,
+          "rel_l2": 0.00035351731282851697
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.002009880854661944,
+          "nonfinite": 0,
+          "rel_l2": 0.00035351716682722014
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0002515531332083487,
+          "nonfinite": 0,
+          "rel_l2": 4.5540133421701646e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 3.8288338100045394e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.5628449767002407e-08
+        }
+      },
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.001979649066925049,
+          "nonfinite": 0,
+          "rel_l2": 0.0003492038272655793
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0019795986951066658,
+          "nonfinite": 0,
+          "rel_l2": 0.00034920392433692257
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00027448565376286815,
+          "nonfinite": 0,
+          "rel_l2": 4.488640233456887e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.844677299331579e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.993395272716038e-08
+        }
+      },
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.002102501690387726,
+          "nonfinite": 0,
+          "rel_l2": 0.00034450418029614556
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0021024532794942236,
+          "nonfinite": 0,
+          "rel_l2": 0.000344504193666023
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00029074575060886176,
+          "nonfinite": 0,
+          "rel_l2": 4.437609113286192e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.4490821071718756e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.951274474603986e-08
+        }
+      },
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.0018970370292663574,
+          "nonfinite": 0,
+          "rel_l2": 0.0003546883890047448
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0018970611043098162,
+          "nonfinite": 0,
+          "rel_l2": 0.00035468843117263284
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0002780314255446392,
+          "nonfinite": 0,
+          "rel_l2": 4.577867220596657e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.777225859342593e-07,
+          "nonfinite": 0,
+          "rel_l2": 5.0465181652881684e-08
+        }
+      },
+      "model": "mamba",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 16,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba2",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0005327973180463136,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0003513052066452798,
+            0.0003853953578269198,
+            0.000310174661687621,
+            0.0003464333576448474
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.587447780080281e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            4.010849231207282e-08,
+            3.7805647729467816e-08,
+            3.5464807743005875e-08,
+            3.71084000728713e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.002184271812438965,
+          "nonfinite": 0,
+          "rel_l2": 0.0003495836738112266
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0021842661557629484,
+          "nonfinite": 0,
+          "rel_l2": 0.00034958360160136534
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00025236612778933853,
+          "nonfinite": 0,
+          "rel_l2": 4.480410300012738e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 3.563883197443829e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.529718196105963e-08
+        }
+      },
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba2",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.00043137079208431045,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.000342068469388286,
+            0.0003776628272951106,
+            0.00034104043297724615,
+            0.00038747497922353983
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.4113788007948325e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            3.810977040484341e-08,
+            3.811463139457697e-08,
+            3.9436443360565047e-08,
+            3.8858696649423774e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.001705169677734375,
+          "nonfinite": 0,
+          "rel_l2": 0.0003441426199858696
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.001705170713463433,
+          "nonfinite": 0,
+          "rel_l2": 0.000344142621753555
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0002573147416053967,
+          "nonfinite": 0,
+          "rel_l2": 4.4455474958073516e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 3.268912367460075e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.500204734647255e-08
+        }
+      },
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba2",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0004949066725019102,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0004176572118558013,
+            0.00038575135285183346,
+            0.0003368197244363843,
+            0.00038558402826019764
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.301785267895303e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            4.084618538503944e-08,
+            3.7021521075138316e-08,
+            3.8904422500490306e-08,
+            4.062774749242979e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.0019661039113998413,
+          "nonfinite": 0,
+          "rel_l2": 0.00035111821818595995
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0019660642187829813,
+          "nonfinite": 0,
+          "rel_l2": 0.0003511182300441029
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00024992944697399544,
+          "nonfinite": 0,
+          "rel_l2": 4.521540088059518e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.619495426183562e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.550363612698352e-08
+        }
+      },
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba2",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.002342790365219116,
+          "nonfinite": 0,
+          "rel_l2": 0.0003501844986301006
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.002342768154119712,
+          "nonfinite": 0,
+          "rel_l2": 0.00035018464298119023
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00029530938938826523,
+          "nonfinite": 0,
+          "rel_l2": 4.504833831037603e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.3864590271169845e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.988107627355792e-08
+        }
+      },
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba2",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.002046048641204834,
+          "nonfinite": 0,
+          "rel_l2": 0.0003449116435499888
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.002046018153785245,
+          "nonfinite": 0,
+          "rel_l2": 0.0003449117060945738
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0002573147416053967,
+          "nonfinite": 0,
+          "rel_l2": 4.4404880378445835e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.296920330659759e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.9461783187301216e-08
+        }
+      },
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba2",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.001966118812561035,
+          "nonfinite": 0,
+          "rel_l2": 0.0003528349500023715
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0019660642187829813,
+          "nonfinite": 0,
+          "rel_l2": 0.0003528349858833874
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00024992944697399544,
+          "nonfinite": 0,
+          "rel_l2": 4.541627040598021e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.360476921760892e-07,
+          "nonfinite": 0,
+          "rel_l2": 5.0075097738228215e-08
+        }
+      },
+      "model": "mamba2",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba3",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0004483914645054185,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.00035035242173622326,
+            0.00032488725679309096,
+            0.000313644295648028,
+            0.0003300446684510955
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.3608902695614875e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            3.7997857130386016e-08,
+            3.402409839076759e-08,
+            3.764570503012434e-08,
+            4.0807155629436055e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.001844257116317749,
+          "nonfinite": 0,
+          "rel_l2": 0.0003521961596838004
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0018442921586314664,
+          "nonfinite": 0,
+          "rel_l2": 0.00035219622073686383
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00024331459954735069,
+          "nonfinite": 0,
+          "rel_l2": 4.512775273157259e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.258192012329687e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.5488203784247476e-08
+        }
+      },
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba3",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0004388091603174099,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.00037054782481565755,
+            0.00040156202439125426,
+            0.0003481028758732619,
+            0.0003923223134874641
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.354842816048762e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            3.659880859805716e-08,
+            3.819952547419903e-08,
+            4.108693716651317e-08,
+            4.0776863656900826e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.0018948912620544434,
+          "nonfinite": 0,
+          "rel_l2": 0.00033886814752138035
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0018948929343049759,
+          "nonfinite": 0,
+          "rel_l2": 0.0003388681143243854
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00024124651801260555,
+          "nonfinite": 0,
+          "rel_l2": 4.407862933309328e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 3.6132561653801076e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.4976642621956856e-08
+        }
+      },
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba3",
+      "decode": {
+        "bf16": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 0.0004453068337087001,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            0.0003552692823754029,
+            0.00041269545957049703,
+            0.00034166173608167667,
+            0.0003583559063507208
+          ]
+        },
+        "fp32": {
+          "checkpoints": [
+            1,
+            16,
+            64,
+            256
+          ],
+          "max_rel_l2": 4.465585000750369e-08,
+          "nonfinite": 0,
+          "rel_l2_at": [
+            3.790963822652745e-08,
+            3.9886945801880874e-08,
+            4.103192796729948e-08,
+            3.951578983399067e-08
+          ]
+        }
+      },
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.002019166946411133,
+          "nonfinite": 0,
+          "rel_l2": 0.0003581432022903151
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.002019086713130225,
+          "nonfinite": 0,
+          "rel_l2": 0.0003581431193219982
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00025755725563732235,
+          "nonfinite": 0,
+          "rel_l2": 4.6031143746085354e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 3.931889747121886e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.579739343709521e-08
+        }
+      },
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 1024
+    },
+    {
+      "architecture": "mamba3",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.0020455121994018555,
+          "nonfinite": 0,
+          "rel_l2": 0.0003525298991207391
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0020455340400018507,
+          "nonfinite": 0,
+          "rel_l2": 0.0003525299623634318
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0002684534502481739,
+          "nonfinite": 0,
+          "rel_l2": 4.529806252770284e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.258192012329687e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.998886980737741e-08
+        }
+      },
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 0,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba3",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.002216339111328125,
+          "nonfinite": 0,
+          "rel_l2": 0.00034076905204728336
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.0022163938318287,
+          "nonfinite": 0,
+          "rel_l2": 0.000340768986761317
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.0002545234512694172,
+          "nonfinite": 0,
+          "rel_l2": 4.406500139114402e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.861970976932639e-07,
+          "nonfinite": 0,
+          "rel_l2": 4.9271062425311255e-08
+        }
+      },
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 1,
+      "seq_len": 4096
+    },
+    {
+      "architecture": "mamba3",
+      "forward": {
+        "bf16_vs_fp32": {
+          "max_abs": 0.0019986629486083984,
+          "nonfinite": 0,
+          "rel_l2": 0.0003576510910061963
+        },
+        "bf16_vs_fp64": {
+          "max_abs": 0.001998631400617512,
+          "nonfinite": 0,
+          "rel_l2": 0.0003576511143935267
+        },
+        "fp16_vs_fp64": {
+          "max_abs": 0.00026558431800172144,
+          "nonfinite": 0,
+          "rel_l2": 4.6058629081485524e-05
+        },
+        "fp32_vs_fp64": {
+          "max_abs": 4.3970680962956976e-07,
+          "nonfinite": 0,
+          "rel_l2": 5.0576308284430144e-08
+        }
+      },
+      "model": "mamba3",
+      "model_kwargs": {
+        "d_model": 256,
+        "d_state": 32,
+        "headdim": 64,
+        "n_layers": 2
+      },
+      "seed": 2,
+      "seq_len": 4096
+    }
+  ],
+  "environment": {
+    "cuda": "13.0",
+    "date": "2026-11-20",
+    "device": "cuda",
+    "git_dirty": false,
+    "git_sha": "c4c111bc1ff7cb17a6f735e9ecfc45362c25712f",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "nvidia_driver": "610.74",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.13.7",
+    "source_sha256": "c4adb70bef57070208d93db64718231c7da57f76523c7b7c2f4dc8aaa629da41",
+    "timestamp_utc": "2026-11-20T05:51:42+00:00",
+    "torch": "2.14.1+cu130"
+  }
+}

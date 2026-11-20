@@ -1,0 +1,146 @@
+{
+  "attention_backend": null,
+  "config": "exact_copy",
+  "data_config": {
+    "alphabet_size": 26,
+    "batch_size": 64,
+    "eval_lengths": [
+      16,
+      32,
+      64,
+      128
+    ],
+    "eval_samples": 256,
+    "name": "exact_copy",
+    "seed": 42,
+    "train": {
+      "max_len": 32
+    },
+    "train_samples": 8000,
+    "val_samples": 256
+  },
+  "device_total_mb": 6140.5,
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.1+cu130"
+  },
+  "final_evals": {
+    "L=128": {
+      "loss": 7.355074048042297,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.020954457364341084
+    },
+    "L=16": {
+      "loss": 3.1709543466567993,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.14246323529411764
+    },
+    "L=32": {
+      "loss": 2.589482009410858,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.22727272727272727
+    },
+    "L=64": {
+      "loss": 6.01304304599762,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.05246394230769231
+    }
+  },
+  "gpu_available_at_start_mb": 5040.0,
+  "gpu_free_at_end_mb": 3406.0,
+  "gpu_memory_spilled": false,
+  "history": [
+    {
+      "epoch": 1,
+      "epoch_seconds": 18.33,
+      "train_loss": 3.2831287899017334,
+      "val_loss": 3.0923763513565063,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.11387310606060606
+    },
+    {
+      "epoch": 2,
+      "epoch_seconds": 18.43,
+      "train_loss": 2.9333080081939698,
+      "val_loss": 2.885361969470978,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.1435842803030303
+    },
+    {
+      "epoch": 3,
+      "epoch_seconds": 18.22,
+      "train_loss": 2.8311540412902834,
+      "val_loss": 2.7498619556427,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.15625
+    },
+    {
+      "epoch": 4,
+      "epoch_seconds": 17.45,
+      "train_loss": 2.695691123962402,
+      "val_loss": 2.6573886275291443,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.19472064393939395
+    },
+    {
+      "epoch": 5,
+      "epoch_seconds": 15.92,
+      "train_loss": 2.6258043956756594,
+      "val_loss": 2.6062320470809937,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.21851325757575757
+    },
+    {
+      "epoch": 6,
+      "epoch_seconds": 16.29,
+      "train_loss": 2.589475929260254,
+      "val_loss": 2.5903918147087097,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.22383996212121213
+    }
+  ],
+  "label": "mamba2",
+  "model": {
+    "kwargs": {
+      "d_model": 160,
+      "d_state": 32,
+      "headdim": 64,
+      "n_layers": 3
+    },
+    "name": "mamba2"
+  },
+  "n_parameters": 548690,
+  "name": "exact_copy_mamba2",
+  "peak_gpu_mb": 1562.1,
+  "peak_gpu_reserved_mb": 1634.0,
+  "provenance": {
+    "config_sha256": "ffe1c9d08cda1641696f109c2846a9fa8f6109160f8540c3b55793396aa717e9",
+    "cuda": "13.0",
+    "device": "cuda",
+    "git_dirty": false,
+    "git_sha": "c4c111bc1ff7cb17a6f735e9ecfc45362c25712f",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "nvidia_driver": "610.74",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.13.7",
+    "source_sha256": "c4adb70bef57070208d93db64718231c7da57f76523c7b7c2f4dc8aaa629da41",
+    "timestamp_utc": "2026-11-20T00:20:24+00:00",
+    "torch": "2.14.1+cu130"
+  },
+  "resumed_from_epoch": null,
+  "seed": 2,
+  "task": "token_classification",
+  "train_config": {
+    "deterministic": true,
+    "epochs": 6,
+    "grad_clip": 1.0,
+    "lr": 0.001,
+    "scheduler": "cosine",
+    "seed": 2,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.05
+  },
+  "wall_time_seconds": 105.6
+}

@@ -1,0 +1,16 @@
+
+=== 2026-11-20 11:24:23 .venv\Scripts\python.exe scripts\make_tables.py
+wrote reports\tables\parity.tex
+wrote reports\tables\selective_copy.tex
+wrote reports\tables\exact_copy.tex
+wrote reports\tables\exact_copy_varlen.tex
+wrote reports\tables\imdb.tex
+wrote reports\tables\efficiency_fp32.tex
+wrote reports\tables\efficiency_bf16.tex
+wrote reports\tables\inference_fp32.tex
+wrote reports\tables\inference_bf16.tex
+wrote reports\tables\numerics.tex
+wrote reports\tables\compile.tex
+wrote reports\tables\environment.tex
+wrote results\SUMMARY.md
+wrote README.md

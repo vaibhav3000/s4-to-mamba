@@ -1,3 +1,5 @@
 # experiments.log is a raw run log that mixes CRLF, lone CR (progress bars)
 # and LF line endings; store and check out its bytes exactly as written.
 experiments.log -text
+# Make needs LF recipes on Linux; keep the Makefile LF everywhere.
+Makefile text eol=lf

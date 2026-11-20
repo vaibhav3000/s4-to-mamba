@@ -1,0 +1,263 @@
+{
+  "attention_backend": null,
+  "config": "parity",
+  "data_config": {
+    "batch_size": 64,
+    "eval_lengths": [
+      128,
+      256,
+      512,
+      1024,
+      2048
+    ],
+    "name": "parity",
+    "seed": 42,
+    "test_samples": 1000,
+    "train": {
+      "seq_len": 128
+    },
+    "train_samples": 2000,
+    "val_samples": 1000
+  },
+  "device_total_mb": 6140.5,
+  "environment": {
+    "cuda": "13.0",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "torch": "2.14.1+cu130"
+  },
+  "final_evals": {
+    "T=1024": {
+      "loss": 0.6851052567362785,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.5097666015625
+    },
+    "T=128": {
+      "loss": 0.5923827439546585,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.5794375
+    },
+    "T=2048": {
+      "loss": 0.6984096057713032,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.5051455078125
+    },
+    "T=256": {
+      "loss": 0.6426290757954121,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.53823828125
+    },
+    "T=512": {
+      "loss": 0.6690928600728512,
+      "sequence_success": 0.0,
+      "token_accuracy": 0.51998828125
+    }
+  },
+  "gpu_available_at_start_mb": 5040.0,
+  "gpu_free_at_end_mb": 2846.0,
+  "gpu_memory_spilled": false,
+  "history": [
+    {
+      "epoch": 1,
+      "epoch_seconds": 1.09,
+      "train_loss": 0.7698499001562595,
+      "val_loss": 0.6946450546383858,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.5044296875
+    },
+    {
+      "epoch": 2,
+      "epoch_seconds": 1.05,
+      "train_loss": 0.690986555069685,
+      "val_loss": 0.6887304447591305,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.5092734375
+    },
+    {
+      "epoch": 3,
+      "epoch_seconds": 1.01,
+      "train_loss": 0.6821530852466822,
+      "val_loss": 0.6768914647400379,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.51528125
+    },
+    {
+      "epoch": 4,
+      "epoch_seconds": 1.02,
+      "train_loss": 0.6686517409980297,
+      "val_loss": 0.6605335995554924,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.524796875
+    },
+    {
+      "epoch": 5,
+      "epoch_seconds": 1.0,
+      "train_loss": 0.6504604201763868,
+      "val_loss": 0.642700806260109,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.542765625
+    },
+    {
+      "epoch": 6,
+      "epoch_seconds": 1.0,
+      "train_loss": 0.6367887370288372,
+      "val_loss": 0.6344857811927795,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.55246875
+    },
+    {
+      "epoch": 7,
+      "epoch_seconds": 1.01,
+      "train_loss": 0.6303220503032207,
+      "val_loss": 0.6266005635261536,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.5511484375
+    },
+    {
+      "epoch": 8,
+      "epoch_seconds": 1.01,
+      "train_loss": 0.6208562329411507,
+      "val_loss": 0.6154971122741699,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.5626484375
+    },
+    {
+      "epoch": 9,
+      "epoch_seconds": 1.0,
+      "train_loss": 0.6143448539078236,
+      "val_loss": 0.607561994343996,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.560296875
+    },
+    {
+      "epoch": 10,
+      "epoch_seconds": 1.0,
+      "train_loss": 0.6071176901459694,
+      "val_loss": 0.6061958558857441,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.5652890625
+    },
+    {
+      "epoch": 11,
+      "epoch_seconds": 1.0,
+      "train_loss": 0.6031832545995712,
+      "val_loss": 0.6020542681217194,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.557296875
+    },
+    {
+      "epoch": 12,
+      "epoch_seconds": 0.99,
+      "train_loss": 0.6010624077171087,
+      "val_loss": 0.5981571450829506,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.5748828125
+    },
+    {
+      "epoch": 13,
+      "epoch_seconds": 1.01,
+      "train_loss": 0.5973882656544447,
+      "val_loss": 0.5962284319102764,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.5763984375
+    },
+    {
+      "epoch": 14,
+      "epoch_seconds": 0.99,
+      "train_loss": 0.5969015974551439,
+      "val_loss": 0.5947671569883823,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.575484375
+    },
+    {
+      "epoch": 15,
+      "epoch_seconds": 1.0,
+      "train_loss": 0.5948785953223705,
+      "val_loss": 0.5929185897111893,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.577015625
+    },
+    {
+      "epoch": 16,
+      "epoch_seconds": 1.0,
+      "train_loss": 0.5926960483193398,
+      "val_loss": 0.5938103795051575,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.57596875
+    },
+    {
+      "epoch": 17,
+      "epoch_seconds": 1.01,
+      "train_loss": 0.5918913129717112,
+      "val_loss": 0.5908048897981644,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.580375
+    },
+    {
+      "epoch": 18,
+      "epoch_seconds": 0.99,
+      "train_loss": 0.5903705302625895,
+      "val_loss": 0.590392455458641,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.579
+    },
+    {
+      "epoch": 19,
+      "epoch_seconds": 1.0,
+      "train_loss": 0.5898838602006435,
+      "val_loss": 0.5899913311004639,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.579421875
+    },
+    {
+      "epoch": 20,
+      "epoch_seconds": 0.99,
+      "train_loss": 0.5894837249070406,
+      "val_loss": 0.5898948013782501,
+      "val_sequence_success": 0.0,
+      "val_token_accuracy": 0.5799453125
+    }
+  ],
+  "label": "mamba2",
+  "model": {
+    "kwargs": {
+      "d_model": 80,
+      "d_state": 32,
+      "headdim": 32,
+      "n_layers": 2
+    },
+    "name": "mamba2"
+  },
+  "n_parameters": 101672,
+  "name": "parity_mamba2",
+  "peak_gpu_mb": 1526.8,
+  "peak_gpu_reserved_mb": 2194.0,
+  "provenance": {
+    "config_sha256": "5a51875751a70116ed648067c8fe77d55df66942953fbd11038049f94d56cd7b",
+    "cuda": "13.0",
+    "device": "cuda",
+    "git_dirty": false,
+    "git_sha": "3d6a776b940ad6502a02cf532b4d176dc46cc9a9",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "nvidia_driver": "610.74",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python": "3.13.7",
+    "source_sha256": "c4adb70bef57070208d93db64718231c7da57f76523c7b7c2f4dc8aaa629da41",
+    "timestamp_utc": "2026-11-20T06:39:53+00:00",
+    "torch": "2.14.1+cu130"
+  },
+  "resumed_from_epoch": null,
+  "seed": 3,
+  "task": "token_classification",
+  "train_config": {
+    "deterministic": true,
+    "epochs": 20,
+    "grad_clip": 1.0,
+    "lr": 0.003,
+    "scheduler": "cosine",
+    "seed": 3,
+    "warmup_frac": 0.05,
+    "weight_decay": 0.01
+  },
+  "wall_time_seconds": 25.2
+}

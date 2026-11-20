@@ -101,3 +101,16 @@ def test_figures_are_written_from_results_and_skipped_without(tmp_path: Path) ->
     ):
         assert f"{stem}.pdf" in names and f"{stem}.png" in names, stem
     assert figures.make_all(tmp_path / "empty", tmp_path / "out2") == []
+
+
+def test_environment_table_lists_the_software_and_hardware(tmp_path: Path) -> None:
+    tables = _script("make_tables")
+    (tmp_path / "ENVIRONMENT.json").write_text(
+        '{"gpu": "Fake GPU", "gpu_total_mb": 6141.0, "nvidia_driver": "1.0", "torch": "2.14.1+cu130",'
+        ' "cuda": "13.0", "cudnn": 91200, "python": "3.13.7", "platform": "Windows-11",'
+        ' "git_sha": "abcdef1234567890", "uv_lock_sha256": "f00d"}',
+        encoding="utf-8",
+    )
+    md = tables.render_markdown(tmp_path)["environment"]
+    for text in ("Fake GPU", "6141", "2.14.1+cu130", "13.0", "91200", "3.13.7", "abcdef1"):
+        assert text in md, text

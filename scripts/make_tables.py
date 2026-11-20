@@ -190,6 +190,23 @@ def _compile(root: Path) -> Table | None:
     return header, rows, note
 
 
+def _environment(root: Path) -> Table | None:
+    env = load_json(root / "ENVIRONMENT.json")
+    if env is None:
+        return None
+    rows = [
+        ["GPU", f"{env.get('gpu')} ({env.get('gpu_total_mb')} MiB)"],
+        ["NVIDIA driver", str(env.get("nvidia_driver"))],
+        ["PyTorch", str(env.get("torch"))],
+        ["CUDA / cuDNN", f"{env.get('cuda')} / {env.get('cudnn')}"],
+        ["Python", str(env.get("python"))],
+        ["Platform", str(env.get("platform"))],
+        ["Code", f"git {str(env.get('git_sha'))[:7]}"],
+        ["uv.lock sha256", str(env.get("uv_lock_sha256"))[:12]],
+    ]
+    return ["Item", "Value"], rows, "Recorded by scripts/write_environment.py at the start of the GPU runs."
+
+
 TABLES: dict[str, Callable[[Path], Table | None]] = {
     "parity": _training("parity"),
     "selective_copy": _training("selective_copy"),
@@ -202,6 +219,7 @@ TABLES: dict[str, Callable[[Path], Table | None]] = {
     "inference_bf16": _sweep_table("inference", "bf16"),
     "numerics": _numerics,
     "compile": _compile,
+    "environment": _environment,
 }
 
 

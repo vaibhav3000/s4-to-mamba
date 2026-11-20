@@ -1,1 +1,14 @@
-\emph{Pending: not yet run on the GPU.}
+\begin{tabular}{lrrrrrr}
+\toprule
+Model & T=1024 & T=2048 & T=4096 & T=8192 & T=16384 & T=32768 \\
+\midrule
+Transformer, mem.-efficient attention & 32.2 / 349 & 85.4 / 649 & 259.0 / 1245 & 903.1 / 2440 & 3194.8 / 4830 (spilled) & skipped \\
+Transformer, math attention & 55.2 / 855 & 185.0 / 2953 & 7778.9 / 10990 (spilled) & - & - & - \\
+Transformer, naive attention (reference) & 62.8 / 857 & 214.4 / 2961 & 11031.4 / 11022 (spilled) & - & - & - \\
+S4D & 23.4 / 287 & 45.8 / 554 & 90.1 / 1089 & 179.6 / 2158 & 842.0 / 4808 (spilled) & skipped \\
+Mamba-1 & 4095.4 / 1993 & - & - & - & - & - \\
+Mamba-2 & 62.1 / 703 & 186.8 / 1375 & 616.3 / 2688 & 2240.8 / 5313 (spilled) & skipped & skipped \\
+Mamba-3 & 677.8 / 658 & 1418.2 / 1061 & 3061.9 / 1864 & 6963.8 / 3494 & 112812.1 / 6960 (spilled) & skipped \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize fp32, batch 8: median training-step time in ms / peak allocated MiB. spilled: the step ran past free GPU memory (WDDM paging, not a VRAM number); skipped: not run after a shorter length spilled; unsupported: the pinned attention kernel refused the inputs; -: not in the sweep.}

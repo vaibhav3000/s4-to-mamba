@@ -1,1 +1,13 @@
-\emph{Pending: not yet run on the GPU.}
+\begin{tabular}{lrrrr}
+\toprule
+Model & Forward graphs / breaks & Step graphs / breaks & aot\_eager max diff & Inductor \\
+\midrule
+Transformer (sinusoidal) & 1 / 0 & 1 / 0 & 0.0e+00 & not run: Triton is not installed in this environment \\
+Transformer (RoPE) & 1 / 0 & 1 / 0 & 0.0e+00 & not run: Triton is not installed in this environment \\
+S4D & 1 / 0 & 5 / 4 & 0.0e+00 & not run: Triton is not installed in this environment \\
+Mamba-1 & 1 / 0 & 1 / 0 & 0.0e+00 & not run: Triton is not installed in this environment \\
+Mamba-2 & 1 / 0 & 1 / 0 & 0.0e+00 & not run: Triton is not installed in this environment \\
+Mamba-3 & 1 / 0 & 1 / 0 & 0.0e+00 & not run: Triton is not installed in this environment \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize torch.compile readiness: Dynamo graphs and graph breaks, and the largest output or gradient difference of aot\_eager against eager.}

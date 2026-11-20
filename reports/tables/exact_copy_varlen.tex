@@ -1,1 +1,13 @@
-\emph{Pending: not yet run on the GPU.}
+\begin{tabular}{lrrrrr}
+\toprule
+Model & Parameters & L=16 & L=32 & L=64 & L=128 \\
+\midrule
+Transformer (sinusoidal) & 602,782 & 100.0 $\pm$ 0.0 & 87.4 $\pm$ 3.7 & 5.0 $\pm$ 0.4 & 4.0 $\pm$ 0.2 \\
+Transformer (RoPE) & 602,782 & 100.0 $\pm$ 0.0 & 98.6 $\pm$ 0.7 & 6.4 $\pm$ 1.1 & 4.1 $\pm$ 0.3 \\
+S4D & 604,102 & 21.4 $\pm$ 0.5 & 19.7 $\pm$ 1.0 & 5.9 $\pm$ 0.6 & 3.2 $\pm$ 0.7 \\
+Mamba-1 & 597,102 & 62.6 $\pm$ 11.9 & 35.6 $\pm$ 8.3 & 13.1 $\pm$ 3.2 & 5.0 $\pm$ 0.9 \\
+Mamba-2 & 548,690 & 50.0 $\pm$ 5.4 & 29.0 $\pm$ 2.4 & 12.4 $\pm$ 1.8 & 4.8 $\pm$ 0.9 \\
+Mamba-3 & 550,625 & 80.2 $\pm$ 4.1 & 61.4 $\pm$ 5.7 & 5.8 $\pm$ 3.1 & 3.8 $\pm$ 0.5 \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize token accuracy in percent, mean $\pm$ sample std over n = 3 run seeds; chance 3.8.}

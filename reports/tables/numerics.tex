@@ -1,1 +1,13 @@
-\emph{Pending: not yet run on the GPU.}
+\begin{tabular}{lrrrr}
+\toprule
+Model & fp32 vs fp64 & bf16 vs fp64 & fp16 vs fp64 & bf16 decode, max \\
+\midrule
+Transformer (sinusoidal) & 1.4e-07 & 1.0e-03 & 1.2e-04 & 1.2e-03 \\
+Transformer (RoPE) & 1.4e-07 & 1.2e-03 & 1.4e-04 & 1.3e-03 \\
+S4D & 1.1e-07 & 1.3e-03 & 1.7e-04 & 2.0e-03 \\
+Mamba-1 & 5.0e-08 & 3.5e-04 & 4.5e-05 & 4.7e-04 \\
+Mamba-2 & 5.0e-08 & 3.5e-04 & 4.5e-05 & 4.9e-04 \\
+Mamba-3 & 5.0e-08 & 3.5e-04 & 4.5e-05 & 4.4e-04 \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize Relative L2 error of the backbone output against float64 at T=4096, mean over 3 initialization seeds; the last column is the largest per-step error of a bf16 decode against the float64 forward pass.}

@@ -24,11 +24,14 @@ RUN uv sync --locked --extra cpu --no-install-project
 COPY src ./src
 RUN uv sync --locked --extra cpu
 
-# Test inputs: the suite reads configs, committed results and the scripts.
+# Test inputs: the suite reads configs, committed results, the scripts, the generated
+# report tables (checked against the results) and the demo data builder.
 COPY tests ./tests
 COPY configs ./configs
 COPY results ./results
 COPY scripts ./scripts
+COPY reports/tables ./reports/tables
+COPY demo-site/build.py ./demo-site/build.py
 
 USER app
 CMD ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]

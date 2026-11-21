@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.patches import FancyBboxPatch
 from matplotlib.ticker import NullLocator
 
 from ssmbench.analysis.results import (
@@ -440,8 +441,247 @@ def benchmark_figures(root: Path, out: Path) -> list[Path]:
     return written
 
 
+# The overview diagram: each stage's header color (the model's palette color, darkened where
+# white text sits on it), its subtitle and what it changes, as the code implements it.
+STAGES = [
+    (
+        "S4D",
+        "linear time-invariant, ZOH",
+        "#15805a",
+        "white",
+        [
+            "complex diagonal A",
+            "same kernel, every input",
+            "train: FFT convolution",
+            "decode: complex state",
+        ],
+    ),
+    (
+        "Mamba-1",
+        "selective scan",
+        "#a86f00",
+        "white",
+        [
+            "Δ, B, C from the input",
+            "keeps or forgets tokens",
+            "train: sequential scan",
+            "decode: state + conv",
+        ],
+    ),
+    (
+        "Mamba-2",
+        "SSD, chunked",
+        "#e87ba4",
+        INK,
+        [
+            "one scalar A per head",
+            "train: chunked matmuls",
+            "state carried per chunk",
+            "decode: (N, P) per head",
+        ],
+    ),
+    (
+        "Mamba-3",
+        "as implemented here",
+        "#006b00",
+        "white",
+        [
+            "complex A per head, slot",
+            "exp. trapezoidal rule",
+            "static θ, real B and C",
+            "no MIMO",
+            "train: chunked SSD",
+            "decode: complex state",
+        ],
+    ),
+]
+HARNESS = [
+    "training step, peak memory",
+    "time to first token",
+    "decode latency, tokens/s",
+    "bf16, fp16 error vs float64",
+    "torch.compile graph breaks",
+    "1K to 32K tokens, CUDA events",
+]
+
+
+def _panel(ax: Axes, x: float, y: float, w: float, h: float, fill: str = PAPER) -> None:
+    ax.add_patch(
+        FancyBboxPatch(
+            (x, y),
+            w,
+            h,
+            boxstyle="round,pad=0,rounding_size=0.01",
+            transform=ax.transAxes,
+            facecolor=fill,
+            edgecolor=MUTED,
+            linewidth=0.8,
+        )
+    )
+
+
+def _arrow(ax: Axes, x0: float, y0: float, x1: float, y1: float) -> None:
+    ax.annotate(
+        "",
+        (x1, y1),
+        xytext=(x0, y0),
+        xycoords="axes fraction",
+        arrowprops={"arrowstyle": "-|>", "color": MUTED, "lw": 1.0, "mutation_scale": 9},
+    )
+
+
+def _longest(sweep: dict[str, Any] | None) -> int:
+    rows = [e for e in (sweep or {}).get("entries", []) if "decode_state_bytes" in e]
+    return max((int(e["seq_len"]) for e in rows), default=0)
+
+
+def _state_mib(sweep: dict[str, Any] | None, models: set[str] | None) -> list[float]:
+    """Decode state in MiB at the sweep's longest prompt, for the given models (None: SSMs)."""
+    if sweep is None:
+        return []
+    rows = [e for e in sweep["entries"] if "decode_state_bytes" in e]
+    if not rows:
+        return []
+    longest = max(int(e["seq_len"]) for e in rows)
+    return [
+        e["decode_state_bytes"] / 1024**2
+        for e in rows
+        if int(e["seq_len"]) == longest
+        and (e["model"] in models if models else not e["model"].startswith("transformer"))
+    ]
+
+
+def overview_figure(root: Path, out: Path) -> list[Path]:
+    """The README hero: the S4D to Mamba-3 evolution above the shared decode interface, the
+    decode-state comparison (numbers from the inference sweeps) and what the harness measures."""
+    fp32, bf16 = load_sweep(root, "inference", "fp32"), load_sweep(root, "inference", "bf16")
+    kv32 = _state_mib(fp32, {"transformer_efficient"})
+    kv16 = _state_mib(bf16, {"transformer_efficient"})
+    ssm = _state_mib(bf16 or fp32, None)
+    if not (kv32 or kv16) or not ssm:
+        return []
+    fig = plt.figure(figsize=(TEXT_IN, 4.9))
+    fig.set_layout_engine("none")
+    ax = fig.add_axes((0, 0, 1, 1))
+    ax.set_axis_off()
+    margin, gap = 0.012, 0.028
+    width = (1 - 2 * margin - 3 * gap) / 4
+    top, bottom, head = 0.925, 0.5, 0.09
+    ax.text(margin, 0.965, "Architecture evolution", fontsize=9, fontweight="bold", color=INK)
+    for i, (name, subtitle, color, text_color, lines) in enumerate(STAGES):
+        x = margin + i * (width + gap)
+        _panel(ax, x, bottom, width, top - bottom)
+        ax.add_patch(
+            FancyBboxPatch(
+                (x, top - head),
+                width,
+                head,
+                boxstyle="round,pad=0,rounding_size=0.01",
+                transform=ax.transAxes,
+                facecolor=color,
+                edgecolor=color,
+            )
+        )
+        ax.text(x + 0.01, top - 0.035, name, fontsize=9, fontweight="bold", color=text_color)
+        ax.text(x + 0.01, top - 0.075, subtitle, fontsize=7.5, color=text_color)
+        for k, line in enumerate(lines):
+            ax.text(x + 0.01, top - head - 0.05 - k * 0.052, line, fontsize=8, color=INK)
+        if i < len(STAGES) - 1:
+            mid = (top - head + bottom) / 2
+            _arrow(ax, x + width + 0.003, mid, x + width + gap - 0.003, mid)
+
+    lower_top, lower_bottom = 0.39, 0.025
+    ax.text(
+        margin,
+        0.428,
+        "Shared decode interface and benchmark harness",
+        fontsize=9,
+        fontweight="bold",
+        color=INK,
+    )
+    widths = (0.40, 0.27, 0.27)
+    lower_gap = (1 - 2 * margin - sum(widths)) / 2
+    xs = [margin, margin + widths[0] + lower_gap, margin + widths[0] + widths[1] + 2 * lower_gap]
+    longest = _longest(bf16 or fp32)
+    titles = ("Every backbone", f"State at a {longest // 1024}K prompt", "The harness measures")
+    for x, w, title in zip(xs, widths, titles, strict=True):
+        _panel(ax, x, lower_bottom, w, lower_top - lower_bottom, fill="#f7f7f5")
+        ax.text(x + 0.012, lower_top - 0.05, title, fontsize=8.5, fontweight="bold", color=INK)
+
+    # Panel 1: the decode interface as three calls.
+    chip_h, chip_y, chip_gap = 0.075, lower_top - 0.175, 0.022
+    cx = xs[0] + 0.012
+    for j, (call, chip_w) in enumerate(
+        (("init_state()", 0.10), ("prefill(prompt)", 0.125), ("step(token)", 0.105))
+    ):
+        ax.add_patch(
+            FancyBboxPatch(
+                (cx, chip_y),
+                chip_w,
+                chip_h,
+                boxstyle="round,pad=0,rounding_size=0.008",
+                transform=ax.transAxes,
+                facecolor=PAPER,
+                edgecolor=MUTED,
+                linewidth=0.8,
+            )
+        )
+        ax.text(
+            cx + chip_w / 2,
+            chip_y + chip_h / 2,
+            call,
+            fontsize=6.8,
+            family="DejaVu Sans Mono",
+            ha="center",
+            va="center",
+            color=INK,
+        )
+        if j < 2:
+            _arrow(
+                ax,
+                cx + chip_w + 0.002,
+                chip_y + chip_h / 2,
+                cx + chip_w + chip_gap - 0.002,
+                chip_y + chip_h / 2,
+            )
+        cx += chip_w + chip_gap
+    for k, line in enumerate(
+        (
+            "prefill runs the parallel form and returns the",
+            "state the recurrence would hold; step adds one",
+            "token. prefill + steps = forward (float64 tests)",
+        )
+    ):
+        ax.text(xs[0] + 0.012, chip_y - 0.06 - k * 0.05, line, fontsize=7.5, color=INK)
+
+    # Panel 2: KV cache against the recurrent state, from the committed inference sweeps.
+    kv = " / ".join(
+        f"{v:.0f} MiB {p}"
+        for v, p in ((max(kv32, default=0), "fp32"), (max(kv16, default=0), "bf16"))
+        if v
+    )
+    rows = (
+        ("Transformer KV cache", "grows with the prompt", kv),
+        (
+            "SSM recurrent state",
+            "fixed size, O(1) per token",
+            f"{min(ssm):.2f} to {max(ssm):.2f} MiB",
+        ),
+    )
+    for k, (label, note, value) in enumerate(rows):
+        y = lower_top - 0.11 - k * 0.138
+        ax.text(xs[1] + 0.012, y, label, fontsize=8, fontweight="bold", color=INK)
+        ax.text(xs[1] + 0.012, y - 0.045, note, fontsize=7.5, color=MUTED)
+        ax.text(xs[1] + 0.012, y - 0.09, value, fontsize=8, color=INK)
+
+    # Panel 3: what the benchmark harness records.
+    for k, line in enumerate(HARNESS):
+        ax.text(xs[2] + 0.012, lower_top - 0.105 - k * 0.046, line, fontsize=7.5, color=INK)
+    return _save(fig, out, "fig_overview")
+
+
 def make_all(root: Path, out: Path) -> list[Path]:
-    return training_figures(root, out) + benchmark_figures(root, out)
+    return training_figures(root, out) + benchmark_figures(root, out) + overview_figure(root, out)
 
 
 def main() -> None:

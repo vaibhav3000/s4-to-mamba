@@ -28,6 +28,23 @@ reduced-precision error and `torch.compile` readiness on one RTX 4050 Laptop GPU
   Transformer's KV cache 64 MiB in bf16; fused attention still gives the fastest
   bf16 prefill at every length.
 
+### Headline figures
+
+![Parity token accuracy by test length for seven variants, five seeds each](figures/fig_parity.png)
+
+*Parity: only Mamba-3, whose complex transition rotates the state, has runs that learn the task
+(2 of 5 seeds), and without rotation it stays with Mamba-1/2. Mean ± one sample std, n = 5; dots are seeds.*
+
+![Decode state in MiB against prompt length, KV cache versus SSM states](figures/fig_decode_memory.png)
+
+*Decode memory: the Transformer's KV cache grows linearly with the prompt (64 MiB in bf16 at 32K),
+while every SSM keeps a fixed 0.07 to 0.39 MiB state. Measured in the fp32 and bf16 inference sweeps.*
+
+![Exact-copy token accuracy by string length, trained at one length and on lengths 1 to 32](figures/fig_exact_copy.png)
+
+*Exact copy: at a single training length copying is a fixed delay that even LTI S4D solves; over
+lengths 1 to 32 attention copies best and Mamba-3 leads the SSMs. Nothing generalizes past 32 (n = 3).*
+
 The full write-up is
 [reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf](reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf);
 the design behind this version is in [docs/design/step2.md](docs/design/step2.md) and
@@ -410,7 +427,7 @@ flowchart LR
     G --> R["results/<br/>per-seed run files, sweeps,<br/>logs, ENVIRONMENT.json"]
     R --> S["ssmbench-summarize<br/>mean and std over seeds"]
     S --> T["scripts/make_tables.py<br/>README, SUMMARY.md, report tables"]
-    S --> F["scripts/make_figures.py<br/>figures/, reports/figures/"]
+    S --> F["scripts/make_figures.py<br/>figures/: one PDF and PNG per figure"]
     S --> D["demo-site/build.py<br/>demo data"]
     T --> PDF["reports/*.pdf"]
     F --> PDF

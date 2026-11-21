@@ -8,6 +8,18 @@
 \usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue]{hyperref}
 \usepackage{balance}
 \usepackage{etoolbox}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+% Stage colors of the evolution diagram: the figures' palette for each model.
+\definecolor{cS4D}{HTML}{15805A}
+\definecolor{cM1}{HTML}{A86F00}
+\definecolor{cM2}{HTML}{E87BA4}
+\definecolor{cM3}{HTML}{006B00}
+\definecolor{rule}{HTML}{4A4A47}
+% A stage box of the evolution diagram: equal height, text from the top.
+\newcommand{\stagetext}[1]{\parbox[t][4.5cm][t]{\linewidth}{\raggedright
+  \rightskip=0pt plus 1fil\relax #1}}
 
 % IEEEtran sets an em dash after the Abstract and Index Terms headings; use a
 % period instead. A failed patch stops the build rather than passing silently.
@@ -16,7 +28,10 @@
 \patchcmd{\IEEEkeywords}{\textit{\IEEEkeywordsname}---}{\textit{\IEEEkeywordsname}.\ }{}%
   {\PackageError{report}{Could not patch the index terms heading}{}}
 
-\graphicspath{{figures/}}
+\graphicspath{{../figures/}}
+% Floats leave short columns on some pages; let those columns end short rather
+% than stretching the space between paragraphs.
+\raggedbottom
 
 \newcommand{\mamba}{Mamba}
 
@@ -150,7 +165,65 @@ agree.
 All backbones share one skeleton: token embedding, a stack of pre-norm
 residual blocks, a final normalization and a linear head, applied per token
 for the synthetic tasks and after masked mean pooling for IMDb.
-Table~\ref{tab:arch} summarizes the mixers.
+Table~\ref{tab:arch} summarizes the mixers, and Fig.~\ref{fig:evo} traces
+what each step from S4D to \mamba{}-3 changes and why.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  stage/.style={draw=rule, rounded corners=2pt, text width=0.205\textwidth,
+    inner sep=3pt, anchor=north},
+  head/.style={text width=0.205\textwidth, inner sep=3pt, anchor=south,
+    minimum height=0.82cm, font=\footnotesize, align=left, text=white},
+  flow/.style={-{Stealth[length=4pt]}, draw=rule, line width=0.6pt},
+  node distance=0.034\textwidth]
+\node[stage] (s4d) {\stagetext{%
+  \textbf{Keeps:} complex diagonal $A$, fixed for every input
+  (linear time-invariant)\\[2pt]
+  \textbf{Discretization:} zero-order hold,
+  $\bar A=e^{\Delta A}$, $\bar B=\Delta B\,\frac{e^{\Delta A}-1}{\Delta A}$\\[2pt]
+  \textbf{Train:} FFT convolution, $O(T\log T)$\\[2pt]
+  \textbf{Decode:} complex state, $O(1)$ per token\\[2pt]
+  \textbf{Limit:} one kernel for every input, so it cannot choose what to
+  keep}};
+\node[stage, right=of s4d] (m1) {\stagetext{%
+  \textbf{Changes:} $\Delta_t$, $B_t$, $C_t$ are computed from the input
+  (selective)\\[2pt]
+  \textbf{Why:} the state can keep or forget each token, which an LTI
+  kernel cannot\\[2pt]
+  \textbf{Transition:} real diagonal decay, exponential Euler\\[2pt]
+  \textbf{Train:} sequential scan, $O(T)$ steps\\[2pt]
+  \textbf{Decode:} state and conv history, $O(1)$}};
+\node[stage, right=of m1] (m2) {\stagetext{%
+  \textbf{Changes:} $A$ is one scalar per head (state space duality)\\[2pt]
+  \textbf{Why:} within a chunk the recurrence becomes masked matrix
+  products, so it runs on matrix units\\[2pt]
+  \textbf{Train:} chunked SSD with a state carried between chunks\\[2pt]
+  \textbf{Decode:} $(N,P)$ state per head and conv history, $O(1)$}};
+\node[stage, right=of m2] (m3) {\stagetext{%
+  \textbf{Changes:} complex $A$ per head and state slot, and the
+  exponential-trapezoidal rule with a learned $\lambda_t$\\[2pt]
+  \textbf{Why:} rotation lets the state track parity; the trapezoidal
+  rule is second order\\[2pt]
+  \textbf{As implemented:} static learned $\theta$ (the angle
+  $\Delta_t\theta$ varies only through $\Delta_t$), real $B$ and $C$, real
+  readout, no MIMO\\[2pt]
+  \textbf{Train:} chunked complex SSD with a two-band correction\\[2pt]
+  \textbf{Decode:} complex state and boundary input, $O(1)$}};
+\node[head, fill=cS4D] at (s4d.north) {\textbf{S4D}\\linear time-invariant, ZOH};
+\node[head, fill=cM1] at (m1.north) {\textbf{Mamba-1}\\selective scan};
+\node[head, fill=cM2, text=black] at (m2.north) {\textbf{Mamba-2}\\scalar-$A$ SSD, chunked};
+\node[head, fill=cM3] at (m3.north) {\textbf{Mamba-3}\\complex, exp.\ trapezoidal};
+\draw[flow] (s4d.east) -- (m1.west);
+\draw[flow] (m1.east) -- (m2.west);
+\draw[flow] (m2.east) -- (m3.west);
+\end{tikzpicture}
+\caption{From S4D to \mamba{}-3 as implemented in this repository: what each
+stage changes, why, and how it trains and decodes. Every stage has a parallel
+form for training and an $O(1)$ recurrent step for generation.}
+\label{fig:evo}
+\end{figure*}
 
 \begin{table}[t]
 \centering
@@ -334,9 +407,10 @@ and at longer test lengths.}
 \end{table*}
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.8\columnwidth]{fig_parity.pdf}
-\caption{Parity token accuracy by test length; error bars are one sample
-standard deviation over five seeds.}
+\includegraphics[width=\linewidth]{fig_parity.pdf}
+\caption{Parity token accuracy by test length (trained at 128). Large markers
+and bars: mean $\pm$ one sample standard deviation over $n=5$ run seeds (not a
+confidence interval); small points: the individual seeds.}
 \label{fig:parity}
 \end{figure}
 \mamba{}-3 has the highest mean at the training length
@@ -381,7 +455,7 @@ only in part.
 single length 32 (top) or on lengths 1 to 32 (bottom).}
 \label{tab:exact}
 \input{tables/exact_copy.tex}
-\medskip
+\par\vspace{10pt}
 \input{tables/exact_copy_varlen.tex}
 \end{table*}
 Trained at the single length 32, the Transformers, S4D and \mamba{}-3 copy
@@ -418,6 +492,14 @@ scan over 512 tokens is too slow on this GPU.
 \section{Systems Measurements}
 \label{sec:systems}
 \subsection{Training Step}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig_decode_memory.pdf}
+\caption{Decode state held after the prompt, batch 1, from the fp32 and bf16
+inference sweeps: the Transformer's KV cache grows linearly with the prompt,
+while the SSM states (kept in float32) stay constant.}
+\label{fig:mem}
+\end{figure}
 \begin{table*}[t]
 \centering
 \caption{Efficiency sweep: median training-step time (ms) / peak allocated
@@ -427,15 +509,19 @@ memory and were paged to system memory by the display driver.}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
 \input{tables/efficiency_fp32.tex}
-\medskip
+\par\vspace{10pt}
 \input{tables/efficiency_bf16.tex}
 \end{table*}
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.75\textwidth]{fig_efficiency.pdf}
-\caption{Training step and peak allocated memory by sequence length. A ring
-marks a point that spilled to system memory; its memory value is what the
-allocator reported, not resident VRAM.}
+\includegraphics[width=\linewidth]{fig_efficiency.pdf}
+\caption{Training step and peak allocated memory by sequence length, batch 8,
+medians of five timed steps. The models are not size-matched: all have width
+256 and two layers, so the Transformer has 1.58M backbone parameters, S4D 183K
+and the \mamba{} variants about 876K (legend). Compare how each curve grows
+with length, not ratios between models. A ring marks a point that spilled to
+system memory; its memory value is what the allocator reported, not resident
+VRAM.}
 \label{fig:eff}
 \end{figure*}
 The benchmark models have equal width (256, two layers), not equal size:
@@ -465,18 +551,19 @@ per token (ms), batch 1, by prompt length.}
 \label{tab:inf}
 \scriptsize
 \input{tables/inference_fp32.tex}
-\medskip
+\par\vspace{10pt}
 \input{tables/inference_bf16.tex}
 \end{table*}
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{fig_inference.pdf}
-\caption{bf16 generation: time to first token, decode latency per token and
-decode state size by prompt length.}
+\includegraphics[width=\linewidth]{fig_inference.pdf}
+\caption{bf16 generation at batch 1 with 64 new tokens: median time to first
+token and median decode latency per token by prompt length. The models are not
+size-matched (backbone parameters in the legend).}
 \label{fig:inf}
 \end{figure*}
 The decode state is where the architectures differ most
-(Fig.~\ref{fig:inf}). After a 32K prompt the Transformer's KV cache holds
+(Fig.~\ref{fig:mem}). After a 32K prompt the Transformer's KV cache holds
 128.25\,MiB in fp32 and 64.12\,MiB in bf16, growing linearly with the
 prompt, while S4D, \mamba{}-2 and \mamba{}-3 keep 0.25, 0.14 and 0.39\,MiB
 regardless of length. Prefill favors the fused kernels: in bf16 the
@@ -577,6 +664,8 @@ prefill remain slower than fused attention. Code, configs, the result files, the
 scripts that generate every table and figure are in the accompanying
 repository.\footnote{\url{https://github.com/vaibhav3000/s4-to-mamba}}
 
+% Even out the two columns of the last page: start a new column at reference 7.
+\IEEEtriggeratref{7}
 \begin{thebibliography}{10}
 
 \bibitem{vaswani2017attention}

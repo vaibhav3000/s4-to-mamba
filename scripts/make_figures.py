@@ -24,6 +24,7 @@ missing is not drawn. Conventions in every figure:
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +37,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch
-from matplotlib.ticker import NullLocator
+from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter, NullLocator
 
 from ssmbench.analysis.results import (
     BACKEND_STYLES,
@@ -92,8 +93,27 @@ def _style(ax: Axes) -> None:
     ax.set_axisbelow(True)
 
 
+def _plain(value: float, _pos: int) -> str:
+    return f"{value:,.0f}" if value >= 1 else f"{value:g}"
+
+
+def _plain_log_y(ax: Axes) -> None:
+    """Label a log y axis with plain numbers (200, 1,000, 0.5) instead of mathtext powers,
+    at 1, 2 and 5, at 1 and 3, or at decades only, so each panel gets a few labels."""
+    low, high = ax.get_ylim()
+    span = math.log10(high / low)
+    subs = (1.0,) if span > 2.5 else (1.0, 3.0) if span > 1.2 else (1.0, 2.0, 5.0)
+    ax.yaxis.set_major_locator(LogLocator(base=10, subs=subs))
+    ax.yaxis.set_minor_locator(LogLocator(base=10, subs=tuple(float(s) for s in range(1, 10))))
+    ax.yaxis.set_major_formatter(FuncFormatter(_plain))
+    ax.yaxis.set_minor_formatter(NullFormatter())
+
+
 def _save(fig: Figure, out: Path, name: str) -> list[Path]:
     """Write one drawing as PDF and PNG at exactly the figure size (no tight bbox)."""
+    for ax in fig.axes:
+        if ax.get_yscale() == "log":
+            _plain_log_y(ax)
     out.mkdir(parents=True, exist_ok=True)
     written = [out / f"{name}.png", out / f"{name}.pdf"]
     fig.savefig(written[0], dpi=300)
@@ -486,7 +506,8 @@ STAGES = [
         "#006b00",
         "white",
         [
-            "complex A per head, slot",
+            "complex A per head and",
+            "state slot",
             "exp. trapezoidal rule",
             "static θ, real B and C",
             "no MIMO",
@@ -560,13 +581,13 @@ def overview_figure(root: Path, out: Path) -> list[Path]:
     ssm = _state_mib(bf16 or fp32, None)
     if not (kv32 or kv16) or not ssm:
         return []
-    fig = plt.figure(figsize=(TEXT_IN, 4.9))
+    fig = plt.figure(figsize=(TEXT_IN, 5.0))
     fig.set_layout_engine("none")
     ax = fig.add_axes((0, 0, 1, 1))
     ax.set_axis_off()
     margin, gap = 0.012, 0.028
     width = (1 - 2 * margin - 3 * gap) / 4
-    top, bottom, head = 0.925, 0.5, 0.09
+    top, bottom, head = 0.93, 0.47, 0.086
     ax.text(margin, 0.965, "Architecture evolution", fontsize=9, fontweight="bold", color=INK)
     for i, (name, subtitle, color, text_color, lines) in enumerate(STAGES):
         x = margin + i * (width + gap)
@@ -582,10 +603,10 @@ def overview_figure(root: Path, out: Path) -> list[Path]:
                 edgecolor=color,
             )
         )
-        ax.text(x + 0.01, top - 0.035, name, fontsize=9, fontweight="bold", color=text_color)
-        ax.text(x + 0.01, top - 0.075, subtitle, fontsize=7.5, color=text_color)
+        ax.text(x + 0.01, top - 0.032, name, fontsize=9, fontweight="bold", color=text_color)
+        ax.text(x + 0.01, top - 0.07, subtitle, fontsize=7.5, color=text_color)
         for k, line in enumerate(lines):
-            ax.text(x + 0.01, top - head - 0.05 - k * 0.052, line, fontsize=8, color=INK)
+            ax.text(x + 0.01, top - head - 0.047 - k * 0.0485, line, fontsize=8, color=INK)
         if i < len(STAGES) - 1:
             mid = (top - head + bottom) / 2
             _arrow(ax, x + width + 0.003, mid, x + width + gap - 0.003, mid)

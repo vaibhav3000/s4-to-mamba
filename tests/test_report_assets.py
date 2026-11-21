@@ -110,8 +110,12 @@ def test_figures_are_written_from_results_and_skipped_without(tmp_path: Path) ->
         "fig_imdb",
         "fig_efficiency",
         "fig_inference",
+        "fig_decode_memory",
+        "fig_overview",
     ):
         assert f"{stem}.pdf" in names and f"{stem}.png" in names, stem
+    # One drawing per figure, written once: the report and the README share these files.
+    assert {p.parent for p in written} == {tmp_path / "out"}
     assert figures.make_all(tmp_path / "empty", tmp_path / "out2") == []
 
 

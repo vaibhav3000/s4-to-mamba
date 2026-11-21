@@ -2,16 +2,34 @@
 
 [![CI](https://github.com/vaibhav3000/s4-to-mamba/actions/workflows/ci.yml/badge.svg)](https://github.com/vaibhav3000/s4-to-mamba/actions/workflows/ci.yml)
 
-Five sequence backbones (a causal Transformer, S4D, Mamba-1, Mamba-2 and Mamba-3)
-written from first principles in plain PyTorch, behind one interface with a parallel
-form for training and an O(1) recurrent `step()` for generation (a KV cache for the
-Transformer). The models are compared on controlled tasks with matched parameter
-counts and three to five run seeds, and benchmarked for training, prefill, decode, memory,
-reduced-precision error and `torch.compile` readiness on one RTX 4050 Laptop GPU
-(6 GB). Every number below is generated from the committed result files by
-`scripts/make_tables.py`.
+Five sequence backbones (a causal Transformer, S4D, Mamba-1, Mamba-2 and Mamba-3) written
+from first principles in plain PyTorch behind one decode interface, compared with matched
+parameters and three to five seeds, and benchmarked on one 6 GB laptop GPU. Every number
+below is generated from the committed result files by `scripts/make_tables.py`.
 
-**What the runs show (three seeds each, five on parity).**
+<img src="figures/fig_overview.png" width="100%" alt="Overview: the S4D, Mamba-1, Mamba-2 and Mamba-3 evolution above the shared init_state, prefill and step interface, the KV cache against the fixed SSM state at a 32K prompt, and what the benchmark harness measures">
+
+## System Walkthrough (30-Second Overview)
+
+- **Architecture evolution, left to right.** *S4D* applies one fixed complex kernel to every
+  input; *Mamba-1* computes Δ, B and C from the input so the state can select what to keep;
+  *Mamba-2* makes A one scalar per head so training runs as chunked matrix products (SSD);
+  *Mamba-3* adds a complex per-slot transition and the exponential-trapezoidal rule, built
+  here with a static θ, real B and C and no MIMO.
+- **What the Mamba-3 box buys.** Its rotation is the only thing that learns cumulative parity:
+  2 of 5 seeds reach 89.2 and 99.0% (mean 72.6 ± 20.5%), while every other model, including
+  Mamba-3 without rotation, averages 50.9 to 57.3%. Nothing extrapolates past the training length.
+- **Every backbone.** All five models expose `init_state`, `prefill` and `step`: prefill runs the
+  parallel form and returns the state the recurrence would hold, step adds one token, and
+  float64 tests check that prefill plus steps reproduces the full forward pass.
+- **State at a 32K prompt, and the harness.** The Transformer's KV cache grows with the prompt
+  to 128 MiB in fp32 (64 MiB in bf16), while the SSM states stay at 0.14 to 0.39 MiB. The
+  harness also times training steps, time to first token and decode latency from 1K to 32K
+  tokens, measures bf16 and fp16 error against float64, and counts `torch.compile` graph breaks.
+
+## What the runs show
+
+Three run seeds per task, five on parity.
 
 - Parity at length 128: Mamba-3 has the best mean, 72.6 ± 20.5% token accuracy,
   but only two of its five seeds learn the task (89.2 and 99.0%). With its rotation
@@ -27,6 +45,23 @@ reduced-precision error and `torch.compile` readiness on one RTX 4050 Laptop GPU
 - Inference: after a 32K prompt the SSM decode states take 0.14 to 0.39 MiB, the
   Transformer's KV cache 64 MiB in bf16; fused attention still gives the fastest
   bf16 prefill at every length.
+
+### Headline figures
+
+![Parity token accuracy by test length for seven variants, five seeds each](figures/fig_parity.png)
+
+*Parity: only Mamba-3, whose complex transition rotates the state, has runs that learn the task
+(2 of 5 seeds), and without rotation it stays with Mamba-1/2. Mean ± one sample std, n = 5; dots are seeds.*
+
+![Decode state in MiB against prompt length, KV cache versus SSM states](figures/fig_decode_memory.png)
+
+*Decode memory: the Transformer's KV cache grows linearly with the prompt (64 MiB in bf16 at 32K),
+while every SSM keeps a fixed 0.07 to 0.39 MiB state. Measured in the fp32 and bf16 inference sweeps.*
+
+![Exact-copy token accuracy by string length, trained at one length and on lengths 1 to 32](figures/fig_exact_copy.png)
+
+*Exact copy: at a single training length copying is a fixed delay that even LTI S4D solves; over
+lengths 1 to 32 attention copies best and Mamba-3 leads the SSMs. Nothing generalizes past 32 (n = 3).*
 
 The full write-up is
 [reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf](reports/Efficient_Sequence_Modeling_S4_to_Mamba3.pdf);
@@ -410,7 +445,7 @@ flowchart LR
     G --> R["results/<br/>per-seed run files, sweeps,<br/>logs, ENVIRONMENT.json"]
     R --> S["ssmbench-summarize<br/>mean and std over seeds"]
     S --> T["scripts/make_tables.py<br/>README, SUMMARY.md, report tables"]
-    S --> F["scripts/make_figures.py<br/>figures/, reports/figures/"]
+    S --> F["scripts/make_figures.py<br/>figures/: one PDF and PNG per figure"]
     S --> D["demo-site/build.py<br/>demo data"]
     T --> PDF["reports/*.pdf"]
     F --> PDF

@@ -274,8 +274,9 @@ results/
   PROVENANCE.md                        rewritten: which commit produced what
 ```
 
-- `scripts/make_figures.py` reads only summaries and benchmark JSON and writes `figures/` (PNG
-  and PDF) and `reports/figures/` (PDF); error bars are ± one sample std with n in the caption.
+- `scripts/make_figures.py` reads only summaries and benchmark JSON and writes each figure once
+  to `figures/` (PDF for the report, PNG for the README); error bars are ± one sample std with n
+  in the caption.
 - `scripts/make_tables.py` writes `reports/tables/*.tex` and the generated blocks of
   `README.md` and `results/SUMMARY.md` between `<!-- generated:NAME -->` markers. A test checks
   the committed tables equal a fresh generation from the committed JSON, so no number is typed by
